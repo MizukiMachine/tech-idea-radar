@@ -89,6 +89,22 @@ describe('SelfAnalysisAgent', () => {
       achievements: [{ type: 'project', description: 'Built system', metric: 'users', value: 1000, unit: 'users', period: '2024' }],
       network: { industryContacts: 10, influentialConnections: 2, communities: [], socialMedia: [] },
       values: { priorities: ['Growth'], socialCauses: [], threeYearGoal: 'Launch startup', fiveYearVision: 'Scale', motivations: [] },
+      personalProjects: [{
+        name: 'CLI Tool',
+        description: 'A developer CLI tool',
+        technologies: ['TypeScript', 'Node.js'],
+        stars: 200,
+        status: 'active' as const,
+        users: 50,
+      }],
+      techStackDetail: {
+        primaryLanguages: ['TypeScript'],
+        frameworks: ['React'],
+        toolsAndPlatforms: ['VS Code', 'Git'],
+        infrastructure: ['AWS'],
+        preferredStack: 'TypeScript full-stack',
+        yearsBuilding: 5,
+      },
     });
 
     expect(result.metadata.analysisId).toBe('test-1');
@@ -154,6 +170,22 @@ describe('EntrepreneurAgent', () => {
       achievements: [],
       network: { industryContacts: 0, influentialConnections: 0, communities: [], socialMedia: [] },
       values: { priorities: ['Growth'], socialCauses: [], threeYearGoal: 'Launch', fiveYearVision: 'Scale', motivations: [] },
+      personalProjects: [{
+        name: 'CLI Tool',
+        description: 'A developer CLI tool',
+        technologies: ['TypeScript', 'Node.js'],
+        stars: 200,
+        status: 'active' as const,
+        users: 50,
+      }],
+      techStackDetail: {
+        primaryLanguages: ['TypeScript'],
+        frameworks: ['React'],
+        toolsAndPlatforms: ['VS Code', 'Git'],
+        infrastructure: ['AWS'],
+        preferredStack: 'TypeScript full-stack',
+        yearsBuilding: 5,
+      },
     });
     expect(result).toHaveProperty('metadata');
   });
@@ -182,6 +214,22 @@ describe('EntrepreneurAgent', () => {
         achievements: [],
         network: { industryContacts: 0, influentialConnections: 0, communities: [], socialMedia: [] },
         values: { priorities: ['Growth'], socialCauses: [], threeYearGoal: 'Launch', fiveYearVision: 'Scale', motivations: [] },
+        personalProjects: [{
+          name: 'CLI Tool',
+          description: 'A developer CLI tool',
+          technologies: ['TypeScript', 'Node.js'],
+          stars: 200,
+          status: 'active' as const,
+          users: 50,
+        }],
+        techStackDetail: {
+          primaryLanguages: ['TypeScript'],
+          frameworks: ['React'],
+          toolsAndPlatforms: ['VS Code', 'Git'],
+          infrastructure: ['AWS'],
+          preferredStack: 'TypeScript full-stack',
+          yearsBuilding: 5,
+        },
       },
       targetMarkets: [{ name: 'Japan', description: 'JP market', priority: 1 }],
       initialCompetitors: [],
@@ -216,6 +264,22 @@ describe('EntrepreneurAgent', () => {
         achievements: [],
         network: { industryContacts: 0, influentialConnections: 0, communities: [], socialMedia: [] },
         values: { priorities: ['Growth'], socialCauses: [], threeYearGoal: 'Launch', fiveYearVision: 'Scale', motivations: [] },
+        personalProjects: [{
+          name: 'CLI Tool',
+          description: 'A developer CLI tool',
+          technologies: ['TypeScript', 'Node.js'],
+          stars: 200,
+          status: 'active' as const,
+          users: 50,
+        }],
+        techStackDetail: {
+          primaryLanguages: ['TypeScript'],
+          frameworks: ['React'],
+          toolsAndPlatforms: ['VS Code', 'Git'],
+          infrastructure: ['AWS'],
+          preferredStack: 'TypeScript full-stack',
+          yearsBuilding: 5,
+        },
       },
       targetMarkets: [{ name: 'Japan', description: 'JP market', priority: 1 }],
       initialCompetitors: [],
