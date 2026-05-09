@@ -9,6 +9,7 @@ export { EntrepreneurAgent } from './agents/entrepreneur-agent';
 export { ClaudeClient } from './services/claude-client';
 export { PromptBuilder } from './services/prompt-builder';
 export { ResponseParser } from './services/response-parser';
+export { validateObject } from './services/output-validator';
 
 // Types
 export * from './types/self-analysis';
