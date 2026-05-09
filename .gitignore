@@ -1,0 +1,51 @@
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.env
+.venv/
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Build artifacts
+coverage/
+dist/
+build/
+.tmp/
+.cache/
+.parcel-cache/
+.next/
+
+# IDE and editor
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Python tooling
+.mypy_cache/
+.pytest_cache/
+
+# Tooling
+.gocache/
+.gomodcache/
+
+# Docker
+*.pid
+*.seed
