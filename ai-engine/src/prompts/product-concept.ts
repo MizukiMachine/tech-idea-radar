@@ -37,12 +37,12 @@ export const PRODUCT_CONCEPT_USER_TEMPLATE = `Phase 2-3の結果をもとに、�
     "keyResources": [{ "type": "", "description": "", "necessity": "critical|important|nice-to-have" }],
     "keyActivities": [{ "category": "", "description": "" }],
     "keyPartnerships": [{ "name": "", "type": "", "benefit": "" }],
-    "costStructure": { "type": "cost-driven|value-driven", "fixedCosts": [], "variableCosts": [], "totalMonthlyCost": 0 }
+    "costStructure": { "type": "cost-driven|value-driven", "fixedCosts": [{ "item": "", "amount": 0 }], "variableCosts": [{ "item": "", "unitCost": 0 }], "totalMonthlyCost": 0 }
   },
   "revenueModel": {
     "modelType": "",
     "pricingStrategy": { "method": "", "rationale": "" },
-    "revenueStreams": [],
+    "revenueStreams": [{ "name": "", "type": "", "pricing": { "model": "", "price": 0, "currency": "JPY" }, "contributionPercentage": 0 }],
     "threeYearForecast": {
       "year1": { "year": 1, "customers": 0, "mrr": 0, "arr": 0, "churnRate": 0 },
       "year2": { "year": 2, "customers": 0, "mrr": 0, "arr": 0, "churnRate": 0 },
@@ -51,7 +51,7 @@ export const PRODUCT_CONCEPT_USER_TEMPLATE = `Phase 2-3の結果をもとに、�
     "unitEconomics": { "arpu": 0, "ltv": 0, "cac": 0, "ltvCacRatio": 0, "paybackPeriodMonths": 0 }
   },
   "handoff": {
-    "coreFeatures": [],
+    "coreFeatures": [{ "name": "", "description": "", "priority": "P0|P1|P2", "complexity": "High|Medium|Low", "includeInMvp": true }],
     "mvpScope": { "includeFeatures": [], "excludeFeatures": [], "releaseTarget": "" },
     "techStackCandidates": { "frontend": [], "backend": [], "database": [], "infrastructure": [] }
   }

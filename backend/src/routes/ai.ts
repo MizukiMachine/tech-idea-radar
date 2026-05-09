@@ -4,6 +4,19 @@ import { executePhase, runWorkflow } from '../services/ai-engine';
 
 const VALID_PHASES = new Set<number>([Phase.SelfAnalysis, Phase.MarketResearch, Phase.Persona, Phase.ProductConcept]);
 
+const PHASE_NAMES: Record<number, string> = {
+  [Phase.SelfAnalysis]: 'SelfAnalysis',
+  [Phase.MarketResearch]: 'MarketResearch',
+  [Phase.Persona]: 'Persona',
+  [Phase.ProductConcept]: 'ProductConcept',
+};
+
+function sseSend(res: Response, event: string, data: unknown, disconnected: boolean): boolean {
+  if (disconnected) return false;
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  return res.write(payload);
+}
+
 const router = Router();
 
 router.post('/phases/:phase', async (req: Request, res: Response) => {
@@ -23,13 +36,30 @@ router.post('/phases/:phase', async (req: Request, res: Response) => {
 });
 
 router.post('/workflow', async (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  let disconnected = false;
+  req.on('close', () => { disconnected = true; });
+
   try {
-    const result = await runWorkflow(req.body);
-    res.json({ status: 'completed', result });
+    const result = await runWorkflow(req.body, (phaseResult) => {
+      sseSend(res, 'phase_complete', {
+        phase: phaseResult.phase,
+        name: PHASE_NAMES[phaseResult.phase],
+        output: phaseResult.output,
+      }, disconnected);
+    });
+
+    sseSend(res, 'workflow_complete', result, disconnected);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    res.status(500).json({ status: 'error', error: message });
+    sseSend(res, 'error', { error: message }, disconnected);
   }
+
+  if (!disconnected) res.end();
 });
 
 export default router;

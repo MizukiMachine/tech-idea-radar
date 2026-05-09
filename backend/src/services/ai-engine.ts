@@ -4,6 +4,7 @@ import {
   Phase,
   WorkflowInput,
   WorkflowResult,
+  PhaseResult,
 } from 'ai-engine';
 
 let cachedClient: ClaudeClient | null = null;
@@ -25,7 +26,10 @@ export async function executePhase(phase: Phase, input: unknown): Promise<unknow
   return agent.runPhase(phase, input);
 }
 
-export async function runWorkflow(input: WorkflowInput): Promise<WorkflowResult> {
+export async function runWorkflow(
+  input: WorkflowInput,
+  onPhaseComplete?: (result: PhaseResult) => void,
+): Promise<WorkflowResult> {
   const agent = new EntrepreneurAgent(getClient());
-  return agent.runWorkflow(input);
+  return agent.runWorkflow(input, onPhaseComplete);
 }

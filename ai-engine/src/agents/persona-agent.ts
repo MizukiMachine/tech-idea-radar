@@ -1,6 +1,6 @@
 import { BaseAgent } from './base-agent';
 import { ClaudeClient } from '../services/claude-client';
-import { Phase } from '../config/constants';
+import { Phase, LARGE_MAX_TOKENS } from '../config/constants';
 import { PersonaInput, PersonaOutput } from '../types/persona';
 import { PERSONA_SYSTEM_PROMPT, PERSONA_USER_TEMPLATE } from '../prompts/persona';
 import { PromptBuilder } from '../services/prompt-builder';
@@ -8,6 +8,7 @@ import { PromptBuilder } from '../services/prompt-builder';
 export class PersonaAgent extends BaseAgent<PersonaInput, PersonaOutput> {
   readonly name = 'PersonaAgent';
   readonly phase = Phase.Persona;
+  protected readonly maxTokens = LARGE_MAX_TOKENS;
 
   constructor(claude: ClaudeClient) {
     super(claude);

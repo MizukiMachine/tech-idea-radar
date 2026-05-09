@@ -34,37 +34,37 @@ export const MARKET_RESEARCH_USER_TEMPLATE = `Phase 1で特定されたターゲ
   },
   "marketAnalysis": {
     "marketSize": {
-      "tam": { "value": 0, "unit": "billion|million", "year": 2025 },
-      "sam": { "value": 0, "unit": "billion|million", "year": 2025 },
-      "som": { "value": 0, "unit": "billion|million", "year": 2025 },
+      "tam": { "value": 0, "unit": "billion|million|thousand", "year": 2025 },
+      "sam": { "value": 0, "unit": "billion|million|thousand", "year": 2025 },
+      "som": { "value": 0, "unit": "billion|million|thousand", "year": 2025 },
       "growthRate": { "historical": 0, "projected": 0 },
       "currency": "JPY"
     },
     "trends": [{ "rank": 1, "name": "", "description": "", "impactLevel": "high|medium|low", "timeframe": "short-term|medium-term|long-term", "relevanceScore": 0-100, "opportunities": [], "threats": [] }],
-    "technologicalChanges": [],
-    "regulatoryLandscape": { "currentRegulations": [], "upcomingRegulations": [], "complianceRequirements": [], "riskLevel": "high|medium|low" },
+    "technologicalChanges": [{ "technology": "", "adoptionRate": 0, "maturityLevel": "emerging|growing|mainstream|declining", "impact": "", "ourReadiness": "ready|partial|not-ready" }],
+    "regulatoryLandscape": { "currentRegulations": [{ "name": "", "jurisdiction": "", "effectiveDate": "", "impact": "", "complianceCost": "high|medium|low" }], "upcomingRegulations": [{ "name": "", "jurisdiction": "", "effectiveDate": "", "impact": "", "complianceCost": "high|medium|low" }], "complianceRequirements": [], "riskLevel": "high|medium|low" },
     "marketMaturity": "emerging|growth|mature|declining"
   },
   "competitorAnalysis": {
     "totalCompetitors": 0,
-    "directCompetitors": [],
-    "indirectCompetitors": [],
-    "potentialEntrants": [],
-    "pricingAnalysis": { "priceSegments": [], "averagePrice": 0, "priceLeader": "", "pricingTrend": "increasing|stable|decreasing" },
-    "competitiveLandscape": { "concentrationLevel": "fragmented|moderate|concentrated|monopolistic", "marketLeader": "", "marketLeaderShare": 0, "top3Share": 0, "entryBarriers": [] }
+    "directCompetitors": [{ "rank": 1, "name": "", "website": "", "businessModel": "", "targetCustomer": "", "priceRange": { "min": 0, "max": 0, "currency": "JPY", "model": "" }, "strengths": [], "weaknesses": [], "differentiators": [], "threatLevel": "high|medium|low", "overallScore": 0 }],
+    "indirectCompetitors": [{ "rank": 1, "name": "", "website": "", "businessModel": "", "targetCustomer": "", "priceRange": { "min": 0, "max": 0, "currency": "JPY", "model": "" }, "strengths": [], "weaknesses": [], "differentiators": [], "threatLevel": "high|medium|low", "overallScore": 0 }],
+    "potentialEntrants": [{ "rank": 1, "name": "", "website": "", "businessModel": "", "targetCustomer": "", "priceRange": { "min": 0, "max": 0, "currency": "JPY", "model": "" }, "strengths": [], "weaknesses": [], "differentiators": [], "threatLevel": "high|medium|low", "overallScore": 0 }],
+    "pricingAnalysis": { "priceSegments": [{ "segment": "low|mid|high|premium", "priceRange": "", "competitorCount": 0, "representatives": [] }], "averagePrice": 0, "priceLeader": "", "pricingTrend": "increasing|stable|decreasing" },
+    "competitiveLandscape": { "concentrationLevel": "fragmented|moderate|concentrated|monopolistic", "marketLeader": "", "marketLeaderShare": 0, "top3Share": 0, "entryBarriers": [{ "type": "", "level": "high|medium|low", "description": "", "ourPosition": "" }] }
   },
   "opportunityAnalysis": {
-    "gapAnalysis": [],
-    "blueOceanAreas": [{ "rank": 1, "area": "", "description": "", "marketSize": "", "entryBarrier": "high|medium|low", "successProbability": "high|medium|low", "leveragedStrengths": [] }],
-    "differentiationPoints": [],
+    "gapAnalysis": [{ "customerNeed": "", "currentSolutions": [], "unmetAspects": [], "opportunitySize": "high|medium|low", "ourFitScore": 0 }],
+    "blueOceanAreas": [{ "rank": 1, "area": "", "description": "", "marketSize": "", "entryBarrier": "high|medium|low", "successProbability": "high|medium|low", "timeToMarket": "", "requiredInvestment": "", "keySuccessFactors": [], "risks": [], "leveragedStrengths": [] }],
+    "differentiationPoints": [{ "point": "", "basedOnStrength": "", "competitorWeakness": "", "customerValue": "", "sustainability": "high|medium|low" }],
     "recommendedStrategy": "",
     "confidenceLevel": 0-100
   },
   "customerNeeds": {
-    "primaryNeeds": [],
+    "primaryNeeds": [{ "rank": 1, "need": "", "affectedPopulation": "", "severity": "critical|high|medium|low", "currentSolution": "", "dissatisfactionAreas": [], "willingnessToPay": "high|medium|low" }],
     "latentNeeds": [],
-    "painPoints": [],
-    "customerSegments": []
+    "painPoints": [{ "description": "", "frequency": "daily|weekly|monthly|occasionally", "impact": "high|medium|low", "existingSolutions": [], "solutionGaps": [] }],
+    "customerSegments": [{ "name": "", "size": "", "characteristics": [], "needs": [], "currentSpending": "", "acquisitionDifficulty": "easy|moderate|difficult", "recommendedPriority": 1 }]
   },
   "handoff": {
     "recommendedSegments": [{ "segment": "", "priority": 1, "rationale": "", "marketSize": "", "competitionLevel": "low|medium|high" }],

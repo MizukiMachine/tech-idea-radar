@@ -42,16 +42,16 @@ export const SELF_ANALYSIS_USER_TEMPLATE = `以下の情報をもとに、体系
     "dataQualityScore": 0-100のスコア
   },
   "careerAnalysis": {
-    "timeline": [],
+    "timeline": [{ "year": 2020, "role": "", "keyAchievements": [], "skillsGained": [], "growthIndicator": "high|medium|low" }],
     "highlights": [],
     "trajectory": "ascending|stable|transitioning|mixed",
     "totalExperienceYears": 0,
     "industryExposure": []
   },
   "skillMap": {
-    "technicalSkills": [],
-    "businessSkills": [],
-    "softSkills": [],
+    "technicalSkills": [{ "name": "", "level": 0, "marketValue": "high|medium|low", "growthPotential": "high|medium|low", "relevanceScore": 0 }],
+    "businessSkills": [{ "name": "", "level": 0, "marketValue": "high|medium|low", "growthPotential": "high|medium|low", "relevanceScore": 0 }],
+    "softSkills": [{ "name": "", "level": 0, "marketValue": "high|medium|low", "growthPotential": "high|medium|low", "relevanceScore": 0 }],
     "topStrengths": [],
     "developmentAreas": [],
     "uniqueCombination": "他と差別化できるスキルの組み合わせ"
@@ -60,7 +60,7 @@ export const SELF_ANALYSIS_USER_TEMPLATE = `以下の情報をもとに、体系
     "totalRevenueImpact": 0,
     "largestProjectScale": 0,
     "maxTeamManaged": 0,
-    "topAchievements": [],
+    "topAchievements": [{ "rank": 1, "description": "", "impactScore": 0, "category": "" }],
     "quantifiableStrengths": []
   },
   "networkAnalysis": {
@@ -82,16 +82,16 @@ export const SELF_ANALYSIS_USER_TEMPLATE = `以下の情報をもとに、体系
     "goalClarity": "clear|moderate|unclear"
   },
   "swotAnalysis": {
-    "strengths": [],
-    "weaknesses": [],
-    "opportunities": [],
-    "threats": [],
+    "strengths": [{ "item": "", "importance": "high|medium|low", "actionability": "high|medium|low", "relatedFactors": [] }],
+    "weaknesses": [{ "item": "", "importance": "high|medium|low", "actionability": "high|medium|low", "relatedFactors": [] }],
+    "opportunities": [{ "item": "", "importance": "high|medium|low", "actionability": "high|medium|low", "relatedFactors": [] }],
+    "threats": [{ "item": "", "importance": "high|medium|low", "actionability": "high|medium|low", "relatedFactors": [] }],
     "keyInsights": [],
     "strategicImplications": []
   },
   "directionRecommendation": {
-    "recommendedAreas": [],
-    "areasToAvoid": [],
+    "recommendedAreas": [{ "area": "", "fitScore": 0, "rationale": "", "leveragedStrengths": [] }],
+    "areasToAvoid": [{ "area": "", "riskLevel": "high|medium|low", "reason": "", "missingCapabilities": [] }],
     "optimalBusinessModel": [],
     "targetMarketHints": []
   },
