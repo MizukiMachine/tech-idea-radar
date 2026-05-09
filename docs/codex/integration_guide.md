@@ -1,6 +1,6 @@
 # Codex Integration Guide
 
-This guide explains how Codex should plug into the Startup Agent Chain workflow.
+This guide explains how Codex should plug into the Builder Agent Chain workflow.
 
 ## Prerequisites
 

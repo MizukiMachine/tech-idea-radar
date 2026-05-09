@@ -153,8 +153,8 @@ function App(): JSX.Element {
   return (
     <div className="app">
       <header className="app__header">
-        <h1 className="app__title">Startup Agent Chain</h1>
-        <p className="app__subtitle">4-phase AI business planning workflow</p>
+        <h1 className="app__title">Builder Agent Chain</h1>
+        <p className="app__subtitle">Programmer-to-founder AI planning workflow</p>
       </header>
 
       <main className="app__main">

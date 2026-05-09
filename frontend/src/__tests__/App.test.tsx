@@ -13,7 +13,7 @@ beforeEach(() => {
 describe("App", () => {
   it("renders workflow input view by default", () => {
     render(<App />);
-    expect(screen.getByText("Startup Agent Chain")).toBeTruthy();
+    expect(screen.getByText("Builder Agent Chain")).toBeTruthy();
     expect(screen.getByText("Workflow Input (JSON)")).toBeTruthy();
     expect(screen.getByText("Run Workflow")).toBeTruthy();
   });

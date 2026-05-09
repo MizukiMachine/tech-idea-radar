@@ -1,7 +1,7 @@
-# Startup Agent Chain
+# Builder Agent Chain
 
 ## Overview
-Startup Agent Chain is an orchestration platform that automates core entrepreneurship workflows. It helps founders validate ideas, conduct market research, design go-to-market strategies, and manage ongoing venture operations through an integrated AI toolchain.
+Builder Agent Chain is an orchestration platform that automates core entrepreneurship workflows. It helps founders validate ideas, conduct market research, design go-to-market strategies, and manage ongoing venture operations through an integrated AI toolchain.
 
 ## Key Capabilities
 - Automates venture hypothesis discovery with guided questionnaires and AI summarization.
@@ -37,7 +37,7 @@ Refer to `docs/architecture.md` for a deeper discussion of service boundaries an
 
 ## Repository Layout
 ```
-startup-agent-chain/
+builder-agent-chain/
 ├── .editorconfig          # Repository-wide formatting defaults
 ├── .gitignore             # Ignore rules for Node/Python/tooling artifacts
 ├── .prettierrc.json       # Prettier formatting preferences

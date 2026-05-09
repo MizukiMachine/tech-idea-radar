@@ -1,6 +1,6 @@
 # System Architecture Overview
 
-This document captures the high-level architecture for the Startup Agent Chain project. It is intended to keep tools aligned on the target platform and boundaries.
+This document captures the high-level architecture for the Builder Agent Chain project. It is intended to keep tools aligned on the target platform and boundaries.
 
 ## Platform Summary
 

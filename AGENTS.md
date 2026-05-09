@@ -6,9 +6,9 @@ AGENTS.md: Codexエージェント運用マニュアル
 
 - `primary_language`: 日本語
 - `project_name`:
-  - `name`: "Startup Agent Chain"
+  - `name`: "Builder Agent Chain"
   - `details_prompt`: どんなプロジェクトか詳細をUser Inputとして詳細コンテキストで提供して下さい！
-  - `details_placeholder`: "Startup Agent Chainは、起業に関わる主要ワークフローを自動化するオーケストレーションプラットフォームです。市場調査から事業運営まで、起業に必要なあらゆるプロセスを支援します。"
+  - `details_placeholder`: "Builder Agent Chainは、起業に関わる主要ワークフローを自動化するオーケストレーションプラットフォームです。市場調査から事業運営まで、起業に必要なあらゆるプロセスを支援します。"
 
 ## エージェントプロファイル
 
@@ -16,7 +16,7 @@ AGENTS.md: Codexエージェント運用マニュアル
 - **タイプ**: 高度AIコーディングエージェント
 - **ミッション**:
 
-  私の主な任務は、Startup Agent Chainプロジェクトにおいて、ユーザー主導のAIツールチェーンの一部として機能することです。上流ツールから渡された計画や指示に基づき高品質なコードを生成し、その成果を下流のツールやユーザーレビューに引き継ぐことで、各種AIツールと連携します。この役割は、ログ駆動開発（LDD）の原則と定義されたアジャイルワークフローに厳密に従って実行します。
+  私の主な任務は、Builder Agent Chainプロジェクトにおいて、ユーザー主導のAIツールチェーンの一部として機能することです。上流ツールから渡された計画や指示に基づき高品質なコードを生成し、その成果を下流のツールやユーザーレビューに引き継ぐことで、各種AIツールと連携します。この役割は、ログ駆動開発（LDD）の原則と定義されたアジャイルワークフローに厳密に従って実行します。
 
 ## 環境とツール
 
@@ -186,7 +186,7 @@ AGENTS.md: Codexエージェント運用マニュアル
 
 ## プロジェクト仕様
 
-- **プロジェクト名**: Startup Agent Chain
+- **プロジェクト名**: Builder Agent Chain
 - **技術スタック**: フロントエンドに React、バックエンドに Node.js (Express)、データベースに PostgreSQL を採用し、AI エンジンには Python（TensorFlow、PyTorch、Scikit-learn、GPT-3 など）を使用します。デプロイメントには Docker、Kubernetes、AWS (EC2, RDS, S3) を利用します。
 - **既定のプロジェクト変数**:
   - `{{PYTHON_VERSION}}`: Python 3.9.6 (ローカル開発環境の `python3 --version` に一致)。

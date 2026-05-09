@@ -8,7 +8,7 @@ This guide explains how to connect Codex to the GitHub MCP server so the agent c
 ## Prerequisites
 - Node.js 18 or later with `npm` available in your shell.
 - A GitHub personal access token (classic) with `repo`, `read:org`, and `workflow` scopes.
-- Local clone of this project (`startup-agent-chain`) with workspace write privileges.
+- Local clone of this project (`builder-agent-chain`) with workspace write privileges.
 
 ## Installation
 1. Clone the GitHub MCP server locally:

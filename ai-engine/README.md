@@ -1,6 +1,6 @@
 # AI Engine
 
-TypeScript-based AI Engine for Startup Agent Chain. Uses ZAI GLM-5 API (OpenAI-compatible) for LLM-powered business planning agent workflows.
+TypeScript-based AI Engine for Builder Agent Chain. Uses ZAI GLM-5 API (OpenAI-compatible) for LLM-powered business planning agent workflows.
 
 ## Architecture
 

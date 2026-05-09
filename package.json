@@ -1,8 +1,8 @@
 {
-  "name": "startup-agent-chain",
+  "name": "builder-agent-chain",
   "private": true,
   "version": "0.1.0",
-  "description": "Monorepo workspace for the Startup Agent Chain project",
+  "description": "Monorepo workspace for the Builder Agent Chain project",
   "workspaces": [
     "frontend",
     "backend",

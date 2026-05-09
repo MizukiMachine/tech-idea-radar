@@ -1,6 +1,6 @@
 # Contributing Guide
 
-Thank you for investing in the Startup Agent Chain project! This guide documents how to prepare your development environment and contribute effectively while the monorepo scaffolding evolves.
+Thank you for investing in the Builder Agent Chain project! This guide documents how to prepare your development environment and contribute effectively while the monorepo scaffolding evolves.
 
 ## Overview
 This repository follows an agile workflow and Log-Driven Development (LDD). Every contribution must align with the approved PRD and architecture documents stored in the `.ai/` directory. Use this guide to onboard your local environment and collaborate smoothly across service layers.

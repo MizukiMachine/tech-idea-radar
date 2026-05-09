@@ -2,7 +2,7 @@
   "name": "frontend",
   "private": true,
   "version": "0.1.0",
-  "description": "React SPA for the Startup Agent Chain platform",
+  "description": "React SPA for the Builder Agent Chain platform",
   "type": "module",
   "scripts": {
     "dev": "vite",

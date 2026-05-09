@@ -10,7 +10,7 @@ app.use(cors());
 app.use(express.json());
 
 app.get("/", (_req, res) => {
-  res.json({ message: "Startup Agent Chain backend service" });
+  res.json({ message: "Builder Agent Chain backend service" });
 });
 
 app.use("/health", healthRouter);
