@@ -5,6 +5,7 @@ export enum Phase {
   ProductConcept = 4,
 }
 
-export const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
-export const DEFAULT_MAX_TOKENS = 8000;
-export const LARGE_MAX_TOKENS = 24000;
+export const DEFAULT_MODEL = 'glm-5';
+export const DEFAULT_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
+export const DEFAULT_MAX_TOKENS = 8192;
+export const LARGE_MAX_TOKENS = 16384;

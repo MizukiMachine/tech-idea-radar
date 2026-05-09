@@ -1,6 +1,6 @@
 # AI Engine
 
-TypeScript-based AI Engine for Startup Agent Chain. Uses Anthropic Claude API for LLM-powered business planning agent workflows.
+TypeScript-based AI Engine for Startup Agent Chain. Uses ZAI GLM-5 API (OpenAI-compatible) for LLM-powered business planning agent workflows.
 
 ## Architecture
 
@@ -28,11 +28,12 @@ cd ai-engine && npx tsc --noEmit
 
 ## Environment Variables
 
-Copy `.env.example` and set your Anthropic API key:
+Copy `.env.example` and set your ZAI API key:
 
 ```
-ANTHROPIC_API_KEY=sk-ant-...
-CLAUDE_MODEL=claude-sonnet-4-20250514
+ZAI_API_KEY=your-api-key-here
+LLM_MODEL=glm-5
+LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4
 ```
 
 ## Backend API Endpoints
@@ -48,7 +49,7 @@ CLAUDE_MODEL=claude-sonnet-4-20250514
 src/
   agents/          # Agent implementations (BaseAgent + 5 concrete agents)
   prompts/         # System prompts and user prompt templates
-  services/        # Claude client, prompt builder, response parser
+  services/        # LLM client, prompt builder, response parser
   types/           # TypeScript interfaces for each agent's I/O
   config/          # Phase enum, constants
   index.ts         # Public API exports

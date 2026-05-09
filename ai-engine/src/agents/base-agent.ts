@@ -1,4 +1,4 @@
-import { ClaudeClient } from '../services/claude-client';
+import { LLMClient } from '../services/llm-client';
 import { ResponseParser } from '../services/response-parser';
 import { Phase } from '../config/constants';
 
@@ -10,11 +10,11 @@ export abstract class BaseAgent<TInput, TOutput> {
 
   protected readonly maxTokens?: number;
 
-  constructor(protected readonly claude: ClaudeClient) {}
+  constructor(protected readonly llm: LLMClient) {}
 
   async execute(input: TInput): Promise<TOutput> {
     const userPrompt = this.buildUserPrompt(input);
-    const raw = await this.claude.send(this.systemPrompt, userPrompt, this.maxTokens);
+    const raw = await this.llm.send(this.systemPrompt, userPrompt, this.maxTokens);
     try {
       return ResponseParser.parse<TOutput>(raw);
     } catch (error) {

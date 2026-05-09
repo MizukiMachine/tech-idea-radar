@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import App from "../App";
-import { HEALTH_ENDPOINT } from "../api/health";
 
 const mockFetch = vi.fn();
 
@@ -10,38 +10,23 @@ beforeEach(() => {
   vi.stubGlobal("fetch", mockFetch);
 });
 
-afterEach(() => {
-  vi.unstubAllGlobals();
-});
-
 describe("App", () => {
-  it("displays backend health status when request succeeds", async () => {
-    mockFetch.mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: async () => ({ status: "ok", service: "backend", timestamp: "2024-01-01T00:00:00.000Z" }),
-    });
-
+  it("renders workflow input view by default", () => {
     render(<App />);
-
-    expect(screen.getByText(/Checking/i)).toBeInTheDocument();
-
-    await waitFor(() => expect(screen.getByText(/ok/i)).toBeInTheDocument());
-
-    expect(mockFetch).toHaveBeenCalledWith(HEALTH_ENDPOINT, expect.any(Object));
-    const serviceLabel = screen.getByText(/Service/i, { selector: "span.card__label" });
-    const serviceRow = serviceLabel.closest("li");
-    expect(serviceRow).not.toBeNull();
-    expect(within(serviceRow as HTMLElement).getByText(/backend/i)).toBeInTheDocument();
-    expect(screen.getByText(/Reported at/i)).toBeInTheDocument();
+    expect(screen.getByText("Startup Agent Chain")).toBeTruthy();
+    expect(screen.getByText("Workflow Input (JSON)")).toBeTruthy();
+    expect(screen.getByText("Run Workflow")).toBeTruthy();
   });
 
-  it("shows an error message when backend cannot be reached", async () => {
-    mockFetch.mockRejectedValueOnce(new Error("Network unreachable"));
-
+  it("shows JSON parse error on invalid input", async () => {
+    const user = userEvent.setup();
     render(<App />);
 
-    await waitFor(() => expect(screen.getByText(/Error/i)).toBeInTheDocument());
-    expect(screen.getByRole("alert")).toHaveTextContent("Network unreachable");
+    const textarea = screen.getByRole("textbox");
+    await user.clear(textarea);
+    await user.type(textarea, "not valid json");
+    await user.click(screen.getByText("Run Workflow"));
+
+    expect(screen.getByText(/JSON parse error/)).toBeTruthy();
   });
 });

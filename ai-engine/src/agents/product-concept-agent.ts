@@ -1,5 +1,5 @@
 import { BaseAgent } from './base-agent';
-import { ClaudeClient } from '../services/claude-client';
+import { LLMClient } from '../services/llm-client';
 import { Phase, LARGE_MAX_TOKENS } from '../config/constants';
 import { ProductConceptInput, ProductConceptOutput } from '../types/product-concept';
 import { PRODUCT_CONCEPT_SYSTEM_PROMPT, PRODUCT_CONCEPT_USER_TEMPLATE } from '../prompts/product-concept';
@@ -10,8 +10,8 @@ export class ProductConceptAgent extends BaseAgent<ProductConceptInput, ProductC
   readonly phase = Phase.ProductConcept;
   protected readonly maxTokens = LARGE_MAX_TOKENS;
 
-  constructor(claude: ClaudeClient) {
-    super(claude);
+  constructor(llm: LLMClient) {
+    super(llm);
   }
 
   get systemPrompt(): string {

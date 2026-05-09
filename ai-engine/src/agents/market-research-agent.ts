@@ -1,5 +1,5 @@
 import { BaseAgent } from './base-agent';
-import { ClaudeClient } from '../services/claude-client';
+import { LLMClient } from '../services/llm-client';
 import { Phase, LARGE_MAX_TOKENS } from '../config/constants';
 import { MarketResearchInput, MarketResearchOutput } from '../types/market-research';
 import { MARKET_RESEARCH_SYSTEM_PROMPT, MARKET_RESEARCH_USER_TEMPLATE } from '../prompts/market-research';
@@ -10,8 +10,8 @@ export class MarketResearchAgent extends BaseAgent<MarketResearchInput, MarketRe
   readonly phase = Phase.MarketResearch;
   protected readonly maxTokens = LARGE_MAX_TOKENS;
 
-  constructor(claude: ClaudeClient) {
-    super(claude);
+  constructor(llm: LLMClient) {
+    super(llm);
   }
 
   get systemPrompt(): string {

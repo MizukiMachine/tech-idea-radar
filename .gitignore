@@ -26,6 +26,12 @@ coverage/
 dist/
 build/
 *.tsbuildinfo
+frontend/vite.config.*.js
+frontend/vite.config.*.d.ts
+frontend/vitest.config.*.js
+frontend/vitest.config.*.d.ts
+frontend/vitest.setup.*.js
+frontend/vitest.setup.*.d.ts
 .tmp/
 .cache/
 .parcel-cache/

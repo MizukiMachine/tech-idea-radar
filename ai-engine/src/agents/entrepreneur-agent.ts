@@ -1,4 +1,4 @@
-import { ClaudeClient } from '../services/claude-client';
+import { LLMClient } from '../services/llm-client';
 import { validateObject } from '../services/output-validator';
 import { SelfAnalysisAgent } from './self-analysis-agent';
 import { MarketResearchAgent } from './market-research-agent';
@@ -56,11 +56,11 @@ export class EntrepreneurAgent {
   private readonly persona: PersonaAgent;
   private readonly productConcept: ProductConceptAgent;
 
-  constructor(claude: ClaudeClient) {
-    this.selfAnalysis = new SelfAnalysisAgent(claude);
-    this.marketResearch = new MarketResearchAgent(claude);
-    this.persona = new PersonaAgent(claude);
-    this.productConcept = new ProductConceptAgent(claude);
+  constructor(llm: LLMClient) {
+    this.selfAnalysis = new SelfAnalysisAgent(llm);
+    this.marketResearch = new MarketResearchAgent(llm);
+    this.persona = new PersonaAgent(llm);
+    this.productConcept = new ProductConceptAgent(llm);
   }
 
   async runPhase(phase: Phase, input: unknown): Promise<unknown> {

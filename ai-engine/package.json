@@ -2,7 +2,7 @@
   "name": "ai-engine",
   "private": true,
   "version": "0.1.0",
-  "description": "AI Engine for Startup Agent Chain - TypeScript agent orchestration with Claude",
+  "description": "AI Engine for Startup Agent Chain - TypeScript agent orchestration with ZAI GLM-5 API",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
@@ -14,7 +14,7 @@
     "lint": "eslint \"src/**/*.ts\" --max-warnings=0"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0"
+    "openai": "^6.37.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",

@@ -1,121 +1,181 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { type HealthResponse, HEALTH_ENDPOINT } from "./api/health";
+import { useState, useCallback } from "react";
+import { runWorkflow, type PhaseResult } from "./api/ai";
 import "./App.css";
 
-type StatusState = "idle" | "loading" | "success" | "error";
+const SAMPLE_INPUT = JSON.stringify(
+  {
+    selfAnalysisInput: {
+      careerHistory: [
+        {
+          year: 2020,
+          role: "Software Engineer",
+          company: "TechCorp",
+          industry: "IT",
+          responsibilities: ["Backend development", "API design"],
+          achievements: ["Reduced API latency by 40%"],
+        },
+      ],
+      skills: {
+        technical: [
+          { name: "TypeScript", category: "language", level: 4, yearsOfExperience: 5 },
+          { name: "React", category: "framework", level: 3, yearsOfExperience: 3 },
+        ],
+        business: [],
+        soft: [{ name: "Problem solving", category: "problem_solving", level: 4 }],
+      },
+      achievements: [
+        {
+          type: "project",
+          description: "Built microservices platform",
+          metric: "users",
+          value: 10000,
+          unit: "users",
+          period: "2023",
+        },
+      ],
+      network: {
+        industryContacts: 20,
+        influentialConnections: 3,
+        communities: [{ name: "Tech Meetup", role: "speaker" as const, memberCount: 200 }],
+        socialMedia: [],
+      },
+      values: {
+        priorities: ["Innovation", "Autonomy"],
+        socialCauses: [],
+        threeYearGoal: "Launch AI SaaS startup",
+        fiveYearVision: "Scale to 1000 customers",
+        motivations: ["Building products", "Solving real problems"],
+      },
+    },
+    targetMarkets: [
+      { name: "Japan SME", description: "Small-to-medium enterprises in Japan", priority: 1 as const },
+    ],
+    initialCompetitors: ["CompetitorA"],
+  },
+  null,
+  2,
+);
 
-const formatTimestamp = (value?: string) => {
-  if (!value) return "Unknown";
-  try {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) {
-      return value;
-    }
-    return date.toLocaleString();
-  } catch {
-    return value;
-  }
-};
+type PhaseStatus = "pending" | "running" | "complete";
+type View = "input" | "progress" | "results";
 
 function App(): JSX.Element {
-  const [health, setHealth] = useState<HealthResponse | null>(null);
-  const [status, setStatus] = useState<StatusState>("idle");
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [clientTimestamp, setClientTimestamp] = useState<string | null>(null);
+  const [view, setView] = useState<View>("input");
+  const [jsonInput, setJsonInput] = useState(SAMPLE_INPUT);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const [phaseStatuses, setPhaseStatuses] = useState<PhaseStatus[]>(["pending", "pending", "pending", "pending"]);
+  const [phaseResults, setPhaseResults] = useState<Record<number, unknown>>({});
+  const [workflowResult, setWorkflowResult] = useState<unknown>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState(0);
 
-  const requestInfo = useMemo(
-    () => ({
-      endpoint: HEALTH_ENDPOINT,
-    }),
-    [],
-  );
-
-  const fetchHealth = useCallback(async () => {
-    setStatus("loading");
-    setErrorMessage(null);
-
+  const handleRun = useCallback(() => {
+    let parsed: unknown;
     try {
-      const response = await fetch(requestInfo.endpoint, {
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`Request failed with status ${response.status}`);
-      }
-
-      const data = (await response.json()) as HealthResponse;
-      setHealth(data);
-      setClientTimestamp(new Date().toISOString());
-      setStatus("success");
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-      setErrorMessage(message);
-      setHealth(null);
-      setClientTimestamp(null);
-      setStatus("error");
+      parsed = JSON.parse(jsonInput);
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : "Invalid JSON");
+      return;
     }
-  }, [requestInfo.endpoint]);
+    setParseError(null);
+    setError(null);
+    setPhaseStatuses(["running", "pending", "pending", "pending"]);
+    setPhaseResults({});
+    setWorkflowResult(null);
+    setView("progress");
 
-  useEffect(() => {
-    void fetchHealth();
-  }, [fetchHealth]);
+    const phaseNames = ["SelfAnalysis", "MarketResearch", "Persona", "ProductConcept"];
+
+    runWorkflow(parsed, {
+      onPhaseComplete(result: PhaseResult) {
+        setPhaseStatuses((prev) => {
+          const next = [...prev];
+          next[result.phase - 1] = "complete";
+          if (result.phase < 4) next[result.phase] = "running";
+          return next;
+        });
+        setPhaseResults((prev) => ({ ...prev, [result.phase - 1]: result.output }));
+      },
+      onWorkflowComplete(result) {
+        setWorkflowResult(result);
+        setView("results");
+      },
+      onError(msg) {
+        setError(msg);
+        setView("progress");
+      },
+    });
+  }, [jsonInput]);
 
   return (
     <div className="app">
       <header className="app__header">
-        <h1 className="app__title">Startup Agent Chain Dashboard</h1>
-        <p className="app__subtitle">Monitor the backend service readiness in real time.</p>
+        <h1 className="app__title">Startup Agent Chain</h1>
+        <p className="app__subtitle">4-phase AI business planning workflow</p>
       </header>
 
       <main className="app__main">
-        <section className="card" aria-live="polite">
-          <div className="card__meta">
-            <div>
-              <span className="card__label">Health endpoint</span>
-              <code className="card__value">{requestInfo.endpoint}</code>
-            </div>
-            <button
-              type="button"
-              className="card__refresh"
-              onClick={() => void fetchHealth()}
-              disabled={status === "loading"}
-            >
-              {status === "loading" ? "Refreshing..." : "Refresh"}
+        {view === "input" && (
+          <section className="card">
+            <h2 className="card__title">Workflow Input (JSON)</h2>
+            <textarea
+              className="card__textarea"
+              value={jsonInput}
+              onChange={(e) => setJsonInput(e.target.value)}
+              rows={20}
+              spellCheck={false}
+            />
+            {parseError && <p className="card__error">JSON parse error: {parseError}</p>}
+            <button type="button" className="card__action" onClick={handleRun}>
+              Run Workflow
             </button>
-          </div>
+          </section>
+        )}
 
-          <div className="card__status">
-            {status === "loading" && <span className="pill pill--loading">Checking...</span>}
-            {status === "success" && <span className="pill pill--success">{health?.status ?? "unknown"}</span>}
-            {status === "error" && <span className="pill pill--error">Error</span>}
-          </div>
-
-          {status === "success" && health && (
-            <ul className="card__list">
-              <li>
-                <span className="card__label">Service</span>
-                <span className="card__value">{health.service ?? "backend"}</span>
-              </li>
-              <li>
-                <span className="card__label">Reported at</span>
-                <span className="card__value">{formatTimestamp(health.timestamp)}</span>
-              </li>
-              <li>
-                <span className="card__label">Fetched at</span>
-                <span className="card__value">{formatTimestamp(clientTimestamp ?? undefined)}</span>
-              </li>
-            </ul>
-          )}
-
-          {status === "error" && errorMessage && (
-            <div className="card__error" role="alert">
-              <p>Failed to reach backend.</p>
-              <code>{errorMessage}</code>
+        {view === "progress" && (
+          <section className="card">
+            <h2 className="card__title">Executing Workflow</h2>
+            <div className="phases">
+              {["Self Analysis", "Market Research", "Persona", "Product Concept"].map((name, i) => (
+                <div key={i} className={`phase phase--${phaseStatuses[i]}`}>
+                  <span className="phase__indicator">
+                    {phaseStatuses[i] === "complete" ? "done" : phaseStatuses[i] === "running" ? "..." : "—"}
+                  </span>
+                  <span className="phase__name">Phase {i + 1}: {name}</span>
+                </div>
+              ))}
             </div>
-          )}
-        </section>
+            {error && (
+              <div className="card__error" role="alert">
+                <p>Error: {error}</p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {view === "results" && (
+          <section className="card">
+            <h2 className="card__title">Results</h2>
+            <div className="tabs">
+              {["Self Analysis", "Market Research", "Persona", "Product Concept"].map((name, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  className={`tab ${activeTab === i ? "tab--active" : ""}`}
+                  onClick={() => setActiveTab(i)}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+            <pre className="card__result">
+              {JSON.stringify(phaseResults[activeTab] ?? workflowResult, null, 2)}
+            </pre>
+            <button type="button" className="card__action" onClick={() => { setView("input"); setActiveTab(0); }}>
+              New Workflow
+            </button>
+          </section>
+        )}
       </main>
     </div>
   );

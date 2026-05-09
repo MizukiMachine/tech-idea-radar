@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ClaudeClient } from '../src/services/claude-client';
+import { LLMClient } from '../src/services/llm-client';
 import { SelfAnalysisAgent } from '../src/agents/self-analysis-agent';
 import { MarketResearchAgent } from '../src/agents/market-research-agent';
 import { PersonaAgent } from '../src/agents/persona-agent';
@@ -7,11 +7,11 @@ import { ProductConceptAgent } from '../src/agents/product-concept-agent';
 import { EntrepreneurAgent } from '../src/agents/entrepreneur-agent';
 import { Phase } from '../src/config/constants';
 
-// Mock ClaudeClient
-vi.mock('../src/services/claude-client');
+// Mock LLMClient
+vi.mock('../src/services/llm-client');
 
-function createMockClient(response: string): ClaudeClient {
-  const client = new ClaudeClient('test-key');
+function createMockClient(response: string): LLMClient {
+  const client = new LLMClient('test-key');
   vi.spyOn(client, 'send').mockResolvedValue(response);
   return client;
 }
@@ -165,7 +165,7 @@ describe('EntrepreneurAgent', () => {
   });
 
   it('runWorkflow executes all 4 phases sequentially', async () => {
-    const client = new ClaudeClient('test-key');
+    const client = new LLMClient('test-key');
     const sendSpy = vi.spyOn(client, 'send');
     sendSpy
       .mockResolvedValueOnce(SELF_ANALYSIS_RESPONSE)
@@ -200,7 +200,7 @@ describe('EntrepreneurAgent', () => {
   });
 
   it('runWorkflow uses competitorCandidates when initialCompetitors is empty', async () => {
-    const client = new ClaudeClient('test-key');
+    const client = new LLMClient('test-key');
     const sendSpy = vi.spyOn(client, 'send');
     sendSpy
       .mockResolvedValueOnce(SELF_ANALYSIS_RESPONSE)
@@ -228,7 +228,7 @@ describe('EntrepreneurAgent', () => {
   });
 });
 
-describe('ClaudeClient', () => {
+describe('LLMClient', () => {
   it('send method returns response text from mocked client', async () => {
     const client = createMockClient('{"result": true}');
     const result = await client.send('system', 'user');

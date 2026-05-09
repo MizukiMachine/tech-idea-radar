@@ -1,5 +1,5 @@
 import { BaseAgent } from './base-agent';
-import { ClaudeClient } from '../services/claude-client';
+import { LLMClient } from '../services/llm-client';
 import { Phase } from '../config/constants';
 import { SelfAnalysisInput, SelfAnalysisOutput } from '../types/self-analysis';
 import { SELF_ANALYSIS_SYSTEM_PROMPT, SELF_ANALYSIS_USER_TEMPLATE } from '../prompts/self-analysis';
@@ -9,8 +9,8 @@ export class SelfAnalysisAgent extends BaseAgent<SelfAnalysisInput, SelfAnalysis
   readonly name = 'SelfAnalysisAgent';
   readonly phase = Phase.SelfAnalysis;
 
-  constructor(claude: ClaudeClient) {
-    super(claude);
+  constructor(llm: LLMClient) {
+    super(llm);
   }
 
   get systemPrompt(): string {

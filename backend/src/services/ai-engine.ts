@@ -1,5 +1,5 @@
 import {
-  ClaudeClient,
+  LLMClient,
   EntrepreneurAgent,
   Phase,
   WorkflowInput,
@@ -7,16 +7,17 @@ import {
   PhaseResult,
 } from 'ai-engine';
 
-let cachedClient: ClaudeClient | null = null;
+let cachedClient: LLMClient | null = null;
 
-function getClient(): ClaudeClient {
+function getClient(): LLMClient {
   if (!cachedClient) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = process.env.ZAI_API_KEY;
     if (!apiKey) {
-      throw new Error('ANTHROPIC_API_KEY environment variable is required');
+      throw new Error('ZAI_API_KEY environment variable is required');
     }
-    const model = process.env.CLAUDE_MODEL;
-    cachedClient = new ClaudeClient(apiKey, model);
+    const model = process.env.LLM_MODEL;
+    const baseURL = process.env.LLM_BASE_URL;
+    cachedClient = new LLMClient(apiKey, model, undefined, baseURL);
   }
   return cachedClient;
 }

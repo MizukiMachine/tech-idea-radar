@@ -13,18 +13,16 @@ Startup Agent Chain is an orchestration platform that automates core entrepreneu
 ## Architecture Snapshot
 - **Frontend**: React single-page application delivering dashboards and configuration flows.
 - **Backend**: Node.js (Express) REST API that validates inputs, persists venture data, and streams progress updates.
-- **AI Engine**: Python microservice layer leveraging TensorFlow, PyTorch, scikit-learn, and GPT APIs for inference workloads.
-- **Data Layer**: PostgreSQL 14 for relational data and Amazon S3 for large artifacts (datasets, trained models).
-- **Infrastructure**: Dockerized services orchestrated by Kubernetes and deployed to AWS (EC2, RDS, S3). Terraform modules will manage infrastructure as code in future iterations.
+- **AI Engine**: TypeScript service using ZAI GLM-5 API (OpenAI-compatible SDK) for multi-agent business analysis workflows.
+- **Data Layer**: In-memory processing with structured JSON handoffs between phases. Database integration planned for future iterations.
+- **Infrastructure**: Docker and Kubernetes deployment planned for future epics.
 
 Refer to `docs/architecture.md` for a deeper discussion of service boundaries and data flow.
 
 ## Getting Started
 ### Prerequisites
-- Node.js 18+ and npm (or Yarn) for frontend/backend work.
-- Python 3.9.6 with virtual environment tooling for AI engine development.
-- PostgreSQL 14 instance for local testing.
-- Docker Desktop (or compatible runtime) if you plan to run services in containers.
+- Node.js 18+ and npm for frontend/backend/AI engine work.
+- ZAI API key for GLM-5 model access.
 
 ### Setup Steps
 1. Clone the repository and create a feature branch following the `feat/{feature-name}` convention.
@@ -46,7 +44,7 @@ startup-agent-chain/
 ├── AGENTS.md              # Operational playbook for Codex and companion agents
 ├── CONTRIBUTING.md        # Onboarding and workflow guide for collaborators
 ├── README.md              # Project overview (this file)
-├── ai-engine/             # Python AI service (Story S-004 will populate sources/tests)
+├── ai-engine/             # TypeScript AI service (GLM-5 multi-agent orchestration)
 ├── backend/               # Node.js API service (Story S-002 will bootstrap Express runtime)
 ├── docs/                  # Architecture, workflow, and integration references
 │   ├── architecture.md
@@ -81,11 +79,11 @@ This project follows Log-Driven Development (LDD). Each change should capture:
 | S-001 | Define Monorepo Structure and Tooling | Completed |
 | S-002 | Scaffold Backend API Service (Express + Jest) | Completed |
 | S-003 | Scaffold Frontend React Application (Vite + Vitest) | Completed |
-| S-004 | Bootstrap AI Engine Service (Python) | Proposed |
+| S-004 | Bootstrap AI Engine Service (TypeScript + GLM-5) | Completed |
 | S-005 | Configure CI and Containerization Baseline | Proposed |
 
 - Architecture and security designs are approved.
-- Next actions: S-004 (Python AI engine scaffold), then S-005 (CI/Docker).
+- Next actions: S-005 (CI/Docker).
 
 ## Reference Materials
 - `AGENTS.md`: Agent operating manual and communication standards.
