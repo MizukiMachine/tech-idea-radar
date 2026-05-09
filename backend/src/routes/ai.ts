@@ -14,6 +14,41 @@ const PHASE_NAMES: Record<number, string> = {
 
 // --- Request schemas ---
 
+const PersonalProjectSchema = z.object({
+  name: z.string(),
+  description: z.string(),
+  technologies: z.array(z.string()),
+  githubUrl: z.string().optional(),
+  stars: z.number().optional(),
+  status: z.enum(['active', 'completed', 'archived']),
+  users: z.number().optional(),
+  lessonsLearned: z.array(z.string()).optional(),
+});
+
+const TechStackDetailSchema = z.object({
+  primaryLanguages: z.array(z.string()),
+  frameworks: z.array(z.string()),
+  toolsAndPlatforms: z.array(z.string()),
+  infrastructure: z.array(z.string()),
+  preferredStack: z.string(),
+  yearsBuilding: z.number().min(0),
+});
+
+const OpenSourceActivitySchema = z.object({
+  contributions: z.array(z.string()),
+  maintainedProjects: z.array(z.string()),
+  communitiesActiveIn: z.array(z.string()),
+  totalContributions: z.number().optional(),
+});
+
+const ProductBuilderProfileSchema = z.object({
+  productsBuilt: z.array(z.string()),
+  ideasExplored: z.array(z.string()),
+  preferredDomain: z.array(z.string()),
+  buildVsBuyPreference: z.enum(['build', 'buy', 'hybrid']),
+  soloVsTeam: z.enum(['solo', 'small-team', 'large-team']),
+});
+
 const SelfAnalysisInputSchema = z.object({
   careerHistory: z.array(z.object({
     year: z.number(),
@@ -84,6 +119,10 @@ const SelfAnalysisInputSchema = z.object({
     detailLevel: z.enum(['summary', 'standard', 'detailed']),
     focusAreas: z.array(z.enum(['career', 'skills', 'achievements', 'network', 'values'])).optional(),
   }).optional(),
+  personalProjects: z.array(PersonalProjectSchema).optional(),
+  techStackDetail: TechStackDetailSchema.optional(),
+  openSourceActivity: OpenSourceActivitySchema.optional(),
+  productBuilderProfile: ProductBuilderProfileSchema.optional(),
 });
 
 const MarketResearchInputSchema = z.object({
