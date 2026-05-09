@@ -1,12 +1,12 @@
-import OpenAI from 'openai';
+import Anthropic from '@anthropic-ai/sdk';
 import { DEFAULT_MODEL, DEFAULT_MAX_TOKENS, DEFAULT_BASE_URL } from '../config/constants';
 
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
-const TIMEOUT_MS = 120_000;
+const TIMEOUT_MS = 180_000;
 
 function isRetryable(error: unknown): boolean {
-  if (error instanceof OpenAI.APIError) {
+  if (error instanceof Anthropic.APIError) {
     const status = error.status ?? 0;
     return status === 429 || status >= 500;
   }
@@ -22,12 +22,12 @@ function sleep(ms: number): Promise<void> {
 }
 
 export class LLMClient {
-  private readonly client: OpenAI;
+  private readonly client: Anthropic;
   private readonly model: string;
   private readonly maxTokens: number;
 
   constructor(apiKey: string, model?: string, maxTokens?: number, baseURL?: string) {
-    this.client = new OpenAI({
+    this.client = new Anthropic({
       apiKey,
       baseURL: baseURL ?? DEFAULT_BASE_URL,
       timeout: TIMEOUT_MS,
@@ -45,16 +45,17 @@ export class LLMClient {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       const start = Date.now();
       try {
-        const response = await this.client.chat.completions.create({
+        const response = await this.client.messages.create({
           model: this.model,
           max_tokens: tokens,
+          system: systemPrompt,
           messages: [
-            { role: 'system', content: systemPrompt },
             { role: 'user', content: userPrompt },
           ],
         });
 
-        const text = response.choices[0]?.message?.content ?? '';
+        const textBlock = response.content.find(b => b.type === 'text');
+        const text = textBlock && textBlock.type === 'text' ? textBlock.text : '';
         console.log(`[LLMClient] Response received in ${Date.now() - start}ms (${text.length} chars)`);
         return text;
       } catch (error) {

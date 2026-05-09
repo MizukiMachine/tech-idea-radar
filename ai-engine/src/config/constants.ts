@@ -5,7 +5,7 @@ export enum Phase {
   ProductConcept = 4,
 }
 
-export const DEFAULT_MODEL = 'glm-5';
-export const DEFAULT_BASE_URL = 'https://open.bigmodel.cn/api/paas/v4';
+export const DEFAULT_MODEL = 'glm-5-turbo';
+export const DEFAULT_BASE_URL = 'https://api.z.ai/api/anthropic';
 export const DEFAULT_MAX_TOKENS = 8192;
 export const LARGE_MAX_TOKENS = 16384;
