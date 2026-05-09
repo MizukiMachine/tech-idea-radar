@@ -7,4 +7,4 @@ export enum Phase {
 
 export const DEFAULT_MODEL = 'claude-sonnet-4-20250514';
 export const DEFAULT_MAX_TOKENS = 8000;
-export const LARGE_MAX_TOKENS = 16000;
+export const LARGE_MAX_TOKENS = 24000;

@@ -31,15 +31,19 @@ export const SELF_ANALYSIS_USER_TEMPLATE = `以下の情報をもとに、体系
 
 ## 出力フォーマット
 
-以下のJSONスキーマに従って出力してください:
+以下のJSONスキーマに従って出力してください。
+analysisId はUUID形式、analyzedAt はISO 8601形式、dataQualityScore は0〜100の整数で出力してください。
+uniqueCombination には、他の起業家と差別化できるスキルの組み合わせを自由記述してください。
+handoffNotes には次フェーズへの引き継ぎメモを記述してください。
+targetMarkets には推奨ターゲット市場を3つ、competitorCandidates には調査すべき競合を5つ、keyQuestions には次フェーズへの質問を記述してください。
 
 {
   "metadata": {
-    "analysisId": "ランダムなUUID",
-    "analyzedAt": "ISO日付",
+    "analysisId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "analyzedAt": "2025-01-15T10:30:00Z",
     "analysisVersion": "1.0.0",
     "processingTime": 0,
-    "dataQualityScore": 0-100のスコア
+    "dataQualityScore": 75
   },
   "careerAnalysis": {
     "timeline": [{ "year": 2020, "role": "", "keyAchievements": [], "skillsGained": [], "growthIndicator": "high|medium|low" }],
@@ -54,7 +58,7 @@ export const SELF_ANALYSIS_USER_TEMPLATE = `以下の情報をもとに、体系
     "softSkills": [{ "name": "", "level": 0, "marketValue": "high|medium|low", "growthPotential": "high|medium|low", "relevanceScore": 0 }],
     "topStrengths": [],
     "developmentAreas": [],
-    "uniqueCombination": "他と差別化できるスキルの組み合わせ"
+    "uniqueCombination": ""
   },
   "achievementSummary": {
     "totalRevenueImpact": 0,
@@ -102,10 +106,10 @@ export const SELF_ANALYSIS_USER_TEMPLATE = `以下の情報をもとに、体系
     "recommendations": []
   },
   "handoff": {
-    "targetMarkets": ["推奨ターゲット市場を3つ"],
-    "competitorCandidates": ["調査すべき競合を5つ"],
-    "keyQuestions": ["次フェーズへの質問"],
+    "targetMarkets": ["", "", ""],
+    "competitorCandidates": ["", "", "", "", ""],
+    "keyQuestions": [""],
     "nextPhaseReady": true,
-    "handoffNotes": "引き継ぎメモ"
+    "handoffNotes": ""
   }
 }`;

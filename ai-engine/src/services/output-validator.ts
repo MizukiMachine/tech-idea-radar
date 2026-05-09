@@ -19,6 +19,9 @@ export function validateObject<T>(
     if (current === undefined) {
       throw new Error(`${label}: missing required property "${path}"`);
     }
+    if (Array.isArray(current) && current.length === 0) {
+      console.warn(`${label}: required array "${path}" is empty — proceeding with degraded data`);
+    }
   }
 
   return value as T;

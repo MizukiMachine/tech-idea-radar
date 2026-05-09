@@ -17,7 +17,6 @@ export * from './types/market-research';
 export * from './types/persona';
 export * from './types/product-concept';
 export * from './types/entrepreneur';
-export * from './types/common';
 
 // Config
 export { Phase } from './config/constants';

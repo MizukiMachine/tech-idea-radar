@@ -18,14 +18,16 @@ export const PERSONA_USER_TEMPLATE = `Phase 1-2の結果をもとに、ターゲ
 
 ## 出力フォーマット
 
-以下のJSONスキーマに従って出力してください:
+以下のJSONスキーマに従って出力してください。
+各ペルソナの name には架空の日本名を設定してください。
+deviceUsage は1日あたりの使用時間（時間単位、小数可）で出力してください。
 
 {
   "personaSheet": {
     "personas": [
       {
         "id": "persona-1",
-        "name": "架空の名前",
+        "name": "",
         "demographics": { "age": 0, "gender": "male|female|other", "occupation": "", "annualIncome": 0, "location": "", "familyStructure": "" },
         "lifestyle": { "weekdaySchedule": "", "weekendActivities": "", "hobbies": [], "deviceUsage": { "smartphone": 0, "pc": 0 } },
         "psychographics": { "workValues": [], "spendingHabits": "", "selfInvestmentAttitude": "", "fears": [], "desiredFuture": "" },

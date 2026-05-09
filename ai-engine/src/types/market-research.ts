@@ -107,7 +107,7 @@ export interface CompetitorAnalysisResult {
   totalCompetitors: number;
   directCompetitors: CompetitorProfile[];
   indirectCompetitors: CompetitorProfile[];
-  potentialEntrants: CompetitorProfile[];
+  potentialEntrants?: CompetitorProfile[];
   pricingAnalysis: PricingAnalysis;
   competitiveLandscape: CompetitiveLandscape;
 }
