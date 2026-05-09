@@ -1,3 +1,38 @@
+export interface PersonalProject {
+  name: string;
+  description: string;
+  technologies: string[];
+  githubUrl?: string;
+  stars?: number;
+  status: 'active' | 'completed' | 'archived';
+  users?: number;
+  lessonsLearned?: string[];
+}
+
+export interface TechStackDetail {
+  primaryLanguages: string[];
+  frameworks: string[];
+  toolsAndPlatforms: string[];
+  infrastructure: string[];
+  preferredStack: string;
+  yearsBuilding: number;
+}
+
+export interface OpenSourceActivity {
+  contributions: string[];
+  maintainedProjects: string[];
+  communitiesActiveIn: string[];
+  totalContributions?: number;
+}
+
+export interface ProductBuilderProfile {
+  productsBuilt: string[];
+  ideasExplored: string[];
+  preferredDomain: string[];
+  buildVsBuyPreference: 'build' | 'buy' | 'hybrid';
+  soloVsTeam: 'solo' | 'small-team' | 'large-team';
+}
+
 export interface SelfAnalysisInput {
   careerHistory: CareerEntry[];
   skills: SkillInfo;
@@ -5,6 +40,10 @@ export interface SelfAnalysisInput {
   network: NetworkInfo;
   values: ValueInfo;
   options?: AnalysisOptions;
+  personalProjects?: PersonalProject[];
+  techStackDetail?: TechStackDetail;
+  openSourceActivity?: OpenSourceActivity;
+  productBuilderProfile?: ProductBuilderProfile;
 }
 
 export interface CareerEntry {
