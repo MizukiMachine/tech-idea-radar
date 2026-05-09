@@ -42,6 +42,14 @@ const PRODUCT_CONCEPT_REQUIRED = [
   'revenueModel',
 ];
 
+function safeMap<T, U>(arr: T[] | undefined, fn: (item: T) => U, label: string): U[] {
+  if (!arr || !Array.isArray(arr)) {
+    console.warn(`EntrepreneurAgent: missing array "${label}" — using empty fallback`);
+    return [];
+  }
+  return arr.map(fn);
+}
+
 export class EntrepreneurAgent {
   private readonly selfAnalysis: SelfAnalysisAgent;
   private readonly marketResearch: MarketResearchAgent;
@@ -59,40 +67,58 @@ export class EntrepreneurAgent {
     if (!input || typeof input !== 'object') {
       throw new Error(`Invalid input for phase ${phase}: expected object`);
     }
-    switch (phase) {
-      case Phase.SelfAnalysis:
-        return this.selfAnalysis.execute(input as SelfAnalysisInput);
-      case Phase.MarketResearch:
-        return this.marketResearch.execute(input as MarketResearchInput);
-      case Phase.Persona:
-        return this.persona.execute(input as PersonaInput);
-      case Phase.ProductConcept:
-        return this.productConcept.execute(input as ProductConceptInput);
-      default:
-        throw new Error(`Unknown phase: ${phase}`);
+    const phaseName = Phase[phase];
+    console.log(`[${phaseName}] Starting phase ${phase} execution`);
+    const start = Date.now();
+    try {
+      let result: unknown;
+      switch (phase) {
+        case Phase.SelfAnalysis:
+          result = await this.selfAnalysis.execute(input as SelfAnalysisInput);
+          break;
+        case Phase.MarketResearch:
+          result = await this.marketResearch.execute(input as MarketResearchInput);
+          break;
+        case Phase.Persona:
+          result = await this.persona.execute(input as PersonaInput);
+          break;
+        case Phase.ProductConcept:
+          result = await this.productConcept.execute(input as ProductConceptInput);
+          break;
+        default:
+          throw new Error(`Unknown phase: ${phase}`);
+      }
+      console.log(`[${phaseName}] Completed in ${Date.now() - start}ms`);
+      return result;
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[${phaseName}] Failed after ${Date.now() - start}ms: ${msg}`);
+      throw error;
     }
   }
 
   async runWorkflow(input: WorkflowInput, onPhaseComplete?: (result: PhaseResult) => void): Promise<WorkflowResult> {
     const startTime = Date.now();
+    console.log('[Workflow] Starting 4-phase business planning workflow');
 
     // Phase 1: Self Analysis
     const phase1Raw = await this.selfAnalysis.execute(input.selfAnalysisInput);
     const phase1 = validateObject<SelfAnalysisOutput>(phase1Raw, SELF_ANALYSIS_REQUIRED, 'SelfAnalysis');
     onPhaseComplete?.({ phase: 1, output: phase1 });
+    console.log('[Workflow] Phase 1 (SelfAnalysis) complete');
 
     // Phase 2: Market Research (receives handoff from Phase 1)
     const phase2Input: MarketResearchInput = {
       selfAnalysisHandoff: {
         swot: {
-          strengths: phase1.swotAnalysis.strengths.map(s => s.item),
-          weaknesses: phase1.swotAnalysis.weaknesses.map(w => w.item),
-          opportunities: phase1.swotAnalysis.opportunities.map(o => o.item),
-          threats: phase1.swotAnalysis.threats.map(t => t.item),
+          strengths: safeMap(phase1.swotAnalysis.strengths, s => s.item, 'strengths'),
+          weaknesses: safeMap(phase1.swotAnalysis.weaknesses, w => w.item, 'weaknesses'),
+          opportunities: safeMap(phase1.swotAnalysis.opportunities, o => o.item, 'opportunities'),
+          threats: safeMap(phase1.swotAnalysis.threats, t => t.item, 'threats'),
         },
-        recommendedAreas: phase1.directionRecommendation.recommendedAreas.map(a => a.area),
-        areasToAvoid: phase1.directionRecommendation.areasToAvoid.map(a => a.area),
-        uniqueStrengths: phase1.skillMap.topStrengths,
+        recommendedAreas: safeMap(phase1.directionRecommendation.recommendedAreas, a => a.area, 'recommendedAreas'),
+        areasToAvoid: safeMap(phase1.directionRecommendation.areasToAvoid, a => a.area, 'areasToAvoid'),
+        uniqueStrengths: phase1.skillMap.topStrengths ?? [],
       },
       targetMarkets: input.targetMarkets,
       initialCompetitors: input.initialCompetitors.length > 0
@@ -102,39 +128,46 @@ export class EntrepreneurAgent {
     const phase2Raw = await this.marketResearch.execute(phase2Input);
     const phase2 = validateObject<MarketResearchOutput>(phase2Raw, MARKET_RESEARCH_REQUIRED, 'MarketResearch');
     onPhaseComplete?.({ phase: 2, output: phase2 });
+    console.log('[Workflow] Phase 2 (MarketResearch) complete');
+
+    // Extracted market research summaries (used by Phase 3 and 4)
+    const marketTrends = safeMap(phase2.marketAnalysis.trends, t => t.name, 'trends');
+    const competitorNames = safeMap(phase2.competitorAnalysis.directCompetitors, c => c.name, 'directCompetitors');
+    const marketOpportunities = safeMap(phase2.opportunityAnalysis.blueOceanAreas, a => a.area, 'blueOceanAreas');
 
     // Phase 3: Persona (receives Phase 1 + 2 results)
     const phase3Input: PersonaInput = {
       previousPhases: {
         selfAnalysis: {
-          strengths: phase1.swotAnalysis.strengths.map(s => s.item),
-          skills: phase1.skillMap.topStrengths,
-          achievements: phase1.achievementSummary.quantifiableStrengths,
-          valuePropositions: phase1.valueAnalysis.corePriorities,
+          strengths: safeMap(phase1.swotAnalysis.strengths, s => s.item, 'strengths'),
+          skills: phase1.skillMap.topStrengths ?? [],
+          achievements: phase1.achievementSummary.quantifiableStrengths ?? [],
+          valuePropositions: phase1.valueAnalysis.corePriorities ?? [],
         },
         marketResearch: {
-          marketTrends: phase2.marketAnalysis.trends.map(t => t.name),
-          competitorAnalysis: phase2.competitorAnalysis.directCompetitors.map(c => c.name),
-          marketOpportunities: phase2.opportunityAnalysis.blueOceanAreas.map(a => a.area),
+          marketTrends,
+          competitorAnalysis: competitorNames,
+          marketOpportunities,
         },
       },
     };
     const phase3Raw = await this.persona.execute(phase3Input);
     const phase3 = validateObject<PersonaOutput>(phase3Raw, PERSONA_REQUIRED, 'Persona');
     onPhaseComplete?.({ phase: 3, output: phase3 });
+    console.log('[Workflow] Phase 3 (Persona) complete');
 
     // Phase 4: Product Concept (receives Phase 2 + 3 results)
     const phase4Input: ProductConceptInput = {
       previousPhases: {
         marketResearch: {
-          marketTrends: phase2.marketAnalysis.trends.map(t => t.name),
-          competitorAnalysis: phase2.competitorAnalysis.directCompetitors.map(c => c.name),
-          marketOpportunities: phase2.opportunityAnalysis.blueOceanAreas.map(a => a.area),
+          marketTrends,
+          competitorAnalysis: competitorNames,
+          marketOpportunities,
         },
         persona: {
-          personas: phase3.personaSheet.personas.map(p => p.name),
-          customerJourneySummary: phase3.customerJourneyMap.criticalTouchpoints.join(', '),
-          painPointSummary: phase3.painPointAnalysis.commonPainPoints.map(p => p.description).join(', '),
+          personas: safeMap(phase3.personaSheet.personas, p => p.name, 'personas'),
+          customerJourneySummary: phase3.customerJourneyMap.criticalTouchpoints?.join(', ') ?? '',
+          painPointSummary: safeMap(phase3.painPointAnalysis.commonPainPoints, p => p.description, 'commonPainPoints').join(', '),
         },
       },
     };
@@ -142,10 +175,12 @@ export class EntrepreneurAgent {
     const phase4 = validateObject<ProductConceptOutput>(phase4Raw, PRODUCT_CONCEPT_REQUIRED, 'ProductConcept');
     onPhaseComplete?.({ phase: 4, output: phase4 });
 
+    const totalTime = Date.now() - startTime;
+    console.log(`[Workflow] All 4 phases complete in ${totalTime}ms`);
     return {
       phases: { selfAnalysis: phase1, marketResearch: phase2, persona: phase3, productConcept: phase4 },
       completedAt: new Date().toISOString(),
-      totalProcessingTime: Date.now() - startTime,
+      totalProcessingTime: totalTime,
     };
   }
 }

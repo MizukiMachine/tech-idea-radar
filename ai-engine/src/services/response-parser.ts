@@ -12,7 +12,8 @@ export class ResponseParser {
       return JSON.parse(json) as T;
     }
 
-    throw new Error('Failed to extract JSON from Claude response');
+    const preview = raw.length > 300 ? `${raw.slice(0, 300)}...` : raw;
+    throw new Error(`Failed to extract JSON from Claude response. Response preview: ${preview}`);
   }
 
   private static extractJsonObject(text: string): string | null {

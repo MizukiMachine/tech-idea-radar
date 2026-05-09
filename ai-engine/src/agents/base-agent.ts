@@ -15,6 +15,11 @@ export abstract class BaseAgent<TInput, TOutput> {
   async execute(input: TInput): Promise<TOutput> {
     const userPrompt = this.buildUserPrompt(input);
     const raw = await this.claude.send(this.systemPrompt, userPrompt, this.maxTokens);
-    return ResponseParser.parse<TOutput>(raw);
+    try {
+      return ResponseParser.parse<TOutput>(raw);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      throw new Error(`${this.name}: response parsing failed — ${msg}`);
+    }
   }
 }
