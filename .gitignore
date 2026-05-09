@@ -25,6 +25,7 @@ __pycache__/
 coverage/
 dist/
 build/
+*.tsbuildinfo
 .tmp/
 .cache/
 .parcel-cache/
