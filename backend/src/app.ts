@@ -1,5 +1,6 @@
 import express from "express";
 import healthRouter from "./routes/health";
+import aiRouter from "./routes/ai";
 
 const app = express();
 
@@ -11,5 +12,6 @@ app.get("/", (_req, res) => {
 });
 
 app.use("/health", healthRouter);
+app.use("/api/ai", aiRouter);
 
 export default app;

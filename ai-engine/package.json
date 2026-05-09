@@ -1,10 +1,21 @@
 {
   "name": "ai-engine",
   "private": true,
-  "version": "0.0.0",
-  "description": "Placeholder package for coordinating AI engine tooling via npm scripts",
+  "version": "0.1.0",
+  "description": "AI Engine for Startup Agent Chain - TypeScript agent orchestration with Claude",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "scripts": {
-    "setup": "echo \"AI engine Python environment setup pending Story S-004.\"",
-    "test": "echo \"AI engine tests pending Story S-004.\""
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc --watch",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint \"src/**/*.ts\" --max-warnings=0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "typescript": "^5.4.5"
   }
 }

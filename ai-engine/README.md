@@ -1,23 +1,55 @@
 # AI Engine
 
-## Responsibilities
-- Host machine learning pipelines for research synthesis, business modeling, and autonomous agent workflows.
-- Implement data pipelines, model training, and inference services that deliver venture insights.
-- Provide inference APIs, CLI utilities, and background workers consumed by the backend orchestration layer.
+TypeScript-based AI Engine for Startup Agent Chain. Uses Anthropic Claude API for LLM-powered business planning agent workflows.
 
-## Planned Scaffolding
-- Story S-004 will establish a Python package layout with CLI entry points and dependency management.
-- Future iterations will add model registries, experiment tracking, and dataset management utilities.
+## Architecture
 
-## Tooling Roadmap
-- Python 3.9.6 environment with Poetry or pip/virtualenv for dependency management (final decision pending).
-- TensorFlow, PyTorch, scikit-learn, and OpenAI SDKs based on workload requirements.
-- pytest for automated testing with fixtures for mock data artifacts, plus prospective mypy/ruff static analysis.
+AI Engine is implemented as a library imported by the Express backend (not a separate service). It provides 5 business planning agents orchestrated in a 4-phase pipeline.
 
-## Next Steps
-- Establish the Python package structure with `src/` and `tests/` directories in Story S-004.
-- Introduce dependency management files and stub CLI entry points.
-- Define data governance guidelines for model artifacts and datasets.
+## Agents
 
-## Open Questions
-- Final selection between TensorFlow and PyTorch for core pipelines awaits benchmarking and team consensus.
+| Phase | Agent | Description |
+|-------|-------|-------------|
+| 1 | SelfAnalysisAgent | SWOT analysis, career/skills/achievements evaluation |
+| 2 | MarketResearchAgent | TAM/SAM/SOM, 20+ competitor analysis, blue ocean identification |
+| 3 | PersonaAgent | 3-5 target personas, customer journey maps |
+| 4 | ProductConceptAgent | USP, business model canvas, revenue model |
+| - | EntrepreneurAgent | Orchestrator: chains Phase 1→2→3→4 |
+
+## Setup
+
+```bash
+# Install dependencies (from repo root)
+npm install
+
+# Type check
+cd ai-engine && npx tsc --noEmit
+```
+
+## Environment Variables
+
+Copy `.env.example` and set your Anthropic API key:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+CLAUDE_MODEL=claude-sonnet-4-20250514
+```
+
+## Backend API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `POST /api/ai/phases/:phase` | POST | Execute a single phase (1-4) |
+| `POST /api/ai/workflow` | POST | Run full 4-phase pipeline |
+
+## Directory Structure
+
+```
+src/
+  agents/          # Agent implementations (BaseAgent + 5 concrete agents)
+  prompts/         # System prompts and user prompt templates
+  services/        # Claude client, prompt builder, response parser
+  types/           # TypeScript interfaces for each agent's I/O
+  config/          # Phase enum, constants
+  index.ts         # Public API exports
+```
