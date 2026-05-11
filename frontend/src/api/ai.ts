@@ -12,6 +12,7 @@ export type WorkflowCallbacks = {
   onStepProgress?: (data: { step: number; text: string; charCount: number }) => void;
   onWorkflowComplete?: (result: unknown) => void;
   onError?: (error: string) => void;
+  onEnrichmentData?: (data: { rssCount: number; xCount: number }) => void;
 };
 
 export async function executeStep(step: number, input: unknown): Promise<unknown> {
@@ -73,6 +74,8 @@ export function runWorkflow(
                 callbacks.onStepComplete?.(data);
               } else if (currentEvent === "workflow_complete") {
                 callbacks.onWorkflowComplete?.(data);
+              } else if (currentEvent === "enrichment_data") {
+                callbacks.onEnrichmentData?.(data);
               } else if (currentEvent === "error") {
                 callbacks.onError?.(data.error ?? "Unknown error");
               }
