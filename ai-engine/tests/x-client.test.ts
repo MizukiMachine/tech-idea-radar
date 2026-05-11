@@ -1,6 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { XApiClient, fetchXContext } from '../src/services/x-client';
-import type { XContext } from '../src/types/x-context';
 
 // Mock environment variables
 const originalEnv = process.env;
@@ -11,6 +9,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   process.env = originalEnv;
 });
 
@@ -123,6 +122,24 @@ describe('fetchXContext', () => {
     // Should contain English keywords
     expect(demandQuery).toContain('wish there was');
   });
+
+  it('limits competitor lookups to the first five names', async () => {
+    process.env.X_BEARER_TOKEN = 'test-token';
+    const { XApiClient: FreshClient, fetchXContext: fetchFresh } = await import('../src/services/x-client');
+
+    const spy = vi.spyOn(FreshClient.prototype, 'searchRecentTweets').mockResolvedValue([]);
+
+    await fetchFresh(['SaaS'], ['CompA', 'CompB', 'CompC', 'CompD', 'CompE', 'CompF']);
+
+    expect(spy).toHaveBeenCalledTimes(7);
+    expect(spy.mock.calls.slice(2).map(([query]) => query)).toEqual([
+      '"CompA"',
+      '"CompB"',
+      '"CompC"',
+      '"CompD"',
+      '"CompE"',
+    ]);
+  });
 });
 
 describe('XApiClient', () => {
@@ -227,6 +244,35 @@ describe('buildUserPrompt with xContext', () => {
       },
       targetMarkets: [{ name: 'Japan', description: 'JP market', priority: 1 }],
       initialCompetitors: ['CompA'],
+    });
+
+    expect(prompt).toContain('X (Twitter)');
+    expect(prompt).toContain('LLMの知識に基づいて');
+  });
+
+  it('includes fallback message when xContext exists but has no usable data', async () => {
+    const { MarketResearchAgent } = await import('../src/agents/market-research-agent');
+    const { LLMClient } = await import('../src/services/llm-client');
+
+    const client = new LLMClient('test-key');
+    vi.spyOn(client, 'send').mockResolvedValue('{}');
+
+    const agent = new MarketResearchAgent(client);
+    const prompt = agent.buildUserPrompt({
+      selfAnalysisHandoff: {
+        swot: { strengths: ['Tech'], weaknesses: [], opportunities: [], threats: [] },
+        recommendedAreas: ['AI'],
+        areasToAvoid: [],
+        uniqueStrengths: [],
+      },
+      targetMarkets: [{ name: 'Japan', description: 'JP market', priority: 1 }],
+      initialCompetitors: ['CompA'],
+      xContext: {
+        trendingTopics: [],
+        demandSignals: [],
+        competitorSentiments: [],
+        fetchedAt: '2025-01-01T00:00:00Z',
+      },
     });
 
     expect(prompt).toContain('X (Twitter)');
