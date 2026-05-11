@@ -9,6 +9,7 @@ import { IdeaProposalInput, IdeaProposalOutput } from '../types/idea-proposal';
 import { WorkflowInput, WorkflowResult, StepResult } from '../types/entrepreneur';
 import { AgentStep } from '../config/constants';
 import { fetchRssContext } from '../services/mcp-client';
+import { fetchXContext } from '../services/x-client';
 
 const SELF_ANALYSIS_REQUIRED = [
   'swotAnalysis.strengths',
@@ -101,22 +102,21 @@ export class EntrepreneurAgent {
     onStepComplete?.({ step: 1, output: step1 });
     console.log('[Workflow] Step 1 (SkillAnalysis) complete');
 
-    // Fetch RSS enrichment data between Step 1 and Step 2
+    // Fetch RSS + X enrichment data in parallel between Step 1 and Step 2
     const searchKeywords = [
       ...safeMap(step1.directionRecommendation.recommendedAreas, a => a.area, 'recommendedAreas').slice(0, 3),
       ...step1.skillMap.topStrengths.slice(0, 2),
     ];
-    onStepProgress?.(2, '[MCP] RSS enrichment: fetching...');
-    const rssContext = await fetchRssContext(searchKeywords);
-    if (rssContext.trendingKeywords.length > 0 || rssContext.relatedArticles.length > 0) {
-      console.log(`[Workflow] RSS enrichment: ${rssContext.trendingKeywords.length} trends, ${rssContext.relatedArticles.length} articles`);
-      onStepProgress?.(2, `[MCP] RSS enrichment: done (${rssContext.trendingKeywords.length} trends, ${rssContext.relatedArticles.length} articles)\n\nAnalyzing market...`);
-    } else {
-      onStepProgress?.(2, '[MCP] RSS enrichment: skipped (no data)\n\nAnalyzing market...');
-    }
-    if (rssContext.trendingKeywords.length > 0 || rssContext.relatedArticles.length > 0) {
-      console.log(`[Workflow] RSS enrichment: ${rssContext.trendingKeywords.length} trends, ${rssContext.relatedArticles.length} articles`);
-    }
+    const competitorCandidates = step1.handoff.competitorCandidates ?? [];
+    onStepProgress?.(2, '[Enrichment] RSS + X enrichment: fetching...');
+    const [rssContext, xContext] = await Promise.all([
+      fetchRssContext(searchKeywords),
+      fetchXContext(searchKeywords, competitorCandidates),
+    ]);
+    const rssCount = rssContext.trendingKeywords.length + rssContext.relatedArticles.length;
+    const xCount = xContext.trendingTopics.length + xContext.demandSignals.length + xContext.competitorSentiments.length;
+    console.log(`[Workflow] Enrichment: RSS: ${rssCount} items, X: ${xCount} signals`);
+    onStepProgress?.(2, `[Enrichment] RSS: ${rssCount} items, X: ${xCount} signals\n\nAnalyzing market...`);
 
     // Step 2: Market Research (receives handoff from Step 1)
     const step2Input: MarketResearchInput = {
@@ -136,6 +136,7 @@ export class EntrepreneurAgent {
         ? input.initialCompetitors
         : step1.handoff.competitorCandidates,
       rssContext,
+      xContext,
     };
     const step2Raw = await this.marketResearch.execute(step2Input,
       onStepProgress ? (text) => onStepProgress(2, text) : undefined);

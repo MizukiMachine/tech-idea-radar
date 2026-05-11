@@ -394,6 +394,42 @@ function App(): JSX.Element {
               <div className="results-content">
                 <div className="results-content__body">
                   <pre>{JSON.stringify(stepResults[activeTab] ?? workflowResult, null, 2)}</pre>
+                  {activeTab === 1 && stepResults[1] && typeof stepResults[1] === 'object' && (
+                    <div style={{ marginTop: 16, padding: '12px 16px', background: 'var(--bg-secondary, #f5f5f5)', borderRadius: 8 }}>
+                      <h4 style={{ margin: '0 0 8px 0', fontSize: 14, color: 'var(--text-secondary, #666)' }}>
+                        X (Twitter) データソース
+                      </h4>
+                      {(() => {
+                        const result = stepResults[1] as Record<string, unknown>;
+                        const customerNeeds = result?.customerNeeds as Record<string, unknown> | undefined;
+                        const competitorAnalysis = result?.competitorAnalysis as Record<string, unknown> | undefined;
+                        const directCompetitors = (competitorAnalysis?.directCompetitors as Array<Record<string, unknown>> | undefined) ?? [];
+                        const tweetsReferenced: string[] = [];
+                        for (const comp of directCompetitors) {
+                          if (typeof comp.name === 'string') tweetsReferenced.push(comp.name);
+                        }
+                        return (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {tweetsReferenced.length > 0 && (
+                              <span style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, background: 'var(--accent-primary, #E07A4A)', color: '#fff' }}>
+                                {tweetsReferenced.length} competitors analyzed
+                              </span>
+                            )}
+                            {customerNeeds && (
+                              <span style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, background: 'var(--accent-secondary, #8B6FC0)', color: '#fff' }}>
+                                Customer needs enriched
+                              </span>
+                            )}
+                            {tweetsReferenced.length === 0 && (
+                              <span style={{ fontSize: 12, color: 'var(--text-tertiary, #999)' }}>
+                                No external data sources used
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
