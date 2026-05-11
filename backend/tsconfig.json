@@ -2,8 +2,8 @@
   "extends": "./tsconfig.build.json",
   "compilerOptions": {
     "noEmit": true,
-    "types": ["node", "jest"]
+    "types": ["node"]
   },
-  "include": ["src", "tests", "jest.config.ts"],
+  "include": ["src", "tests"],
   "exclude": ["dist", "node_modules"]
 }

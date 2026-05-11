@@ -6,15 +6,8 @@ yarn-error.log*
 pnpm-debug.log*
 package-lock.json
 
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.egg-info/
-.eggs/
+# Environment
 .env
-.venv/
 .env.local
 .env.*.local
 
@@ -34,8 +27,6 @@ frontend/vitest.setup.js
 frontend/vitest.setup.d.ts
 .tmp/
 .cache/
-.parcel-cache/
-.next/
 
 # IDE and editor
 .vscode/
@@ -44,15 +35,3 @@ frontend/vitest.setup.d.ts
 Thumbs.db
 *.swp
 *.swo
-
-# Python tooling
-.mypy_cache/
-.pytest_cache/
-
-# Tooling
-.gocache/
-.gomodcache/
-
-# Docker
-*.pid
-*.seed
