@@ -10,8 +10,10 @@ export { PromptBuilder } from './services/prompt-builder';
 export { ResponseParser } from './services/response-parser';
 export { validateObject } from './services/output-validator';
 export { McpClient, fetchRssContext } from './services/mcp-client';
+export { XApiClient, fetchXContext } from './services/x-client';
 
 // Types
+export * from './types/x-context';
 export * from './types/self-analysis';
 export * from './types/market-research';
 export * from './types/idea-proposal';
