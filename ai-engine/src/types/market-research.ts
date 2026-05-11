@@ -1,6 +1,8 @@
 import type { RssContext } from '../services/mcp-client';
+import type { XContext } from './x-context';
 
 export { RssContext };
+export type { XContext };
 
 export interface MarketResearchInput {
   selfAnalysisHandoff: {
@@ -18,6 +20,7 @@ export interface MarketResearchInput {
   initialCompetitors: string[];
   options?: ResearchOptions;
   rssContext?: RssContext;
+  xContext?: XContext;
 }
 
 export interface TargetMarket {
