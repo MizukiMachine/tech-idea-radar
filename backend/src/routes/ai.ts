@@ -198,9 +198,7 @@ function formatZodError(error: z.ZodError): string {
 function sseSend(res: Response, event: string, data: unknown, disconnected: boolean): boolean {
   if (disconnected) return false;
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  const ok = res.write(payload);
-  res.socket?.setNoDelay(true);
-  return ok;
+  return res.write(payload);
 }
 
 // --- Routes ---
@@ -244,9 +242,10 @@ router.post('/workflow', async (req: Request, res: Response) => {
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
+  res.write(': connected\n\n');
 
   let disconnected = false;
-  req.on('close', () => { disconnected = true; });
+  res.on('close', () => { disconnected = true; });
 
   console.log('[API] POST /workflow — starting full workflow');
   try {
