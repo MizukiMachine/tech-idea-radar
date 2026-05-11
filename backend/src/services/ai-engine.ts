@@ -1,10 +1,10 @@
 import {
   LLMClient,
   EntrepreneurAgent,
-  Phase,
+  AgentStep,
   WorkflowInput,
   WorkflowResult,
-  PhaseResult,
+  StepResult,
 } from 'ai-engine';
 
 let cachedClient: LLMClient | null = null;
@@ -22,15 +22,16 @@ function getClient(): LLMClient {
   return cachedClient;
 }
 
-export async function executePhase(phase: Phase, input: unknown): Promise<unknown> {
+export async function executeStep(step: AgentStep, input: unknown): Promise<unknown> {
   const agent = new EntrepreneurAgent(getClient());
-  return agent.runPhase(phase, input);
+  return agent.runStep(step, input);
 }
 
 export async function runWorkflow(
   input: WorkflowInput,
-  onPhaseComplete?: (result: PhaseResult) => void,
+  onStepComplete?: (result: StepResult) => void,
+  onStepProgress?: (step: number, text: string) => void,
 ): Promise<WorkflowResult> {
   const agent = new EntrepreneurAgent(getClient());
-  return agent.runWorkflow(input, onPhaseComplete);
+  return agent.runWorkflow(input, onStepComplete, onStepProgress);
 }

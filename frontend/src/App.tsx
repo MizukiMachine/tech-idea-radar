@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { runWorkflow, type PhaseResult } from "./api/ai";
+import { runWorkflow, type StepResult } from "./api/ai";
 import "./App.css";
 
 const SAMPLE_INPUT = JSON.stringify(
@@ -106,11 +106,12 @@ function App(): JSX.Element {
   const [view, setView] = useState<View>("input");
   const [jsonInput, setJsonInput] = useState(SAMPLE_INPUT);
   const [parseError, setParseError] = useState<string | null>(null);
-  const [phaseStatuses, setPhaseStatuses] = useState<PhaseStatus[]>(["pending", "pending", "pending", "pending"]);
-  const [phaseResults, setPhaseResults] = useState<Record<number, unknown>>({});
+  const [stepStatuses, setStepStatuses] = useState<PhaseStatus[]>(["pending", "pending", "pending"]);
+  const [stepResults, setStepResults] = useState<Record<number, unknown>>({});
   const [workflowResult, setWorkflowResult] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
+  const [streamingText, setStreamingText] = useState<Record<number, string>>({});
 
   const handleRun = useCallback(() => {
     let parsed: unknown;
@@ -122,22 +123,24 @@ function App(): JSX.Element {
     }
     setParseError(null);
     setError(null);
-    setPhaseStatuses(["running", "pending", "pending", "pending"]);
-    setPhaseResults({});
+    setStepStatuses(["running", "pending", "pending"]);
+    setStepResults({});
+    setStreamingText({});
     setWorkflowResult(null);
     setView("progress");
 
-    const phaseNames = ["SelfAnalysis", "MarketResearch", "Persona", "ProductConcept"];
-
     runWorkflow(parsed, {
-      onPhaseComplete(result: PhaseResult) {
-        setPhaseStatuses((prev) => {
+      onStepProgress(data) {
+        setStreamingText((prev) => ({ ...prev, [data.step - 1]: data.text }));
+      },
+      onStepComplete(result: StepResult) {
+        setStepStatuses((prev) => {
           const next = [...prev];
-          next[result.phase - 1] = "complete";
-          if (result.phase < 4) next[result.phase] = "running";
+          next[result.step - 1] = "complete";
+          if (result.step < 3) next[result.step] = "running";
           return next;
         });
-        setPhaseResults((prev) => ({ ...prev, [result.phase - 1]: result.output }));
+        setStepResults((prev) => ({ ...prev, [result.step - 1]: result.output }));
       },
       onWorkflowComplete(result) {
         setWorkflowResult(result);
@@ -179,12 +182,17 @@ function App(): JSX.Element {
           <section className="card">
             <h2 className="card__title">Executing Workflow</h2>
             <div className="phases">
-              {["Self Analysis", "Market Research", "Persona", "Product Concept"].map((name, i) => (
-                <div key={i} className={`phase phase--${phaseStatuses[i]}`}>
-                  <span className="phase__indicator">
-                    {phaseStatuses[i] === "complete" ? "done" : phaseStatuses[i] === "running" ? "..." : "—"}
-                  </span>
-                  <span className="phase__name">Phase {i + 1}: {name}</span>
+              {["Skill Analysis", "Market Research", "Idea Proposal"].map((name, i) => (
+                <div key={i}>
+                  <div className={`phase phase--${stepStatuses[i]}`}>
+                    <span className="phase__indicator">
+                      {stepStatuses[i] === "complete" ? "done" : stepStatuses[i] === "running" ? "..." : "—"}
+                    </span>
+                    <span className="phase__name">Agent {i + 1}: {name}</span>
+                  </div>
+                  {stepStatuses[i] === "running" && streamingText[i] && (
+                    <pre className="phase__stream">{streamingText[i]}</pre>
+                  )}
                 </div>
               ))}
             </div>
@@ -200,7 +208,7 @@ function App(): JSX.Element {
           <section className="card">
             <h2 className="card__title">Results</h2>
             <div className="tabs">
-              {["Self Analysis", "Market Research", "Persona", "Product Concept"].map((name, i) => (
+              {["Skill Analysis", "Market Research", "Idea Proposal"].map((name, i) => (
                 <button
                   key={i}
                   type="button"
@@ -212,7 +220,7 @@ function App(): JSX.Element {
               ))}
             </div>
             <pre className="card__result">
-              {JSON.stringify(phaseResults[activeTab] ?? workflowResult, null, 2)}
+              {JSON.stringify(stepResults[activeTab] ?? workflowResult, null, 2)}
             </pre>
             <button type="button" className="card__action" onClick={() => { setView("input"); setActiveTab(0); }}>
               New Workflow

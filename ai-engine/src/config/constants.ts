@@ -1,8 +1,7 @@
-export enum Phase {
-  SelfAnalysis = 1,
+export enum AgentStep {
+  SkillAnalysis = 1,
   MarketResearch = 2,
-  Persona = 3,
-  ProductConcept = 4,
+  IdeaProposal = 3,
 }
 
 export const DEFAULT_MODEL = 'glm-5-turbo';

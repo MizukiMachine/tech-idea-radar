@@ -1,13 +1,13 @@
 import { BaseAgent } from './base-agent';
 import { LLMClient } from '../services/llm-client';
-import { Phase, LARGE_MAX_TOKENS } from '../config/constants';
+import { AgentStep, LARGE_MAX_TOKENS } from '../config/constants';
 import { SelfAnalysisInput, SelfAnalysisOutput } from '../types/self-analysis';
 import { SELF_ANALYSIS_SYSTEM_PROMPT, SELF_ANALYSIS_USER_TEMPLATE } from '../prompts/self-analysis';
 import { PromptBuilder } from '../services/prompt-builder';
 
 export class SelfAnalysisAgent extends BaseAgent<SelfAnalysisInput, SelfAnalysisOutput> {
   readonly name = 'SelfAnalysisAgent';
-  readonly phase = Phase.SelfAnalysis;
+  readonly step = AgentStep.SkillAnalysis;
   protected readonly maxTokens = LARGE_MAX_TOKENS;
 
   constructor(llm: LLMClient) {

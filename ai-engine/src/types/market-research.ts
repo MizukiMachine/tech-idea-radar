@@ -1,3 +1,7 @@
+import type { RssContext } from '../services/mcp-client';
+
+export { RssContext };
+
 export interface MarketResearchInput {
   selfAnalysisHandoff: {
     swot: {
@@ -13,6 +17,7 @@ export interface MarketResearchInput {
   targetMarkets: TargetMarket[];
   initialCompetitors: string[];
   options?: ResearchOptions;
+  rssContext?: RssContext;
 }
 
 export interface TargetMarket {

@@ -1,20 +1,21 @@
 const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
 const API_BASE = DEFAULT_API_BASE.replace(/\/$/, "");
 
-export type PhaseResult = {
-  phase: number;
+export type StepResult = {
+  step: number;
   name: string;
   output: unknown;
 };
 
 export type WorkflowCallbacks = {
-  onPhaseComplete?: (result: PhaseResult) => void;
+  onStepComplete?: (result: StepResult) => void;
+  onStepProgress?: (data: { step: number; text: string; charCount: number }) => void;
   onWorkflowComplete?: (result: unknown) => void;
   onError?: (error: string) => void;
 };
 
-export async function executePhase(phase: number, input: unknown): Promise<unknown> {
-  const res = await fetch(`${API_BASE}/api/ai/phases/${phase}`, {
+export async function executeStep(step: number, input: unknown): Promise<unknown> {
+  const res = await fetch(`${API_BASE}/api/ai/steps/${step}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
@@ -66,8 +67,10 @@ export function runWorkflow(
             const raw = line.slice(6);
             try {
               const data = JSON.parse(raw);
-              if (currentEvent === "phase_complete") {
-                callbacks.onPhaseComplete?.(data);
+              if (currentEvent === "step_progress") {
+                callbacks.onStepProgress?.(data);
+              } else if (currentEvent === "step_complete") {
+                callbacks.onStepComplete?.(data);
               } else if (currentEvent === "workflow_complete") {
                 callbacks.onWorkflowComplete?.(data);
               } else if (currentEvent === "error") {

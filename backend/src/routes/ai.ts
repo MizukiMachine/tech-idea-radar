@@ -1,15 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { Phase } from 'ai-engine';
-import { executePhase, runWorkflow } from '../services/ai-engine';
+import { AgentStep } from 'ai-engine';
+import { executeStep, runWorkflow } from '../services/ai-engine';
 
-const VALID_PHASES = new Set<number>([Phase.SelfAnalysis, Phase.MarketResearch, Phase.Persona, Phase.ProductConcept]);
+const VALID_STEPS = new Set<number>([AgentStep.SkillAnalysis, AgentStep.MarketResearch, AgentStep.IdeaProposal]);
 
-const PHASE_NAMES: Record<number, string> = {
-  [Phase.SelfAnalysis]: 'SelfAnalysis',
-  [Phase.MarketResearch]: 'MarketResearch',
-  [Phase.Persona]: 'Persona',
-  [Phase.ProductConcept]: 'ProductConcept',
+const STEP_NAMES: Record<number, string> = {
+  [AgentStep.SkillAnalysis]: 'SkillAnalysis',
+  [AgentStep.MarketResearch]: 'MarketResearch',
+  [AgentStep.IdeaProposal]: 'IdeaProposal',
 };
 
 // --- Request schemas ---
@@ -152,9 +151,9 @@ const MarketResearchInputSchema = z.object({
   }).optional(),
 });
 
-const PersonaInputSchema = z.object({
-  previousPhases: z.object({
-    selfAnalysis: z.object({
+const IdeaProposalInputSchema = z.object({
+  previousSteps: z.object({
+    skillAnalysis: z.object({
       strengths: z.array(z.string()),
       skills: z.array(z.string()),
       achievements: z.array(z.string()),
@@ -173,31 +172,10 @@ const PersonaInputSchema = z.object({
   }).optional(),
 });
 
-const ProductConceptInputSchema = z.object({
-  previousPhases: z.object({
-    marketResearch: z.object({
-      marketTrends: z.array(z.string()),
-      competitorAnalysis: z.array(z.string()),
-      marketOpportunities: z.array(z.string()),
-    }),
-    persona: z.object({
-      personas: z.array(z.string()),
-      customerJourneySummary: z.string(),
-      painPointSummary: z.string(),
-    }),
-  }),
-  options: z.object({
-    productNameCandidates: z.array(z.string()).optional(),
-    businessModelType: z.enum(['subscription', 'usage-based', 'freemium', 'transaction-fee', 'hybrid']).optional(),
-    detailLevel: z.enum(['basic', 'detailed', 'comprehensive']).optional(),
-  }).optional(),
-});
-
-const PHASE_SCHEMAS: Record<number, z.ZodType> = {
-  [Phase.SelfAnalysis]: SelfAnalysisInputSchema,
-  [Phase.MarketResearch]: MarketResearchInputSchema,
-  [Phase.Persona]: PersonaInputSchema,
-  [Phase.ProductConcept]: ProductConceptInputSchema,
+const STEP_SCHEMAS: Record<number, z.ZodType> = {
+  [AgentStep.SkillAnalysis]: SelfAnalysisInputSchema,
+  [AgentStep.MarketResearch]: MarketResearchInputSchema,
+  [AgentStep.IdeaProposal]: IdeaProposalInputSchema,
 };
 
 const WorkflowInputSchema = z.object({
@@ -220,35 +198,37 @@ function formatZodError(error: z.ZodError): string {
 function sseSend(res: Response, event: string, data: unknown, disconnected: boolean): boolean {
   if (disconnected) return false;
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  return res.write(payload);
+  const ok = res.write(payload);
+  res.socket?.setNoDelay(true);
+  return ok;
 }
 
 // --- Routes ---
 
 const router = Router();
 
-router.post('/phases/:phase', async (req: Request, res: Response) => {
-  const phaseNumber = parseInt(req.params.phase, 10);
-  if (!VALID_PHASES.has(phaseNumber)) {
-    res.status(400).json({ error: 'Phase must be one of: 1 (SelfAnalysis), 2 (MarketResearch), 3 (Persona), 4 (ProductConcept)' });
+router.post('/steps/:step', async (req: Request, res: Response) => {
+  const stepNumber = parseInt(req.params.step, 10);
+  if (!VALID_STEPS.has(stepNumber)) {
+    res.status(400).json({ error: 'Step must be one of: 1 (SkillAnalysis), 2 (MarketResearch), 3 (IdeaProposal)' });
     return;
   }
 
-  const schema = PHASE_SCHEMAS[phaseNumber];
+  const schema = STEP_SCHEMAS[stepNumber];
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: `Validation failed: ${formatZodError(parsed.error)}` });
     return;
   }
 
-  console.log(`[API] POST /phases/${phaseNumber} (${PHASE_NAMES[phaseNumber]})`);
+  console.log(`[API] POST /steps/${stepNumber} (${STEP_NAMES[stepNumber]})`);
   try {
-    const result = await executePhase(phaseNumber as Phase, parsed.data);
-    res.json({ phase: phaseNumber, status: 'completed', output: result });
+    const result = await executeStep(stepNumber as AgentStep, parsed.data);
+    res.json({ step: stepNumber, status: 'completed', output: result });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[API] Phase ${phaseNumber} error: ${message}`);
-    res.status(500).json({ phase: phaseNumber, status: 'error', error: message });
+    console.error(`[API] Step ${stepNumber} error: ${message}`);
+    res.status(500).json({ step: stepNumber, status: 'error', error: message });
   }
 });
 
@@ -262,6 +242,7 @@ router.post('/workflow', async (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders();
 
   let disconnected = false;
@@ -269,11 +250,18 @@ router.post('/workflow', async (req: Request, res: Response) => {
 
   console.log('[API] POST /workflow — starting full workflow');
   try {
-    const result = await runWorkflow(parsed.data, (phaseResult) => {
-      sseSend(res, 'phase_complete', {
-        phase: phaseResult.phase,
-        name: PHASE_NAMES[phaseResult.phase],
-        output: phaseResult.output,
+    const result = await runWorkflow(parsed.data, (stepResult) => {
+      sseSend(res, 'step_complete', {
+        step: stepResult.step,
+        name: STEP_NAMES[stepResult.step],
+        output: stepResult.output,
+      }, disconnected);
+    }, (step, text) => {
+      console.log(`[SSE] step_progress step=${step} len=${text.length}`);
+      sseSend(res, 'step_progress', {
+        step,
+        text,
+        charCount: text.length,
       }, disconnected);
     });
 

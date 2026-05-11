@@ -2,10 +2,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { LLMClient } from '../src/services/llm-client';
 import { SelfAnalysisAgent } from '../src/agents/self-analysis-agent';
 import { MarketResearchAgent } from '../src/agents/market-research-agent';
-import { PersonaAgent } from '../src/agents/persona-agent';
-import { ProductConceptAgent } from '../src/agents/product-concept-agent';
+import { IdeaProposalAgent } from '../src/agents/idea-proposal-agent';
 import { EntrepreneurAgent } from '../src/agents/entrepreneur-agent';
-import { Phase } from '../src/config/constants';
+import { AgentStep } from '../src/config/constants';
 
 // Mock LLMClient
 vi.mock('../src/services/llm-client');
@@ -61,22 +60,27 @@ const MARKET_RESEARCH_RESPONSE = JSON.stringify({
   handoff: { recommendedSegments: [], primaryChallenge: '', idealCustomerProfile: '', avoidSegments: [], keyQuestions: [], nextPhaseReady: true, handoffNotes: '' },
 });
 
-const PERSONA_RESPONSE = JSON.stringify({
-  personaSheet: {
-    personas: [{ id: 'p1', name: 'Taro', demographics: { age: 35, gender: 'male', occupation: 'Engineer', annualIncome: 8000000, location: 'Tokyo', familyStructure: 'Single' }, lifestyle: { weekdaySchedule: '', weekendActivities: '', hobbies: [], deviceUsage: { smartphone: 4, pc: 8 } }, psychographics: { workValues: [], spendingHabits: '', selfInvestmentAttitude: '', fears: [], desiredFuture: '' }, challenges: [], informationSources: [], buyingBehavior: { decisionSpeed: 'careful', priceSensitivity: 'medium', researchDepth: 'thorough', wordOfMouthImportance: 'high' }, approachStrategy: { bestChannel: '', keyMessage: '', avoidApproach: '' } }],
+const IDEA_PROPOSAL_RESPONSE = JSON.stringify({
+  personas: {
+    personas: [{ id: 'p1', name: 'Taro', demographics: { age: 35, gender: 'male', occupation: 'Engineer', annualIncome: 8000000, location: 'Tokyo', familyStructure: 'Single' }, challenges: [{ description: 'No time', severity: 'high', urgency: 'high', currentSolutions: [] }], approachStrategy: { bestChannel: 'Twitter', keyMessage: 'Save time' } }],
     priorityRanking: [{ personaId: 'p1', rank: 1, rationale: '' }],
     commonTraits: [],
   },
-  customerJourneyMap: { journeys: [], criticalTouchpoints: ['Website visit'], improvementOpportunities: [] },
-  painPointAnalysis: { byPersona: [], commonPainPoints: [{ description: 'Lack of time', impact: 'high', frequency: 'daily' }] },
-  handoff: { priorityPersonas: { main: 'Taro', sub: '', rationale: '' }, criticalChallenges: [], productDirection: '', recommendedPriceRange: { min: 1000, max: 5000, currency: 'JPY' } },
-});
-
-const PRODUCT_CONCEPT_RESPONSE = JSON.stringify({
-  productConcept: { productName: 'AI Planner', tagline: 'Plan smarter', coreValuePropositions: [], targetCustomers: [], coreFeatures: [], differentiatingFeatures: [], usp: { mainUsp: 'AI-powered', supportingUsps: [], competitiveAdvantage: '' }, elevatorPitch: '' },
-  businessModelCanvas: { customerSegments: [], valuePropositions: [], channels: [], customerRelationships: [], revenueStreams: [], keyResources: [], keyActivities: [], keyPartnerships: [], costStructure: { type: 'value-driven', fixedCosts: [], variableCosts: [], totalMonthlyCost: 500000 } },
-  revenueModel: { modelType: 'subscription', pricingStrategy: { method: '', rationale: '' }, revenueStreams: [], threeYearForecast: { year1: { year: 1, customers: 100, mrr: 1000000, arr: 12000000, churnRate: 0.05 }, year2: { year: 2, customers: 300, mrr: 3000000, arr: 36000000, churnRate: 0.04 }, year3: { year: 3, customers: 800, mrr: 8000000, arr: 96000000, churnRate: 0.03 } }, unitEconomics: { arpu: 10000, ltv: 300000, cac: 50000, ltvCacRatio: 6, paybackPeriodMonths: 5 } },
-  handoff: { coreFeatures: [], mvpScope: { includeFeatures: [], excludeFeatures: [], releaseTarget: '' }, techStackCandidates: { frontend: [], backend: [], database: [], infrastructure: [] } },
+  painPoints: { commonPainPoints: [{ description: 'Lack of time', impact: 'high', frequency: 'daily' }], criticalChallenges: [] },
+  productIdeas: [{
+    rank: 1, productName: 'AI Planner', tagline: 'Plan smarter', fitScore: 85,
+    productType: 'B2B SaaS', whyThisFitsYou: 'Backend expertise',
+    marketDemand: 'Growing demand', targetUsers: 'Small teams',
+    coreProblem: 'Manual planning', howItWorks: 'AI automates planning',
+    coreFeatures: [{ name: 'Auto-plan', description: 'Generate plans', priority: 'P0', includeInMvp: true }],
+    differentiation: 'AI-first', competitorSituation: 'No strong AI competitor',
+    mvpScope: { includeFeatures: ['Auto-plan'], estimatedTime: '2 weeks', techStack: { frontend: ['React'], backend: ['Node.js'], database: ['PostgreSQL'], infrastructure: ['AWS'] } },
+    revenueModel: { model: 'subscription', pricing: { price: 2980, currency: 'JPY', model: 'monthly' }, threeYearForecast: { year1: { customers: 100, mrr: 298000 }, year2: { customers: 300, mrr: 894000 }, year3: { customers: 800, mrr: 2384000 } } },
+    risks: ['Market may saturate'], nextStep: 'Build MVP',
+  }],
+  comparisonMatrix: { criteria: ['Fit', 'Demand', 'Competition', 'Revenue', 'Fun'], scores: [{ productName: 'AI Planner', scores: [90, 80, 70, 85, 90] }] },
+  overallRecommendation: { topPick: 'AI Planner', topPickRationale: 'Best fit', alternativePath: 'Different niche', partingAdvice: 'Start small' },
+  handoff: { priorityPersonas: { main: 'Taro', sub: '', rationale: '' }, recommendedPriceRange: { min: 1000, max: 5000, currency: 'JPY' }, productDirection: 'AI SaaS', nextStep: 'Build MVP' },
 });
 
 describe('SelfAnalysisAgent', () => {
@@ -128,43 +132,28 @@ describe('MarketResearchAgent', () => {
   });
 });
 
-describe('PersonaAgent', () => {
+describe('IdeaProposalAgent', () => {
   it('builds user prompt and parses response', async () => {
-    const client = createMockClient(PERSONA_RESPONSE);
-    const agent = new PersonaAgent(client);
+    const client = createMockClient(IDEA_PROPOSAL_RESPONSE);
+    const agent = new IdeaProposalAgent(client);
     const result = await agent.execute({
-      previousPhases: {
-        selfAnalysis: { strengths: ['Tech'], skills: ['Coding'], achievements: ['Shipped'], valuePropositions: ['Innovation'] },
+      previousSteps: {
+        skillAnalysis: { strengths: ['Tech'], skills: ['Coding'], achievements: ['Shipped'], valuePropositions: ['Innovation'] },
         marketResearch: { marketTrends: ['AI'], competitorAnalysis: ['CompA'], marketOpportunities: ['Niche'] },
       },
     });
 
-    expect(result.personaSheet.personas[0].name).toBe('Taro');
-    expect(result.painPointAnalysis.commonPainPoints[0].description).toBe('Lack of time');
-  });
-});
-
-describe('ProductConceptAgent', () => {
-  it('builds user prompt and parses response', async () => {
-    const client = createMockClient(PRODUCT_CONCEPT_RESPONSE);
-    const agent = new ProductConceptAgent(client);
-    const result = await agent.execute({
-      previousPhases: {
-        marketResearch: { marketTrends: ['AI'], competitorAnalysis: ['CompA'], marketOpportunities: ['Niche'] },
-        persona: { personas: ['Taro'], customerJourneySummary: 'Website', painPointSummary: 'Time' },
-      },
-    });
-
-    expect(result.productConcept.productName).toBe('AI Planner');
-    expect(result.revenueModel.unitEconomics.ltvCacRatio).toBe(6);
+    expect(result.personas.personas[0].name).toBe('Taro');
+    expect(result.productIdeas[0].productName).toBe('AI Planner');
+    expect(result.overallRecommendation.topPick).toBe('AI Planner');
   });
 });
 
 describe('EntrepreneurAgent', () => {
-  it('runPhase delegates to correct agent', async () => {
+  it('runStep delegates to correct agent', async () => {
     const client = createMockClient(SELF_ANALYSIS_RESPONSE);
     const agent = new EntrepreneurAgent(client);
-    const result = await agent.runPhase(Phase.SelfAnalysis, {
+    const result = await agent.runStep(AgentStep.SkillAnalysis, {
       careerHistory: [{ year: 2020, role: 'Engineer', company: 'Corp', industry: 'Tech', responsibilities: ['Dev'], achievements: ['Shipped'] }],
       skills: { technical: [], business: [], soft: [] },
       achievements: [],
@@ -190,23 +179,22 @@ describe('EntrepreneurAgent', () => {
     expect(result).toHaveProperty('metadata');
   });
 
-  it('runPhase throws on invalid input', async () => {
+  it('runStep throws on invalid input', async () => {
     const client = createMockClient('');
     const agent = new EntrepreneurAgent(client);
-    await expect(agent.runPhase(Phase.SelfAnalysis, null)).rejects.toThrow(/expected object/);
+    await expect(agent.runStep(AgentStep.SkillAnalysis, null)).rejects.toThrow(/expected object/);
   });
 
-  it('runWorkflow executes all 4 phases sequentially', async () => {
+  it('runWorkflow executes all 3 steps sequentially', async () => {
     const client = new LLMClient('test-key');
     const sendSpy = vi.spyOn(client, 'send');
     sendSpy
       .mockResolvedValueOnce(SELF_ANALYSIS_RESPONSE)
       .mockResolvedValueOnce(MARKET_RESEARCH_RESPONSE)
-      .mockResolvedValueOnce(PERSONA_RESPONSE)
-      .mockResolvedValueOnce(PRODUCT_CONCEPT_RESPONSE);
+      .mockResolvedValueOnce(IDEA_PROPOSAL_RESPONSE);
 
     const agent = new EntrepreneurAgent(client);
-    const completedPhases: number[] = [];
+    const completedSteps: number[] = [];
     const result = await agent.runWorkflow({
       selfAnalysisInput: {
         careerHistory: [{ year: 2020, role: 'Engineer', company: 'Corp', industry: 'Tech', responsibilities: ['Dev'], achievements: ['Shipped'] }],
@@ -233,18 +221,18 @@ describe('EntrepreneurAgent', () => {
       },
       targetMarkets: [{ name: 'Japan', description: 'JP market', priority: 1 }],
       initialCompetitors: [],
-    }, (phaseResult) => {
-      completedPhases.push(phaseResult.phase);
+    }, (stepResult) => {
+      completedSteps.push(stepResult.step);
     });
 
-    expect(completedPhases).toEqual([1, 2, 3, 4]);
-    expect(result.phases.selfAnalysis.metadata.analysisId).toBe('test-1');
-    expect(result.phases.marketResearch.metadata.researchId).toBe('test-2');
-    expect(result.phases.persona.personaSheet.personas[0].name).toBe('Taro');
-    expect(result.phases.productConcept.productConcept.productName).toBe('AI Planner');
+    expect(completedSteps).toEqual([1, 2, 3]);
+    expect(result.steps.skillAnalysis.metadata.analysisId).toBe('test-1');
+    expect(result.steps.marketResearch.metadata.researchId).toBe('test-2');
+    expect(result.steps.ideaProposal.personas.personas[0].name).toBe('Taro');
+    expect(result.steps.ideaProposal.productIdeas[0].productName).toBe('AI Planner');
     expect(result.totalProcessingTime).toBeGreaterThanOrEqual(0);
     expect(result.completedAt).toBeTruthy();
-    expect(sendSpy).toHaveBeenCalledTimes(4);
+    expect(sendSpy).toHaveBeenCalledTimes(3);
   });
 
   it('runWorkflow uses competitorCandidates when initialCompetitors is empty', async () => {
@@ -253,8 +241,7 @@ describe('EntrepreneurAgent', () => {
     sendSpy
       .mockResolvedValueOnce(SELF_ANALYSIS_RESPONSE)
       .mockResolvedValueOnce(MARKET_RESEARCH_RESPONSE)
-      .mockResolvedValueOnce(PERSONA_RESPONSE)
-      .mockResolvedValueOnce(PRODUCT_CONCEPT_RESPONSE);
+      .mockResolvedValueOnce(IDEA_PROPOSAL_RESPONSE);
 
     const agent = new EntrepreneurAgent(client);
     await agent.runWorkflow({
@@ -285,7 +272,6 @@ describe('EntrepreneurAgent', () => {
       initialCompetitors: [],
     });
 
-    // Second call is MarketResearch — check the prompt contains competitorCandidates
     const marketResearchCall = sendSpy.mock.calls[1];
     const userPrompt = marketResearchCall?.[1] ?? '';
     expect(userPrompt).toContain('CompetitorA');

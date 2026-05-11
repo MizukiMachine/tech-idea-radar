@@ -1,7 +1,6 @@
 import { SelfAnalysisOutput } from './self-analysis';
 import { MarketResearchOutput } from './market-research';
-import { PersonaOutput } from './persona';
-import { ProductConceptOutput } from './product-concept';
+import { IdeaProposalOutput } from './idea-proposal';
 
 export interface WorkflowInput {
   selfAnalysisInput: import('./self-analysis').SelfAnalysisInput;
@@ -10,18 +9,16 @@ export interface WorkflowInput {
 }
 
 export interface WorkflowResult {
-  phases: {
-    selfAnalysis: SelfAnalysisOutput;
+  steps: {
+    skillAnalysis: SelfAnalysisOutput;
     marketResearch: MarketResearchOutput;
-    persona: PersonaOutput;
-    productConcept: ProductConceptOutput;
+    ideaProposal: IdeaProposalOutput;
   };
   completedAt: string;
   totalProcessingTime: number;
 }
 
-export type PhaseResult =
-  | { phase: 1; output: SelfAnalysisOutput }
-  | { phase: 2; output: MarketResearchOutput }
-  | { phase: 3; output: PersonaOutput }
-  | { phase: 4; output: ProductConceptOutput };
+export type StepResult =
+  | { step: 1; output: SelfAnalysisOutput }
+  | { step: 2; output: MarketResearchOutput }
+  | { step: 3; output: IdeaProposalOutput };

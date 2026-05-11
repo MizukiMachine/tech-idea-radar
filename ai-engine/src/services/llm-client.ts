@@ -36,6 +36,43 @@ export class LLMClient {
     this.maxTokens = maxTokens ?? DEFAULT_MAX_TOKENS;
   }
 
+  async sendStream(
+    systemPrompt: string,
+    userPrompt: string,
+    maxTokens: number | undefined,
+    onChunk: (accumulated: string) => void,
+  ): Promise<string> {
+    const tokens = maxTokens ?? this.maxTokens;
+    let accumulated = '';
+    let chunkCount = 0;
+    const EMIT_EVERY_N = 5;
+
+    const stream = this.client.messages.stream({
+      model: this.model,
+      max_tokens: tokens,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+      stream: true,
+    });
+
+    stream.on('text', (text) => {
+      accumulated += text;
+      chunkCount++;
+      if (chunkCount % EMIT_EVERY_N === 0) {
+        onChunk(accumulated);
+      }
+    });
+
+    const finalMessage = await stream.finalMessage();
+    const textBlock = finalMessage.content.find(b => b.type === 'text');
+    const fullText = textBlock && textBlock.type === 'text' ? textBlock.text : '';
+
+    // Always emit final state
+    onChunk(fullText);
+
+    return fullText;
+  }
+
   async send(systemPrompt: string, userPrompt: string, maxTokens?: number): Promise<string> {
     const tokens = maxTokens ?? this.maxTokens;
     const promptPreview = userPrompt.slice(0, 80).replace(/\n/g, ' ');

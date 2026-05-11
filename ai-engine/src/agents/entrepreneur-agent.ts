@@ -2,14 +2,13 @@ import { LLMClient } from '../services/llm-client';
 import { validateObject } from '../services/output-validator';
 import { SelfAnalysisAgent } from './self-analysis-agent';
 import { MarketResearchAgent } from './market-research-agent';
-import { PersonaAgent } from './persona-agent';
-import { ProductConceptAgent } from './product-concept-agent';
+import { IdeaProposalAgent } from './idea-proposal-agent';
 import { SelfAnalysisInput, SelfAnalysisOutput } from '../types/self-analysis';
 import { MarketResearchInput, MarketResearchOutput } from '../types/market-research';
-import { PersonaInput, PersonaOutput } from '../types/persona';
-import { ProductConceptInput, ProductConceptOutput } from '../types/product-concept';
-import { WorkflowInput, WorkflowResult, PhaseResult } from '../types/entrepreneur';
-import { Phase } from '../config/constants';
+import { IdeaProposalInput, IdeaProposalOutput } from '../types/idea-proposal';
+import { WorkflowInput, WorkflowResult, StepResult } from '../types/entrepreneur';
+import { AgentStep } from '../config/constants';
+import { fetchRssContext } from '../services/mcp-client';
 
 const SELF_ANALYSIS_REQUIRED = [
   'swotAnalysis.strengths',
@@ -30,16 +29,11 @@ const MARKET_RESEARCH_REQUIRED = [
   'opportunityAnalysis.blueOceanAreas',
 ];
 
-const PERSONA_REQUIRED = [
-  'personaSheet.personas',
-  'customerJourneyMap.criticalTouchpoints',
-  'painPointAnalysis.commonPainPoints',
-];
-
-const PRODUCT_CONCEPT_REQUIRED = [
-  'productConcept',
-  'businessModelCanvas',
-  'revenueModel',
+const IDEA_PROPOSAL_REQUIRED = [
+  'personas.personas',
+  'painPoints.commonPainPoints',
+  'productIdeas',
+  'overallRecommendation',
 ];
 
 function safeMap<T, U>(arr: T[] | undefined, fn: (item: T) => U, label: string): U[] {
@@ -53,96 +47,115 @@ function safeMap<T, U>(arr: T[] | undefined, fn: (item: T) => U, label: string):
 export class EntrepreneurAgent {
   private readonly selfAnalysis: SelfAnalysisAgent;
   private readonly marketResearch: MarketResearchAgent;
-  private readonly persona: PersonaAgent;
-  private readonly productConcept: ProductConceptAgent;
+  private readonly ideaProposal: IdeaProposalAgent;
 
   constructor(llm: LLMClient) {
     this.selfAnalysis = new SelfAnalysisAgent(llm);
     this.marketResearch = new MarketResearchAgent(llm);
-    this.persona = new PersonaAgent(llm);
-    this.productConcept = new ProductConceptAgent(llm);
+    this.ideaProposal = new IdeaProposalAgent(llm);
   }
 
-  async runPhase(phase: Phase, input: unknown): Promise<unknown> {
+  async runStep(step: AgentStep, input: unknown): Promise<unknown> {
     if (!input || typeof input !== 'object') {
-      throw new Error(`Invalid input for phase ${phase}: expected object`);
+      throw new Error(`Invalid input for step ${step}: expected object`);
     }
-    const phaseName = Phase[phase];
-    console.log(`[${phaseName}] Starting phase ${phase} execution`);
+    const stepName = AgentStep[step];
+    console.log(`[${stepName}] Starting step ${step} execution`);
     const start = Date.now();
     try {
       let result: unknown;
-      switch (phase) {
-        case Phase.SelfAnalysis:
+      switch (step) {
+        case AgentStep.SkillAnalysis:
           result = await this.selfAnalysis.execute(input as SelfAnalysisInput);
           break;
-        case Phase.MarketResearch:
+        case AgentStep.MarketResearch:
           result = await this.marketResearch.execute(input as MarketResearchInput);
           break;
-        case Phase.Persona:
-          result = await this.persona.execute(input as PersonaInput);
-          break;
-        case Phase.ProductConcept:
-          result = await this.productConcept.execute(input as ProductConceptInput);
+        case AgentStep.IdeaProposal:
+          result = await this.ideaProposal.execute(input as IdeaProposalInput);
           break;
         default:
-          throw new Error(`Unknown phase: ${phase}`);
+          throw new Error(`Unknown step: ${step}`);
       }
-      console.log(`[${phaseName}] Completed in ${Date.now() - start}ms`);
+      console.log(`[${stepName}] Completed in ${Date.now() - start}ms`);
       return result;
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      console.error(`[${phaseName}] Failed after ${Date.now() - start}ms: ${msg}`);
+      console.error(`[${stepName}] Failed after ${Date.now() - start}ms: ${msg}`);
       throw error;
     }
   }
 
-  async runWorkflow(input: WorkflowInput, onPhaseComplete?: (result: PhaseResult) => void): Promise<WorkflowResult> {
+  async runWorkflow(
+    input: WorkflowInput,
+    onStepComplete?: (result: StepResult) => void,
+    onStepProgress?: (step: number, text: string) => void,
+  ): Promise<WorkflowResult> {
     const startTime = Date.now();
-    console.log('[Workflow] Starting 4-phase business planning workflow');
+    console.log('[Workflow] Starting 3-step business planning workflow');
 
-    // Phase 1: Self Analysis
-    const phase1Raw = await this.selfAnalysis.execute(input.selfAnalysisInput);
-    const phase1 = validateObject<SelfAnalysisOutput>(phase1Raw, SELF_ANALYSIS_REQUIRED, 'SelfAnalysis');
-    onPhaseComplete?.({ phase: 1, output: phase1 });
-    console.log('[Workflow] Phase 1 (SelfAnalysis) complete');
+    // Step 1: Skill Analysis
+    const step1Raw = await this.selfAnalysis.execute(input.selfAnalysisInput,
+      onStepProgress ? (text) => onStepProgress(1, text) : undefined);
+    const step1 = validateObject<SelfAnalysisOutput>(step1Raw, SELF_ANALYSIS_REQUIRED, 'SkillAnalysis');
+    onStepComplete?.({ step: 1, output: step1 });
+    console.log('[Workflow] Step 1 (SkillAnalysis) complete');
 
-    // Phase 2: Market Research (receives handoff from Phase 1)
-    const phase2Input: MarketResearchInput = {
+    // Fetch RSS enrichment data between Step 1 and Step 2
+    const searchKeywords = [
+      ...safeMap(step1.directionRecommendation.recommendedAreas, a => a.area, 'recommendedAreas').slice(0, 3),
+      ...step1.skillMap.topStrengths.slice(0, 2),
+    ];
+    onStepProgress?.(2, '[MCP] RSS enrichment: fetching...');
+    const rssContext = await fetchRssContext(searchKeywords);
+    if (rssContext.trendingKeywords.length > 0 || rssContext.relatedArticles.length > 0) {
+      console.log(`[Workflow] RSS enrichment: ${rssContext.trendingKeywords.length} trends, ${rssContext.relatedArticles.length} articles`);
+      onStepProgress?.(2, `[MCP] RSS enrichment: done (${rssContext.trendingKeywords.length} trends, ${rssContext.relatedArticles.length} articles)\n\nAnalyzing market...`);
+    } else {
+      onStepProgress?.(2, '[MCP] RSS enrichment: skipped (no data)\n\nAnalyzing market...');
+    }
+    if (rssContext.trendingKeywords.length > 0 || rssContext.relatedArticles.length > 0) {
+      console.log(`[Workflow] RSS enrichment: ${rssContext.trendingKeywords.length} trends, ${rssContext.relatedArticles.length} articles`);
+    }
+
+    // Step 2: Market Research (receives handoff from Step 1)
+    const step2Input: MarketResearchInput = {
       selfAnalysisHandoff: {
         swot: {
-          strengths: safeMap(phase1.swotAnalysis.strengths, s => s.item, 'strengths'),
-          weaknesses: safeMap(phase1.swotAnalysis.weaknesses, w => w.item, 'weaknesses'),
-          opportunities: safeMap(phase1.swotAnalysis.opportunities, o => o.item, 'opportunities'),
-          threats: safeMap(phase1.swotAnalysis.threats, t => t.item, 'threats'),
+          strengths: safeMap(step1.swotAnalysis.strengths, s => s.item, 'strengths'),
+          weaknesses: safeMap(step1.swotAnalysis.weaknesses, w => w.item, 'weaknesses'),
+          opportunities: safeMap(step1.swotAnalysis.opportunities, o => o.item, 'opportunities'),
+          threats: safeMap(step1.swotAnalysis.threats, t => t.item, 'threats'),
         },
-        recommendedAreas: safeMap(phase1.directionRecommendation.recommendedAreas, a => a.area, 'recommendedAreas'),
-        areasToAvoid: safeMap(phase1.directionRecommendation.areasToAvoid, a => a.area, 'areasToAvoid'),
-        uniqueStrengths: phase1.skillMap.topStrengths ?? [],
+        recommendedAreas: safeMap(step1.directionRecommendation.recommendedAreas, a => a.area, 'recommendedAreas'),
+        areasToAvoid: safeMap(step1.directionRecommendation.areasToAvoid, a => a.area, 'areasToAvoid'),
+        uniqueStrengths: step1.skillMap.topStrengths ?? [],
       },
       targetMarkets: input.targetMarkets,
       initialCompetitors: input.initialCompetitors.length > 0
         ? input.initialCompetitors
-        : phase1.handoff.competitorCandidates,
+        : step1.handoff.competitorCandidates,
+      rssContext,
     };
-    const phase2Raw = await this.marketResearch.execute(phase2Input);
-    const phase2 = validateObject<MarketResearchOutput>(phase2Raw, MARKET_RESEARCH_REQUIRED, 'MarketResearch');
-    onPhaseComplete?.({ phase: 2, output: phase2 });
-    console.log('[Workflow] Phase 2 (MarketResearch) complete');
+    const step2Raw = await this.marketResearch.execute(step2Input,
+      onStepProgress ? (text) => onStepProgress(2, text) : undefined);
+    const step2 = validateObject<MarketResearchOutput>(step2Raw, MARKET_RESEARCH_REQUIRED, 'MarketResearch');
+    onStepComplete?.({ step: 2, output: step2 });
+    console.log('[Workflow] Step 2 (MarketResearch) complete');
 
-    // Extracted market research summaries (used by Phase 3 and 4)
-    const marketTrends = safeMap(phase2.marketAnalysis.trends, t => t.name, 'trends');
-    const competitorNames = safeMap(phase2.competitorAnalysis.directCompetitors, c => c.name, 'directCompetitors');
-    const marketOpportunities = safeMap(phase2.opportunityAnalysis.blueOceanAreas, a => a.area, 'blueOceanAreas');
+    // Extracted market research summaries (used by Step 3)
+    const marketTrends = safeMap(step2.marketAnalysis.trends, t => t.name, 'trends');
+    const competitorNames = safeMap(step2.competitorAnalysis.directCompetitors, c => c.name, 'directCompetitors');
+    const marketOpportunities = safeMap(step2.opportunityAnalysis.blueOceanAreas, a => a.area, 'blueOceanAreas');
 
-    // Phase 3: Persona (receives Phase 1 + 2 results)
-    const phase3Input: PersonaInput = {
-      previousPhases: {
-        selfAnalysis: {
-          strengths: safeMap(phase1.swotAnalysis.strengths, s => s.item, 'strengths'),
-          skills: phase1.skillMap.topStrengths ?? [],
-          achievements: phase1.achievementSummary.quantifiableStrengths ?? [],
-          valuePropositions: phase1.valueAnalysis.corePriorities ?? [],
+    // Step 3: Idea Proposal (receives Step 1 + 2 results)
+    const step3Input: IdeaProposalInput = {
+      previousSteps: {
+        skillAnalysis: {
+          strengths: safeMap(step1.swotAnalysis.strengths, s => s.item, 'strengths'),
+          skills: step1.skillMap.topStrengths ?? [],
+          achievements: step1.achievementSummary.quantifiableStrengths ?? [],
+          valuePropositions: step1.valueAnalysis.corePriorities ?? [],
         },
         marketResearch: {
           marketTrends,
@@ -151,34 +164,16 @@ export class EntrepreneurAgent {
         },
       },
     };
-    const phase3Raw = await this.persona.execute(phase3Input);
-    const phase3 = validateObject<PersonaOutput>(phase3Raw, PERSONA_REQUIRED, 'Persona');
-    onPhaseComplete?.({ phase: 3, output: phase3 });
-    console.log('[Workflow] Phase 3 (Persona) complete');
-
-    // Phase 4: Product Concept (receives Phase 2 + 3 results)
-    const phase4Input: ProductConceptInput = {
-      previousPhases: {
-        marketResearch: {
-          marketTrends,
-          competitorAnalysis: competitorNames,
-          marketOpportunities,
-        },
-        persona: {
-          personas: safeMap(phase3.personaSheet.personas, p => p.name, 'personas'),
-          customerJourneySummary: phase3.customerJourneyMap.criticalTouchpoints?.join(', ') ?? '',
-          painPointSummary: safeMap(phase3.painPointAnalysis.commonPainPoints, p => p.description, 'commonPainPoints').join(', '),
-        },
-      },
-    };
-    const phase4Raw = await this.productConcept.execute(phase4Input);
-    const phase4 = validateObject<ProductConceptOutput>(phase4Raw, PRODUCT_CONCEPT_REQUIRED, 'ProductConcept');
-    onPhaseComplete?.({ phase: 4, output: phase4 });
+    const step3Raw = await this.ideaProposal.execute(step3Input,
+      onStepProgress ? (text) => onStepProgress(3, text) : undefined);
+    const step3 = validateObject<IdeaProposalOutput>(step3Raw, IDEA_PROPOSAL_REQUIRED, 'IdeaProposal');
+    onStepComplete?.({ step: 3, output: step3 });
+    console.log('[Workflow] Step 3 (IdeaProposal) complete');
 
     const totalTime = Date.now() - startTime;
-    console.log(`[Workflow] All 4 phases complete in ${totalTime}ms`);
+    console.log(`[Workflow] All 3 steps complete in ${totalTime}ms`);
     return {
-      phases: { selfAnalysis: phase1, marketResearch: phase2, persona: phase3, productConcept: phase4 },
+      steps: { skillAnalysis: step1, marketResearch: step2, ideaProposal: step3 },
       completedAt: new Date().toISOString(),
       totalProcessingTime: totalTime,
     };

@@ -1,10 +1,10 @@
 import { LLMClient } from '../services/llm-client';
 import { ResponseParser } from '../services/response-parser';
-import { Phase } from '../config/constants';
+import { AgentStep } from '../config/constants';
 
 export abstract class BaseAgent<TInput, TOutput> {
   abstract readonly name: string;
-  abstract readonly phase: Phase;
+  abstract readonly step: AgentStep;
   abstract get systemPrompt(): string;
   abstract buildUserPrompt(input: TInput): string;
 
@@ -12,9 +12,11 @@ export abstract class BaseAgent<TInput, TOutput> {
 
   constructor(protected readonly llm: LLMClient) {}
 
-  async execute(input: TInput): Promise<TOutput> {
+  async execute(input: TInput, onProgress?: (text: string) => void): Promise<TOutput> {
     const userPrompt = this.buildUserPrompt(input);
-    const raw = await this.llm.send(this.systemPrompt, userPrompt, this.maxTokens);
+    const raw = onProgress
+      ? await this.llm.sendStream(this.systemPrompt, userPrompt, this.maxTokens, onProgress)
+      : await this.llm.send(this.systemPrompt, userPrompt, this.maxTokens);
     try {
       return ResponseParser.parse<TOutput>(raw);
     } catch (error) {
