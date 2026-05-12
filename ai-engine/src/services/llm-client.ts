@@ -3,7 +3,7 @@ import { DEFAULT_MODEL, DEFAULT_MAX_TOKENS, DEFAULT_BASE_URL } from '../config/c
 
 const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
-const TIMEOUT_MS = 180_000;
+const TIMEOUT_MS = 600_000;
 
 function isRetryable(error: unknown): boolean {
   if (error instanceof Anthropic.APIError) {

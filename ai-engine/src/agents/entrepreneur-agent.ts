@@ -9,6 +9,34 @@ import type { IdeaCandidate } from '../types/idea-candidate';
 
 const DEFAULT_KEYWORDS = ['AI', 'SaaS', 'developer', 'productivity', 'automation', 'エンジニア', '個人開発'];
 
+function normalizeCandidates(raw: unknown): IdeaCandidate[] {
+  // Already an array
+  if (Array.isArray(raw)) return raw as IdeaCandidate[];
+
+  // Single object — might be wrapped or a single candidate
+  if (raw && typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>;
+    console.log(`[IdeaGeneration] Parsed object with keys: ${Object.keys(obj).join(', ')}`);
+
+    // Check if any property is an array of idea-like objects
+    for (const [key, value] of Object.entries(obj)) {
+      if (Array.isArray(value) && value.length > 0 && value[0] && typeof value[0] === 'object' && 'title' in (value[0] as object)) {
+        console.log(`[IdeaGeneration] Found array in "${key}" with ${value.length} items`);
+        return value as IdeaCandidate[];
+      }
+    }
+
+    // Single candidate object with 'title' field
+    if ('title' in obj) {
+      console.log('[IdeaGeneration] Single candidate object, wrapping in array');
+      return [obj as unknown as IdeaCandidate];
+    }
+  }
+
+  console.warn('[IdeaGeneration] Could not normalize candidates, returning empty array');
+  return [];
+}
+
 export class EntrepreneurAgent {
   private readonly ideaGeneration: IdeaGenerationAgent;
   private readonly filterAgent: FilterAgent;
@@ -40,7 +68,10 @@ export class EntrepreneurAgent {
       focusKeywords: keywords,
     };
 
-    const candidates = await this.ideaGeneration.execute(input, onProgress);
+    const rawCandidates = await this.ideaGeneration.execute(input, onProgress);
+
+    // LLM may return various formats — normalize to IdeaCandidate[]
+    const candidates = normalizeCandidates(rawCandidates);
 
     const usedLLMFallback = rssCount === 0 && xCount === 0;
     const totalTime = Date.now() - startTime;

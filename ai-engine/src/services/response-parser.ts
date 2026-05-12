@@ -6,13 +6,25 @@ export class ResponseParser {
       return JSON.parse(codeBlockMatch[1].trim()) as T;
     }
 
+    // Determine if response starts with array or object
+    const firstBracket = raw.indexOf('[');
+    const firstBrace = raw.indexOf('{');
+
+    // Try array first if '[' appears before '{' (or no '{' exists)
+    if (firstBracket !== -1 && (firstBrace === -1 || firstBracket < firstBrace)) {
+      const jsonArr = ResponseParser.extractJsonArray(raw);
+      if (jsonArr) {
+        return JSON.parse(jsonArr) as T;
+      }
+    }
+
     // Try JSON object extraction
     const jsonObj = ResponseParser.extractJsonObject(raw);
     if (jsonObj) {
       return JSON.parse(jsonObj) as T;
     }
 
-    // Try JSON array extraction
+    // Fallback: try array extraction even if '{' came first
     const jsonArr = ResponseParser.extractJsonArray(raw);
     if (jsonArr) {
       return JSON.parse(jsonArr) as T;
