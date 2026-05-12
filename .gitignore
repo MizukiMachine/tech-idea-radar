@@ -35,3 +35,6 @@ frontend/vitest.setup.d.ts
 Thumbs.db
 *.swp
 *.swo
+
+# Claude Code
+.claude/
