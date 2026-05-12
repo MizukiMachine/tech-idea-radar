@@ -1,97 +1,97 @@
-const DEFAULT_API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3001";
-const API_BASE = DEFAULT_API_BASE.replace(/\/$/, "");
+import type { IdeaCandidate } from '../types/idea-candidate';
 
-export type StepResult = {
-  step: number;
-  name: string;
-  output: unknown;
-};
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001').replace(/\/$/, '');
 
-export type WorkflowCallbacks = {
-  onStepComplete?: (result: StepResult) => void;
-  onStepProgress?: (data: { step: number; text: string; charCount: number }) => void;
-  onWorkflowComplete?: (result: unknown) => void;
-  onError?: (error: string) => void;
-  onEnrichmentData?: (data: { rssCount: number; xCount: number }) => void;
-};
-
-export async function executeStep(step: number, input: unknown): Promise<unknown> {
-  const res = await fetch(`${API_BASE}/api/ai/steps/${step}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error ?? `HTTP ${res.status}`);
-  }
+// GET /api/ideas
+export async function fetchIdeas(): Promise<{
+  status: string;
+  candidates: IdeaCandidate[];
+  generatedAt: string;
+  sourceSummary: { rssItemCount: number; xSignalCount: number; usedLLMFallback: boolean };
+}> {
+  const res = await fetch(`${API_BASE}/api/ai/ideas`);
+  if (!res.ok) throw new Error(`fetchIdeas failed: ${res.status}`);
   return res.json();
 }
 
-export function runWorkflow(
-  input: unknown,
-  callbacks: WorkflowCallbacks = {},
+// SSE helper for idea generation / refresh streams
+function ideaStream(
+  url: string,
+  method: string,
+  callbacks: {
+    onProgress?: (text: string) => void;
+    onIdeaGenerated: (idea: IdeaCandidate) => void;
+    onComplete: (summary: { generatedAt: string; count: number }) => void;
+    onError: (error: string) => void;
+  },
 ): AbortController {
   const controller = new AbortController();
 
-  fetch(`${API_BASE}/api/ai/workflow`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-    signal: controller.signal,
-  })
+  fetch(url, { method, signal: controller.signal })
     .then(async (res) => {
       if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error ?? `HTTP ${res.status}`);
+        callbacks.onError(`Stream failed: ${res.status}`);
+        return;
       }
-
       const reader = res.body?.getReader();
-      if (!reader) return;
+      if (!reader) { callbacks.onError('No response body'); return; }
 
       const decoder = new TextDecoder();
-      let buffer = "";
-      let currentEvent = "";
+      let buffer = '';
+      let currentEvent = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
 
         for (const line of lines) {
-          if (line.startsWith("event: ")) {
+          if (line.startsWith('event: ')) {
             currentEvent = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            const raw = line.slice(6);
+          } else if (line.startsWith('data: ')) {
             try {
-              const data = JSON.parse(raw);
-              if (currentEvent === "step_progress") {
-                callbacks.onStepProgress?.(data);
-              } else if (currentEvent === "step_complete") {
-                callbacks.onStepComplete?.(data);
-              } else if (currentEvent === "workflow_complete") {
-                callbacks.onWorkflowComplete?.(data);
-              } else if (currentEvent === "enrichment_data") {
-                callbacks.onEnrichmentData?.(data);
-              } else if (currentEvent === "error") {
-                callbacks.onError?.(data.error ?? "Unknown error");
-              }
-            } catch {
-              // skip malformed data lines
-            }
-            currentEvent = "";
+              const parsed = JSON.parse(line.slice(6));
+              if (currentEvent === 'generation_progress') callbacks.onProgress?.(parsed.text);
+              else if (currentEvent === 'idea_generated') callbacks.onIdeaGenerated(parsed);
+              else if (currentEvent === 'generation_complete') callbacks.onComplete(parsed);
+              else if (currentEvent === 'error') callbacks.onError(parsed.error || 'Unknown error');
+            } catch { /* skip */ }
+            currentEvent = '';
           }
         }
       }
     })
     .catch((err) => {
-      if (err.name !== "AbortError") {
-        callbacks.onError?.(err.message);
-      }
+      if (err.name !== 'AbortError') callbacks.onError(err.message);
     });
 
   return controller;
+}
+
+// GET /api/ideas/stream
+export function streamIdeas(callbacks: Parameters<typeof ideaStream>[2]): AbortController {
+  return ideaStream(`${API_BASE}/api/ai/ideas/stream`, 'GET', callbacks);
+}
+
+// POST /api/ideas/filter
+export async function filterIdeas(query: string, topK?: number): Promise<{
+  filteredCandidates: IdeaCandidate[];
+  filterReasoning: string;
+  matchCriteria: string[];
+}> {
+  const res = await fetch(`${API_BASE}/api/ai/ideas/filter`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, topK }),
+  });
+  if (!res.ok) throw new Error(`filterIdeas failed: ${res.status}`);
+  return res.json();
+}
+
+// POST /api/ideas/refresh
+export function refreshIdeas(callbacks: Parameters<typeof ideaStream>[2]): AbortController {
+  return ideaStream(`${API_BASE}/api/ai/ideas/refresh`, 'POST', callbacks);
 }

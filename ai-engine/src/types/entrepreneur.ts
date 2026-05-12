@@ -1,16 +1,10 @@
-import { SelfAnalysisOutput } from './self-analysis';
 import { MarketResearchOutput } from './market-research';
 import { IdeaProposalOutput } from './idea-proposal';
 
-export interface WorkflowInput {
-  selfAnalysisInput: import('./self-analysis').SelfAnalysisInput;
-  targetMarkets: import('./market-research').TargetMarket[];
-  initialCompetitors: string[];
-}
-
+// Legacy types — kept for backward compatibility with remaining agents
 export interface WorkflowResult {
   steps: {
-    skillAnalysis: SelfAnalysisOutput;
+    skillAnalysis: unknown;
     marketResearch: MarketResearchOutput;
     ideaProposal: IdeaProposalOutput;
   };
@@ -19,6 +13,6 @@ export interface WorkflowResult {
 }
 
 export type StepResult =
-  | { step: 1; output: SelfAnalysisOutput }
+  | { step: 1; output: unknown }
   | { step: 2; output: MarketResearchOutput }
   | { step: 3; output: IdeaProposalOutput };

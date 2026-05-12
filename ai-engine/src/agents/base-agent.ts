@@ -4,7 +4,7 @@ import { AgentStep } from '../config/constants';
 
 export abstract class BaseAgent<TInput, TOutput> {
   abstract readonly name: string;
-  abstract readonly step: AgentStep;
+  readonly step?: AgentStep = undefined;
   abstract get systemPrompt(): string;
   abstract buildUserPrompt(input: TInput): string;
 
