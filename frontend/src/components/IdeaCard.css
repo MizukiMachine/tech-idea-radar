@@ -8,6 +8,9 @@
     display: flex;
     flex-direction: column;
     cursor: pointer;
+    text-align: left;
+    font: inherit;
+    min-height: 190px;
 }
 
 .idea-card:hover {
@@ -15,11 +18,29 @@
     transform: translateY(-2px);
 }
 
+.idea-card--selected {
+    border-color: var(--border-active);
+    box-shadow: var(--shadow-glow);
+}
+
+.idea-card--list {
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(220px, 1.1fr) minmax(260px, 1.4fr) auto;
+    align-items: center;
+    gap: 18px;
+}
+
 .idea-card__header {
     display: flex;
     align-items: flex-start;
     gap: 12px;
     margin-bottom: 10px;
+}
+
+.idea-card--list .idea-card__header,
+.idea-card--list .idea-card__description {
+    margin-bottom: 0;
 }
 
 .idea-card__icon {
@@ -30,7 +51,9 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0;
 }
 
 .idea-card__title {
@@ -40,6 +63,20 @@
     margin: 0;
     line-height: 1.4;
     flex: 1;
+}
+
+.idea-card__heading {
+    flex: 1;
+    min-width: 0;
+}
+
+.idea-card__tagline {
+    display: block;
+    margin-top: 4px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    line-height: 1.4;
 }
 
 .idea-card__description {
@@ -54,12 +91,40 @@
     padding-bottom: 12px;
 }
 
+.idea-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 12px 0;
+}
+
+.idea-card__meta span {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: var(--bg-input);
+    border-radius: 999px;
+    padding: 3px 8px;
+    font-weight: 600;
+}
+
+.idea-card--list .idea-card__meta {
+    margin: 0;
+    justify-content: flex-end;
+}
+
 .idea-card__footer {
     display: flex;
     justify-content: space-between;
     align-items: center;
     padding-top: 10px;
     border-top: 1px solid #f1f5f9;
+}
+
+.idea-card--list .idea-card__footer {
+    border-top: none;
+    padding-top: 0;
+    justify-content: flex-end;
+    gap: 12px;
 }
 
 .idea-card__category {
@@ -101,4 +166,11 @@
 
 .idea-card__trend-bar--filled {
     background: #4a6cf7;
+}
+
+@media (max-width: 900px) {
+    .idea-card--list {
+        display: flex;
+        align-items: stretch;
+    }
 }

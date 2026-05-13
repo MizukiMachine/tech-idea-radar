@@ -21,7 +21,7 @@ export default function StatsBar({ ideas }: StatsBarProps): JSX.Element {
     return (
         <div className="stats-bar">
             <div className="stats-bar__item">
-                <div className="stats-bar__icon stats-bar__icon--blue">📋</div>
+                <div className="stats-bar__icon stats-bar__icon--blue">No</div>
                 <div className="stats-bar__content">
                     <div className="stats-bar__label">提案アイデア数</div>
                     <div className="stats-bar__value">
@@ -32,7 +32,7 @@ export default function StatsBar({ ideas }: StatsBarProps): JSX.Element {
             </div>
 
             <div className="stats-bar__item">
-                <div className="stats-bar__icon stats-bar__icon--green">📈</div>
+                <div className="stats-bar__icon stats-bar__icon--green">Mk</div>
                 <div className="stats-bar__content">
                     <div className="stats-bar__label">市場ニーズ</div>
                     <div className="stats-bar__value">
@@ -48,7 +48,7 @@ export default function StatsBar({ ideas }: StatsBarProps): JSX.Element {
             </div>
 
             <div className="stats-bar__item">
-                <div className="stats-bar__icon stats-bar__icon--purple">⚡</div>
+                <div className="stats-bar__icon stats-bar__icon--purple">MVP</div>
                 <div className="stats-bar__content">
                     <div className="stats-bar__label">短期開発向け</div>
                     <div className="stats-bar__value">
@@ -65,7 +65,7 @@ export default function StatsBar({ ideas }: StatsBarProps): JSX.Element {
             </div>
 
             <div className="stats-bar__item">
-                <div className="stats-bar__icon stats-bar__icon--orange">💰</div>
+                <div className="stats-bar__icon stats-bar__icon--orange">Rev</div>
                 <div className="stats-bar__content">
                     <div className="stats-bar__label">収益化しやすさ</div>
                     <div className="stats-bar__value">

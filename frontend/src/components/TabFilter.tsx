@@ -1,25 +1,29 @@
-import { useState } from 'react';
 import './TabFilter.css';
 
 const TABS = ['すべて', 'SaaS', 'AI', '個人開発', '業務効率化', 'データ', '学習', 'API・ツール'];
 
 interface TabFilterProps {
+    activeTab?: string;
+    viewMode?: 'grid' | 'list';
     onTabChange?: (tab: string) => void;
     onViewChange?: (view: 'grid' | 'list') => void;
     sortLabel?: string;
+    resultCount?: number;
 }
 
-export default function TabFilter({ onTabChange, onViewChange, sortLabel = 'おすすめ順' }: TabFilterProps): JSX.Element {
-    const [activeTab, setActiveTab] = useState('すべて');
-    const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-
+export default function TabFilter({
+    activeTab = 'すべて',
+    viewMode = 'grid',
+    onTabChange,
+    onViewChange,
+    sortLabel = 'おすすめ順',
+    resultCount = 0,
+}: TabFilterProps): JSX.Element {
     const handleTabClick = (tab: string) => {
-        setActiveTab(tab);
         onTabChange?.(tab);
     };
 
     const handleViewToggle = (mode: 'grid' | 'list') => {
-        setViewMode(mode);
         onViewChange?.(mode);
     };
 
@@ -41,7 +45,7 @@ export default function TabFilter({ onTabChange, onViewChange, sortLabel = 'お�
                 </div>
             </div>
             <div className="tab-filter__right">
-                <span className="tab-filter__sort-label">{sortLabel}</span>
+                <span className="tab-filter__sort-label">{sortLabel}・{resultCount}件</span>
                 <div className="tab-filter__view-toggle">
                     <button
                         type="button"

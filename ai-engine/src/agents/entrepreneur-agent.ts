@@ -6,6 +6,7 @@ import { fetchXContext } from '../services/x-client';
 import type { IdeaGenerationInput, IdeaGenerationOutput } from '../types/idea-generation';
 import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semantic-filter';
 import type { IdeaCandidate } from '../types/idea-candidate';
+import type { RssArticle, RssContext } from '../services/mcp-client';
 
 const DEFAULT_KEYWORDS = ['AI', 'SaaS', 'developer', 'productivity', 'automation', 'エンジニア', '個人開発'];
 
@@ -35,6 +36,76 @@ function normalizeCandidates(raw: unknown): IdeaCandidate[] {
 
   console.warn('[IdeaGeneration] Could not normalize candidates, returning empty array');
   return [];
+}
+
+function candidateText(candidate: IdeaCandidate): string {
+  return [
+    candidate.title,
+    candidate.tagline,
+    candidate.description,
+    candidate.productType,
+    candidate.targetUsers,
+    candidate.coreProblem,
+    candidate.differentiation,
+    ...candidate.tags,
+  ].join(' ').toLowerCase();
+}
+
+function scoreArticleForCandidate(article: RssArticle, text: string): number {
+  const articleText = `${article.title} ${article.summary} ${(article.keywords ?? []).join(' ')}`.toLowerCase();
+  let score = 0;
+  for (const keyword of article.keywords ?? []) {
+    if (text.includes(keyword.toLowerCase())) score += 3;
+  }
+  for (const token of text.match(/[A-Za-z][A-Za-z0-9+#.-]{2,}|[ぁ-んァ-ヶ一-龯ー]{2,}/g) ?? []) {
+    if (articleText.includes(token.toLowerCase())) score += 1;
+  }
+  return score;
+}
+
+function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssContext): IdeaCandidate[] {
+  const articles = rssContext.relatedArticles.filter((article) => article.link || article.url);
+  const allowedUrls = new Set(articles.map((article) => article.url ?? article.link));
+  if (articles.length === 0) {
+    return candidates.map((candidate) => ({
+      ...candidate,
+      sources: {
+        ...candidate.sources,
+        evidenceUrls: (candidate.sources.evidenceUrls ?? []).filter((source) => allowedUrls.has(source.url)).slice(0, 3),
+      },
+    }));
+  }
+
+  return candidates.map((candidate) => {
+    const existing = (candidate.sources.evidenceUrls ?? [])
+      .filter((source) => allowedUrls.has(source.url))
+      .slice(0, 3);
+
+    if (existing.length >= 3) {
+      return { ...candidate, sources: { ...candidate.sources, evidenceUrls: existing } };
+    }
+
+    const used = new Set(existing.map((source) => source.url));
+    const text = candidateText(candidate);
+    const additions = articles
+      .map((article) => ({ article, score: scoreArticleForCandidate(article, text) }))
+      .sort((a, b) => b.score - a.score)
+      .filter(({ article }) => !used.has(article.url ?? article.link))
+      .slice(0, 3 - existing.length)
+      .map(({ article }) => ({
+        title: article.title,
+        url: article.url ?? article.link,
+        type: 'rss' as const,
+      }));
+
+    return {
+      ...candidate,
+      sources: {
+        ...candidate.sources,
+        evidenceUrls: [...existing, ...additions],
+      },
+    };
+  });
 }
 
 export class EntrepreneurAgent {
@@ -71,9 +142,12 @@ export class EntrepreneurAgent {
     const rawCandidates = await this.ideaGeneration.execute(input, onProgress);
 
     // LLM may return various formats — normalize to IdeaCandidate[]
-    const candidates = normalizeCandidates(rawCandidates);
+    const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext);
 
-    const usedLLMFallback = rssCount === 0 && xCount === 0;
+    const usedLLMFallback = rssContext.relatedArticles.length === 0 && xCount === 0;
+    const warnings = usedLLMFallback
+      ? ['外部RSS/Xデータを取得できなかったため、LLMの一般知識フォールバックで生成しました。']
+      : [];
     const totalTime = Date.now() - startTime;
     console.log(`[IdeaGeneration] Generated ${candidates.length} ideas in ${totalTime}ms (fallback: ${usedLLMFallback})`);
 
@@ -84,6 +158,8 @@ export class EntrepreneurAgent {
         rssItemCount: rssCount,
         xSignalCount: xCount,
         usedLLMFallback,
+        dataQuality: usedLLMFallback ? 'llm_fallback' : 'external',
+        warnings,
       },
     };
   }

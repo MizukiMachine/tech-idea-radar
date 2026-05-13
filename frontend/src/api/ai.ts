@@ -2,12 +2,20 @@ import type { IdeaCandidate } from '../types/idea-candidate';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3001').replace(/\/$/, '');
 
+export interface SourceSummary {
+  rssItemCount: number;
+  xSignalCount: number;
+  usedLLMFallback: boolean;
+  dataQuality?: 'external' | 'llm_fallback';
+  warnings?: string[];
+}
+
 // GET /api/ideas
 export async function fetchIdeas(): Promise<{
   status: string;
   candidates: IdeaCandidate[];
   generatedAt: string;
-  sourceSummary: { rssItemCount: number; xSignalCount: number; usedLLMFallback: boolean };
+  sourceSummary: SourceSummary;
 }> {
   const res = await fetch(`${API_BASE}/api/ai/ideas`);
   if (!res.ok) throw new Error(`fetchIdeas failed: ${res.status}`);
@@ -21,7 +29,7 @@ function ideaStream(
   callbacks: {
     onProgress?: (text: string) => void;
     onIdeaGenerated: (idea: IdeaCandidate) => void;
-    onComplete: (summary: { generatedAt: string; count: number }) => void;
+    onComplete: (summary: { generatedAt: string; count: number; sourceSummary?: SourceSummary }) => void;
     onError: (error: string) => void;
   },
 ): AbortController {

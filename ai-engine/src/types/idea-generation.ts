@@ -15,5 +15,7 @@ export interface IdeaGenerationOutput {
     rssItemCount: number;
     xSignalCount: number;
     usedLLMFallback: boolean;
+    dataQuality?: 'external' | 'llm_fallback';
+    warnings?: string[];
   };
 }
