@@ -1,18 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { IdeaCandidate } from './types/idea-candidate';
 import { fetchIdeas, streamIdeas, filterIdeas, refreshIdeas } from './api/ai';
+import Sidebar from './components/Sidebar';
+import StatsBar from './components/StatsBar';
+import TabFilter from './components/TabFilter';
+import IdeaCard from './components/IdeaCard';
+import RightPanel from './components/RightPanel';
 import './App.css';
-
-function scoreColor(score: number): string {
-  if (score >= 70) return '#22c55e';
-  if (score >= 40) return '#3b82f6';
-  return '#9ca3af';
-}
-
-function revenueLabel(potential: string): string {
-  const map: Record<string, string> = { 'very high': '★★★★', high: '★★★', medium: '★★', low: '★' };
-  return map[potential.toLowerCase()] ?? potential;
-}
 
 function App(): JSX.Element {
   const [ideas, setIdeas] = useState<IdeaCandidate[]>([]);
@@ -73,8 +67,7 @@ function App(): JSX.Element {
 
     if (!value.trim()) {
       setIsFiltering(false);
-      // Restore all ideas from cache when search cleared
-      fetchIdeas().then((result) => setIdeas(result.candidates)).catch(() => {});
+      fetchIdeas().then((result) => setIdeas(result.candidates)).catch(() => { });
       return;
     }
 
@@ -116,31 +109,34 @@ function App(): JSX.Element {
 
   return (
     <div className="app">
-      {/* Header */}
-      <header className="header">
-        <div className="header__left">
-          <div className="header__logo">
-            <div className="header__logo-icon">B</div>
-            <span className="header__title">Builder Agent Chain</span>
-          </div>
-        </div>
-        <button type="button" className="btn btn--refresh" onClick={handleRefresh} disabled={loading}>
-          {loading ? 'Generating...' : 'Refresh'}
-        </button>
-      </header>
+      {/* Hero Header */}
+      <header className="hero">
+        <h1 className="hero__title">作るものが決まっていないエンジニアへ</h1>
+        <p className="hero__subtitle">
+          あなたのスキル・興味・市場性から、作るべきアイデアを提案
+        </p>
 
-      {/* Search Bar */}
-      <div className="search-bar">
-        <span className="search-bar__icon">&#128269;</span>
-        <input
-          type="text"
-          className="search-bar__input"
-          placeholder="アイデアを検索（例: AI ツール、SaaS、副業...）"
-          value={searchQuery}
-          onChange={(e) => handleSearch(e.target.value)}
-        />
-        {isFiltering && <span className="search-bar__spinner" />}
-      </div>
+        {/* Search bar in header */}
+        <div className="hero__search">
+          <span className="hero__search-icon">🔍</span>
+          <input
+            type="text"
+            className="hero__search-input"
+            placeholder="アイデアを検索（例: AI ツール、SaaS、副業...）"
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+          />
+          {isFiltering && <span className="hero__search-spinner" />}
+          <button
+            type="button"
+            className="hero__refresh-btn"
+            onClick={handleRefresh}
+            disabled={loading}
+          >
+            {loading ? '生成中...' : '🔄 更新'}
+          </button>
+        </div>
+      </header>
 
       {/* Progress indicator */}
       {progressText && (
@@ -152,53 +148,52 @@ function App(): JSX.Element {
       {/* Error */}
       {error && (
         <div className="error-banner">
-          <span className="error-banner__icon">!</span>
+          <span className="error-banner__icon">⚠</span>
           <p>{error}</p>
         </div>
       )}
 
-      {/* Loading state */}
-      {loading && ideas.length === 0 && (
-        <div className="loading-state">
-          <div className="loading-state__spinner" />
-          <p>{progressText || 'トレンドデータを分析してアイデアを生成中...'}</p>
-        </div>
-      )}
+      {/* 3 Column Layout */}
+      <div className="dashboard">
+        {/* Left Sidebar */}
+        <Sidebar />
 
-      {/* Idea Grid */}
-      {ideas.length > 0 && (
-        <div className="idea-grid">
-          {ideas.map((idea) => (
-            <div key={idea.id} className="idea-card">
-              <div className="idea-card__header">
-                <h3 className="idea-card__title">{idea.title}</h3>
-                <span className="idea-card__score" style={{ color: scoreColor(idea.trendScore) }}>
-                  {idea.trendScore}
-                </span>
-              </div>
-              <p className="idea-card__tagline">{idea.tagline}</p>
-              <p className="idea-card__description">{idea.description}</p>
-              <div className="idea-card__tags">
-                {idea.tags.map((tag) => (
-                  <span key={tag} className="idea-card__tag">{tag}</span>
-                ))}
-              </div>
-              <div className="idea-card__footer">
-                <span className="idea-card__meta">{idea.productType}</span>
-                <span className="idea-card__meta">{idea.estimatedMvpTime}</span>
-                <span className="idea-card__revenue">{revenueLabel(idea.revenuePotential)}</span>
-              </div>
+        {/* Main Content */}
+        <main className="main-content">
+          {/* Stats */}
+          <StatsBar ideas={ideas} />
+
+          {/* Tab Filter */}
+          <TabFilter />
+
+          {/* Loading State */}
+          {loading && ideas.length === 0 && (
+            <div className="loading-state">
+              <div className="loading-state__spinner" />
+              <p>{progressText || 'トレンドデータを分析してアイデアを生成中...'}</p>
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
-      {/* Empty state after filtering */}
-      {!loading && ideas.length === 0 && searchQuery && (
-        <div className="empty-state">
-          <p>「{searchQuery}」にマッチするアイデアが見つかりませんでした</p>
-        </div>
-      )}
+          {/* Idea Grid */}
+          {ideas.length > 0 && (
+            <div className="idea-grid">
+              {ideas.map((idea, index) => (
+                <IdeaCard key={idea.id} idea={idea} index={index} />
+              ))}
+            </div>
+          )}
+
+          {/* Empty state after filtering */}
+          {!loading && ideas.length === 0 && searchQuery && (
+            <div className="empty-state">
+              <p>「{searchQuery}」にマッチするアイデアが見つかりませんでした</p>
+            </div>
+          )}
+        </main>
+
+        {/* Right Panel */}
+        <RightPanel />
+      </div>
     </div>
   );
 }

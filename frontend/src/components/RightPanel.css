@@ -1,0 +1,140 @@
+/* ===== Right Panel ===== */
+.right-panel {
+    width: 280px;
+    min-width: 280px;
+    padding: 0 0 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    position: sticky;
+    top: 140px;
+    height: fit-content;
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+}
+
+.right-panel__card {
+    background: #fff;
+    border: 1px solid #e8ecf1;
+    border-radius: 14px;
+    padding: 18px;
+}
+
+.right-panel__card--highlight {
+    background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%);
+    border-color: #fed7aa;
+}
+
+.right-panel__card--trend {
+    background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+    border-color: #bfdbfe;
+}
+
+.right-panel__card-badge {
+    font-size: 11px;
+    font-weight: 600;
+    color: #92400e;
+    margin-bottom: 8px;
+}
+
+.right-panel__card--trend .right-panel__card-badge {
+    color: #1e40af;
+}
+
+.right-panel__card-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1a1f36;
+    margin: 0 0 6px;
+}
+
+.right-panel__card-desc {
+    font-size: 12px;
+    color: #64748b;
+    margin: 0 0 10px;
+    line-height: 1.5;
+}
+
+.right-panel__card-tag {
+    display: inline-block;
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.right-panel__card--highlight .right-panel__card-tag {
+    background: rgba(234, 88, 12, 0.1);
+    color: #ea580c;
+}
+
+.right-panel__card--trend .right-panel__card-tag {
+    background: rgba(37, 99, 235, 0.1);
+    color: #2563eb;
+}
+
+/* Chart */
+.right-panel__chart-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1f36;
+    margin: 0 0 14px;
+}
+
+.right-panel__chart {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.right-panel__chart-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.right-panel__chart-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100px;
+    flex-shrink: 0;
+}
+
+.right-panel__chart-icon {
+    font-size: 14px;
+}
+
+.right-panel__chart-name {
+    font-size: 12px;
+    color: #4a5568;
+    font-weight: 500;
+}
+
+.right-panel__chart-bar-bg {
+    flex: 1;
+    height: 8px;
+    background: #f1f5f9;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.right-panel__chart-bar {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s ease;
+}
+
+.right-panel__chart-pct {
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    width: 32px;
+    text-align: right;
+}
+
+@media (max-width: 1400px) {
+    .right-panel {
+        display: none;
+    }
+}

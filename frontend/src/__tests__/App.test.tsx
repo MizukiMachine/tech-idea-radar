@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import App from "../App";
 
 const mockFetch = vi.fn();
@@ -11,22 +10,26 @@ beforeEach(() => {
 });
 
 describe("App", () => {
-  it("renders workflow input view by default", () => {
+  it("renders hero title", () => {
     render(<App />);
-    expect(screen.getByText("Builder Agent Chain")).toBeTruthy();
-    expect(screen.getByText("Workflow Input (JSON)")).toBeTruthy();
-    expect(screen.getByText("Run Workflow")).toBeTruthy();
+    expect(screen.getByText("作るものが決まっていないエンジニアへ")).toBeTruthy();
   });
 
-  it("shows JSON parse error on invalid input", async () => {
-    const user = userEvent.setup();
+  it("renders sidebar filter section", () => {
     render(<App />);
+    expect(screen.getByText("フィルター")).toBeTruthy();
+    expect(screen.getByText("得意技術")).toBeTruthy();
+  });
 
-    const textarea = screen.getByRole("textbox");
-    await user.clear(textarea);
-    await user.type(textarea, "not valid json");
-    await user.click(screen.getByText("Run Workflow"));
+  it("renders search input", () => {
+    render(<App />);
+    const input = screen.getByPlaceholderText("アイデアを検索（例: AI ツール、SaaS、副業...）");
+    expect(input).toBeTruthy();
+  });
 
-    expect(screen.getByText(/JSON parse error/)).toBeTruthy();
+  it("renders right panel cards", () => {
+    render(<App />);
+    expect(screen.getByText("サブスク管理SaaS")).toBeTruthy();
+    expect(screen.getByText("AI画像生成APIサービス")).toBeTruthy();
   });
 });
