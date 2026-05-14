@@ -20,7 +20,6 @@ export default [
       "**/.next/**",
       "**/coverage/**",
       "**/generated/**",
-      "ai-engine/**",
     ],
   },
   js.configs.recommended,
@@ -39,6 +38,7 @@ export default [
         project: [
           "./frontend/tsconfig.json",
           "./backend/tsconfig.json",
+          "./ai-engine/tsconfig.json",
         ],
       },
     },
@@ -52,7 +52,8 @@ export default [
     rules: {
       ...reactHooks.configs.recommended.rules,
       ...reactRefresh.configs.recommended.rules,
-      "no-unused-vars": "warn",
+      "no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": ["warn", { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_" }],
       "no-console": "off",
       eqeqeq: ["error", "smart"],
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],

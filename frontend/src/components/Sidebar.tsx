@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { IdeaCandidate } from '../types/idea-candidate';
 import './Sidebar.css';
 
 const TECH_GROUPS = [
@@ -50,6 +51,7 @@ interface SidebarProps {
     onRevenueChange?: (value: number | null) => void;
     onTimeframeChange?: (value: number | null) => void;
     onSortChange?: (sort: string) => void;
+    highlightedIdea?: IdeaCandidate;
 }
 
 export default function Sidebar({
@@ -58,6 +60,7 @@ export default function Sidebar({
     onRevenueChange,
     onTimeframeChange,
     onSortChange,
+    highlightedIdea,
 }: SidebarProps): JSX.Element {
     const [activeTech, setActiveTech] = useState('すべて');
     const [interests, setInterests] = useState<Record<string, boolean>>(
@@ -261,33 +264,20 @@ export default function Sidebar({
                 </select>
             </div>
 
-            {/* Profile */}
-            <div className="sidebar__profile">
-                <div className="sidebar__profile-header">
-                    <div className="sidebar__profile-avatar">&lt;/&gt;</div>
-                    <div className="sidebar__profile-info">
-                        <div className="sidebar__profile-name">あなたのプロフィール</div>
-                        <div className="sidebar__profile-role">フルスタックエンジニア</div>
+            {highlightedIdea && (
+                <div className="sidebar__section" style={{ marginTop: 16 }}>
+                    <div className="sidebar__highlight-card">
+                        <div className="sidebar__highlight-badge">短期開発におすすめ</div>
+                        <div className="sidebar__highlight-title">{highlightedIdea.title}</div>
+                        <div className="sidebar__highlight-desc">
+                            {highlightedIdea.tagline || highlightedIdea.coreProblem}
+                        </div>
+                        <span className="sidebar__highlight-tag">
+                            {highlightedIdea.tags.slice(0, 2).join('・') || highlightedIdea.productType}
+                        </span>
                     </div>
                 </div>
-                <div className="sidebar__profile-details">
-                    データ分析に興味あり<br />
-                    SaaS開発の経験あり
-                </div>
-                <button type="button" className="sidebar__profile-edit-btn">プロフィールを編集</button>
-            </div>
-
-            {/* Highlight Card */}
-            <div className="sidebar__section" style={{ marginTop: 16 }}>
-                <div className="sidebar__highlight-card">
-                    <div className="sidebar__highlight-badge">短期開発におすすめ</div>
-                    <div className="sidebar__highlight-title">Markdownメモ共有サービス</div>
-                    <div className="sidebar__highlight-desc">
-                        シンプルにメモを共有できるチーム向けサービス
-                    </div>
-                    <span className="sidebar__highlight-tag">SaaS・個人開発</span>
-                </div>
-            </div>
+            )}
         </aside>
     );
 }

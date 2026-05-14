@@ -34,9 +34,16 @@ router.get('/ideas', async (_req: Request, res: Response) => {
       return;
     }
 
-    // Cache miss — generate synchronously
-    const result = await generateAndCacheIdeas();
-    res.json({ status: 'fresh', ...result });
+    res.json({
+      status: 'empty',
+      candidates: [],
+      generatedAt: '',
+      sourceSummary: {
+        rssItemCount: 0,
+        xSignalCount: 0,
+        usedLLMFallback: false,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[API] GET /ideas error: ${message}`);

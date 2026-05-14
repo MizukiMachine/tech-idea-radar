@@ -1,4 +1,4 @@
-import { EntrepreneurAgent, type IdeaGenerationOutput, type IdeaCandidate, type SemanticFilterInput, type SemanticFilterOutput } from 'ai-engine';
+import { EntrepreneurAgent, type IdeaGenerationOutput, type SemanticFilterInput, type SemanticFilterOutput } from 'ai-engine';
 import { getClient } from './ai-engine';
 import { CACHE_REFRESH_INTERVAL_MS } from 'ai-engine';
 

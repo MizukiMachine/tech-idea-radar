@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { IdeaCandidate } from './types/idea-candidate';
-import { fetchIdeas, streamIdeas, refreshIdeas, type SourceSummary } from './api/ai';
+import { fetchIdeas, streamIdeas, refreshIdeas, filterIdeas, type SourceSummary } from './api/ai';
 import Sidebar from './components/Sidebar';
 import StatsBar from './components/StatsBar';
 import TabFilter from './components/TabFilter';
@@ -78,12 +78,29 @@ function sortIdeas(ideas: IdeaCandidate[], sort: string): IdeaCandidate[] {
   });
 }
 
+function userFacingError(message: string): string {
+  const normalized = message.toLowerCase();
+  if (normalized.includes('failed to fetch') || normalized.includes('stream failed')) {
+    return 'バックエンドに接続できません。API サーバーを起動してから、もう一度生成してください。';
+  }
+  if (normalized.includes('zai_api_key')) {
+    return 'ZAI_API_KEY が設定されていません。バックエンドの環境変数を確認してください。';
+  }
+  if (normalized.includes('ideas not yet generated')) {
+    return 'まだアイデアが生成されていません。先に生成を実行してください。';
+  }
+  return message;
+}
+
 function App(): JSX.Element {
   const [ideas, setIdeas] = useState<IdeaCandidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [progressText, setProgressText] = useState<string | null>(null);
+  const [semanticFilterText, setSemanticFilterText] = useState<string | null>(null);
+  const [semanticFilteredIdeas, setSemanticFilteredIdeas] = useState<IdeaCandidate[] | null>(null);
+  const [semanticFiltering, setSemanticFiltering] = useState(false);
   const [sourceSummary, setSourceSummary] = useState<SourceSummary | null>(null);
   const [activeTech, setActiveTech] = useState('すべて');
   const [activeInterests, setActiveInterests] = useState(['business', 'ai', 'education']);
@@ -125,8 +142,9 @@ function App(): JSX.Element {
           setProgressText(null);
         },
         onError: (msg) => {
-          setError(msg);
+          setError(userFacingError(msg));
           setLoading(false);
+          setProgressText(null);
         },
       });
     }
@@ -141,8 +159,32 @@ function App(): JSX.Element {
   // Debounced search
   const handleSearch = useCallback((value: string) => {
     setSearchQuery(value);
+    setSemanticFilteredIdeas(null);
+    setSemanticFilterText(null);
     setError(null);
   }, []);
+
+  const handleSemanticSearch = useCallback(async () => {
+    const query = searchQuery.trim();
+    if (!query) {
+      setSemanticFilteredIdeas(null);
+      setSemanticFilterText(null);
+      return;
+    }
+
+    setSemanticFiltering(true);
+    setError(null);
+    try {
+      const result = await filterIdeas(query);
+      setSemanticFilteredIdeas(result.filteredCandidates);
+      setSemanticFilterText(result.filterReasoning);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '意味検索に失敗しました';
+      setError(userFacingError(message));
+    } finally {
+      setSemanticFiltering(false);
+    }
+  }, [searchQuery]);
 
   // Refresh
   const handleRefresh = useCallback(() => {
@@ -150,8 +192,10 @@ function App(): JSX.Element {
     setIdeas([]);
     setError(null);
     setSearchQuery('');
+    setSemanticFilteredIdeas(null);
+    setSemanticFilterText(null);
     setSourceSummary(null);
-    setProgressText('Refreshing...');
+    setProgressText('トレンドデータを取得しています...');
     abortRef.current?.abort();
 
     abortRef.current = refreshIdeas({
@@ -163,17 +207,19 @@ function App(): JSX.Element {
         setProgressText(null);
       },
       onError: (msg) => {
-        setError(msg);
+        setError(userFacingError(msg));
         setLoading(false);
+        setProgressText(null);
       },
     });
   }, []);
 
+  const sourceIdeas = semanticFilteredIdeas ?? ideas;
   const displayedIdeas = sortIdeas(
-    ideas.filter((idea) => {
+    sourceIdeas.filter((idea) => {
       const text = ideaText(idea);
       const normalizedSearch = searchQuery.trim().toLowerCase();
-      if (normalizedSearch && !text.toLowerCase().includes(normalizedSearch)) return false;
+      if (!semanticFilteredIdeas && normalizedSearch && !text.toLowerCase().includes(normalizedSearch)) return false;
       if (activeTech !== 'すべて' && !text.includes(activeTech.replace('AI・機械学習', 'AI'))) return false;
       if (activeInterests.length > 0) {
         const hasInterestMatch = activeInterests.some((interest) => {
@@ -191,6 +237,9 @@ function App(): JSX.Element {
 
   const topRevenueIdea = sortIdeas(displayedIdeas, '収益性順')[0] ?? ideas[0];
   const topTrendIdea = sortIdeas(displayedIdeas, 'トレンドスコア順')[0] ?? ideas[0];
+  const hasIdeas = ideas.length > 0;
+  const showDashboard = loading || hasIdeas;
+  const showSetupState = !loading && !hasIdeas;
   const handleIdeaSelect = useCallback((idea: IdeaCandidate) => {
     setSelectedIdea(idea);
     setModalIdea(idea);
@@ -211,19 +260,36 @@ function App(): JSX.Element {
           <input
             type="text"
             className="hero__search-input"
-            placeholder="アイデアを検索（例: AI ツール、SaaS、副業...）"
+            placeholder="キーワードで絞り込み（例: AI ツール、SaaS、副業）"
             value={searchQuery}
             onChange={(e) => handleSearch(e.target.value)}
+            disabled={!hasIdeas}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void handleSemanticSearch();
+            }}
           />
+          <button
+            type="button"
+            className="hero__semantic-btn"
+            onClick={() => void handleSemanticSearch()}
+            disabled={!hasIdeas || loading || semanticFiltering || !searchQuery.trim()}
+          >
+            {semanticFiltering ? '検索中...' : 'AIで絞り込み'}
+          </button>
           <button
             type="button"
             className="hero__refresh-btn"
             onClick={handleRefresh}
             disabled={loading}
           >
-            {loading ? '生成中...' : '更新'}
+            {loading ? '生成中...' : hasIdeas ? '再生成' : '生成する'}
           </button>
         </div>
+        {hasIdeas && (
+          <p className="hero__search-hint">
+            入力すると一覧を絞り込みます。AIで絞り込みは、文章の意図に近い候補を再選定します。
+          </p>
+        )}
       </header>
 
       {/* Progress indicator */}
@@ -233,8 +299,7 @@ function App(): JSX.Element {
         </div>
       )}
 
-      {/* Error */}
-      {error && (
+      {error && hasIdeas && (
         <div className="error-banner">
           <span className="error-banner__icon">⚠</span>
           <p>{error}</p>
@@ -248,72 +313,95 @@ function App(): JSX.Element {
         </div>
       )}
 
-      {/* 3 Column Layout */}
-      <div className="dashboard">
-        {/* Left Sidebar */}
-        <Sidebar
-          onTechFilter={setActiveTech}
-          onInterestChange={setActiveInterests}
-          onRevenueChange={setRevenueMin}
-          onTimeframeChange={setTimeframeMin}
-          onSortChange={setSortLabel}
-        />
+      {semanticFilterText && (
+        <div className="semantic-filter-banner">
+          <span className="semantic-filter-banner__label">意味検索</span>
+          <p>{semanticFilterText}</p>
+        </div>
+      )}
 
-        {/* Main Content */}
-        <main className="main-content">
-          {/* Stats */}
-          <StatsBar ideas={displayedIdeas} />
-
-          {/* Tab Filter */}
-          <TabFilter
-            activeTab={activeTab}
-            viewMode={viewMode}
-            onTabChange={setActiveTab}
-            onViewChange={setViewMode}
-            sortLabel={sortLabel}
-            resultCount={displayedIdeas.length}
-          />
-
-          {/* Loading State */}
-          {loading && ideas.length === 0 && (
-            <div className="loading-state">
-              <div className="loading-state__spinner" />
-              <p>{progressText || 'トレンドデータを分析してアイデアを生成中...'}</p>
-            </div>
-          )}
-
-          {/* Idea Grid */}
-          {displayedIdeas.length > 0 && (
-            <div className={`idea-grid idea-grid--${viewMode}`}>
-              {displayedIdeas.map((idea, index) => (
-                <IdeaCard
-                  key={idea.id}
-                  idea={idea}
-                  index={index}
-                  viewMode={viewMode}
-                  selected={selectedIdea?.id === idea.id}
-                  onSelect={handleIdeaSelect}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Empty state after filtering */}
-          {!loading && displayedIdeas.length === 0 && (
-            <div className="empty-state">
-              <p>現在の条件にマッチするアイデアが見つかりませんでした</p>
-            </div>
-          )}
+      {showSetupState && (
+        <main className="setup-state">
+          <div className="setup-state__icon">⌁</div>
+          <h2>アイデア生成を開始します</h2>
+          <p>
+            RSS と X の市場シグナルを集め、個人開発で取り組みやすいプロダクト案を生成します。
+          </p>
+          {error && <div className="setup-state__error">{error}</div>}
+          <button type="button" className="setup-state__button" onClick={handleRefresh}>
+            アイデアを生成
+          </button>
         </main>
+      )}
 
-        {/* Right Panel */}
-        <RightPanel
-          ideas={displayedIdeas}
-          selectedIdea={selectedIdea}
-          topRevenueIdea={topRevenueIdea}
-          topTrendIdea={topTrendIdea}
-        />
-      </div>
+      {showDashboard && (
+        <div className="dashboard">
+          {hasIdeas && (
+            <Sidebar
+              onTechFilter={setActiveTech}
+              onInterestChange={setActiveInterests}
+              onRevenueChange={setRevenueMin}
+              onTimeframeChange={setTimeframeMin}
+              onSortChange={setSortLabel}
+              highlightedIdea={topTrendIdea}
+            />
+          )}
+
+          <main className="main-content">
+            {hasIdeas && <StatsBar ideas={displayedIdeas} />}
+
+            {hasIdeas && (
+              <TabFilter
+                activeTab={activeTab}
+                viewMode={viewMode}
+                onTabChange={setActiveTab}
+                onViewChange={setViewMode}
+                sortLabel={sortLabel}
+                resultCount={displayedIdeas.length}
+              />
+            )}
+
+            {loading && ideas.length === 0 && (
+              <div className="loading-state">
+                <div className="loading-state__spinner" />
+                <h2>アイデアを生成しています</h2>
+                <p>{progressText || 'トレンドデータを分析中です。完了すると候補が一覧に表示されます。'}</p>
+              </div>
+            )}
+
+            {displayedIdeas.length > 0 && (
+              <div className={`idea-grid idea-grid--${viewMode}`}>
+                {displayedIdeas.map((idea, index) => (
+                  <IdeaCard
+                    key={idea.id}
+                    idea={idea}
+                    index={index}
+                    viewMode={viewMode}
+                    selected={selectedIdea?.id === idea.id}
+                    onSelect={handleIdeaSelect}
+                  />
+                ))}
+              </div>
+            )}
+
+            {hasIdeas && !loading && displayedIdeas.length === 0 && (
+              <div className="empty-state">
+                <h2>条件に合うアイデアがありません</h2>
+                <p>検索語、タブ、左側のフィルターを緩めると候補が戻ります。</p>
+              </div>
+            )}
+          </main>
+
+          {hasIdeas && (
+            <RightPanel
+              ideas={displayedIdeas}
+              selectedIdea={selectedIdea}
+              topRevenueIdea={topRevenueIdea}
+              topTrendIdea={topTrendIdea}
+            />
+          )}
+        </div>
+      )}
       {modalIdea && <IdeaDetailModal idea={modalIdea} onClose={() => setModalIdea(null)} />}
     </div>
   );

@@ -15,7 +15,7 @@ React SPA for Builder Agent Chain.
 npm install
 ```
 
-Copy `.env.example` to `.env` and set `VITE_API_BASE_URL` if needed (defaults to `http://localhost:3001`).
+Copy `.env.example` to `.env` if needed. Leave `VITE_API_BASE_URL` empty during local Vite development to use the built-in `/api` proxy.
 
 ## Scripts
 

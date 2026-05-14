@@ -191,7 +191,6 @@ describe('buildUserPrompt with xContext', () => {
     const { MarketResearchAgent } = await import('../src/agents/market-research-agent');
     const { LLMClient } = await import('../src/services/llm-client');
 
-    vi.mock('../src/services/llm-client');
     const client = new LLMClient('test-key');
     vi.spyOn(client, 'send').mockResolvedValue('{}');
 

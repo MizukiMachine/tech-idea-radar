@@ -139,7 +139,8 @@ export class EntrepreneurAgent {
       focusKeywords: keywords,
     };
 
-    const rawCandidates = await this.ideaGeneration.execute(input, onProgress);
+    onProgress?.('アイデア候補を生成中...');
+    const rawCandidates = await this.ideaGeneration.execute(input);
 
     // LLM may return various formats — normalize to IdeaCandidate[]
     const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext);

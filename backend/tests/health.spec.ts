@@ -1,13 +1,28 @@
 import { describe, it, expect } from "vitest";
-import request from "supertest";
-import app from "../src/app";
+import healthRouter from "../src/routes/health";
 
 describe("GET /health", () => {
-  it("responds with service status", async () => {
-    const response = await request(app).get("/health");
+  it("responds with service status", () => {
+    const route = healthRouter.stack.find((layer) => layer.route?.path === "/");
+    const handler = route?.route?.stack[0]?.handle;
+    let statusCode = 0;
+    let body: unknown;
 
-    expect(response.status).toBe(200);
-    expect(response.body).toEqual(
+    const res = {
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        body = payload;
+        return this;
+      },
+    };
+
+    handler?.({} as never, res as never, (() => undefined) as never);
+
+    expect(statusCode).toBe(200);
+    expect(body).toEqual(
       expect.objectContaining({
         status: "ok",
         service: "backend",
