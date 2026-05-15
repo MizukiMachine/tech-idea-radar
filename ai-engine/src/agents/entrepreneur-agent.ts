@@ -1,4 +1,5 @@
 import { LLMClient } from '../services/llm-client';
+import { ResponseParser } from '../services/response-parser';
 import { IdeaGenerationAgent } from './idea-generation-agent';
 import { FilterAgent } from './filter-agent';
 import { fetchRssContext } from '../services/mcp-client';
@@ -11,6 +12,7 @@ import type { XContext } from '../types/x-context';
 
 const DEFAULT_KEYWORDS = ['AI', 'SaaS', 'developer', 'productivity', 'automation', 'エンジニア', '個人開発'];
 const MAX_EVIDENCE_URLS = 1;
+const MAX_TRANSLATED_RSS_ARTICLES = 18;
 const MIN_RSS_EVIDENCE_SCORE = 4;
 const MIN_X_EVIDENCE_SCORE = 5;
 const MIN_DECLARED_X_SEED_SCORE = 2;
@@ -21,6 +23,43 @@ const GENERIC_EVIDENCE_TERMS = new Set([
   'スキル', '欲しい', '不便', '困ってる', '改善', '問題', '課題', '自動化',
   '文章を', '章を書', 'を書く',
 ]);
+
+interface RssArticleTranslation {
+  title: string;
+  titleJa: string;
+  summaryJa?: string;
+}
+
+function containsJapanese(text: string): boolean {
+  return /[ぁ-んァ-ヶ一-龯]/.test(text);
+}
+
+function normalizeTitle(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function mergeRssArticleTranslations(rssContext: RssContext, translations: RssArticleTranslation[]): RssContext {
+  const titleMap = new Map(
+    translations
+      .map((translation) => [normalizeTitle(translation.title), normalizeTitle(translation.titleJa)] as const)
+      .filter(([, titleJa]) => titleJa),
+  );
+  const summaryMap = new Map(
+    translations
+      .map((translation) => [normalizeTitle(translation.title), normalizeTitle(translation.summaryJa ?? '')] as const)
+      .filter(([, summaryJa]) => summaryJa),
+  );
+
+  return {
+    ...rssContext,
+    relatedArticles: rssContext.relatedArticles.map((article) => {
+      if (article.titleJa || containsJapanese(article.title)) return article;
+      const titleJa = titleMap.get(normalizeTitle(article.title));
+      const summaryJa = summaryMap.get(normalizeTitle(article.title));
+      return titleJa ? { ...article, titleJa, summaryJa } : article;
+    }),
+  };
+}
 
 function normalizeCandidates(raw: unknown): IdeaCandidate[] {
   // Already an array
@@ -311,10 +350,38 @@ function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssConte
 export class EntrepreneurAgent {
   private readonly ideaGeneration: IdeaGenerationAgent;
   private readonly filterAgent: FilterAgent;
+  private readonly llm: LLMClient;
 
   constructor(llm: LLMClient) {
+    this.llm = llm;
     this.ideaGeneration = new IdeaGenerationAgent(llm);
     this.filterAgent = new FilterAgent(llm);
+  }
+
+  private async translateRssArticles(rssContext: RssContext): Promise<RssContext> {
+    const targets = rssContext.relatedArticles
+      .filter((article) => article.title && !article.titleJa && !containsJapanese(article.title))
+      .slice(0, MAX_TRANSLATED_RSS_ARTICLES)
+      .map((article) => ({
+        title: article.title,
+        summary: article.summary.slice(0, 700),
+      }));
+
+    if (targets.length === 0) return rssContext;
+
+    try {
+      const raw = await this.llm.send(
+        'あなたは技術ニュースの編集者です。英語RSS記事のタイトルを自然な日本語見出しに翻訳し、本文要約を日本語で2文以内にまとめます。固有名詞、製品名、技術名は無理に訳さず残します。JSON以外は出力しません。',
+        `次の英語RSS記事を日本語化してください。\n出力は [{"title":"原文タイトル","titleJa":"日本語タイトル","summaryJa":"日本語の要約"}] のJSON配列のみ。\n\n${JSON.stringify(targets, null, 2)}`,
+        5000,
+      );
+      const translations = ResponseParser.parse<RssArticleTranslation[]>(raw);
+      return mergeRssArticleTranslations(rssContext, translations);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[TrendScan] RSS article translation failed: ${message}`);
+      return rssContext;
+    }
   }
 
   private async scanTrendContext(
@@ -354,7 +421,11 @@ export class EntrepreneurAgent {
 
   async scanTrends(onProgress?: (text: string) => void): Promise<TrendScanOutput> {
     console.log('[TrendScan] Starting trend scan pipeline');
-    return this.scanTrendContext(onProgress);
+    const result = await this.scanTrendContext(onProgress);
+    return {
+      ...result,
+      rssContext: await this.translateRssArticles(result.rssContext),
+    };
   }
 
   async generateIdeas(onProgress?: (text: string) => void, inputFocusKeywords?: string[]): Promise<IdeaGenerationOutput> {

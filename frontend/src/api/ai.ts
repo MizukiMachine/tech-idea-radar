@@ -52,11 +52,13 @@ export interface RssTrendItem {
 
 export interface RssArticle {
   title: string;
+  titleJa?: string;
   link: string;
   url?: string;
   published: string;
   publishedAt?: string;
   summary: string;
+  summaryJa?: string;
   description?: string;
   source: string;
   keywords?: string[];

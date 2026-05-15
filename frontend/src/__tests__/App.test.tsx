@@ -51,11 +51,13 @@ const trends = {
     trendingKeywords: [{ word: "AI", count: 4 }],
     relatedArticles: [{
       title: "AI agent tools are moving into product workflows",
+      titleJa: "AIエージェントツールがプロダクト業務に広がる",
       link: "https://example.com/article",
       url: "https://example.com/article",
       published: generatedAt,
       publishedAt: generatedAt,
       summary: "Teams are adopting agent tools for product work.",
+      summaryJa: "チームがプロダクト業務にAIエージェントツールを導入している動きを紹介しています。",
       source: "Example RSS",
       keywords: ["AI", "agent"],
     }],
@@ -112,33 +114,35 @@ beforeEach(() => {
 });
 
 describe("App", () => {
-  it("renders the trend-first workspace", async () => {
+  it("renders the idea workspace first", async () => {
     render(<App />);
     expect(screen.getByText("AI Build Radar")).toBeTruthy();
-    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
-    expect(screen.getByText("X需要シグナル")).toBeTruthy();
-    expect(screen.getByText("RSSフィード")).toBeTruthy();
-  });
-
-  it("renders sidebar filter section after opening ideas", async () => {
-    render(<App />);
-    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /作るもの提案/ }));
     await waitFor(() => expect(screen.getByText("フィルター")).toBeTruthy());
     expect(screen.getByText("得意技術")).toBeTruthy();
+    expect(screen.getByPlaceholderText("キーワードで絞り込み（例: AI ツール、SaaS、副業）")).toBeTruthy();
+  });
+
+  it("renders RSS-only trends after switching tabs", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
+    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
+    expect(screen.getByText("RSSフィード")).toBeTruthy();
+    expect(screen.queryByText("X需要シグナル")).toBeNull();
+    expect(screen.queryByText("Xトレンド")).toBeNull();
+    expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
+    expect(screen.queryByText("AI agent tools are moving into product workflows")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "記事の要約" }));
+    expect(screen.getByText("チームがプロダクト業務にAIエージェントツールを導入している動きを紹介しています。")).toBeTruthy();
   });
 
   it("renders search input on the ideas view", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /作るもの提案/ }));
+    await waitFor(() => expect(screen.getByText("フィルター")).toBeTruthy());
     expect(screen.getByPlaceholderText("キーワードで絞り込み（例: AI ツール、SaaS、副業）")).toBeTruthy();
   });
 
   it("renders right panel cards on the ideas view", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: /作るもの提案/ }));
     await waitFor(() => expect(screen.getByText(/高収益ポテンシャル/)).toBeTruthy());
     expect(screen.getByText(/急上昇トレンド/)).toBeTruthy();
     expect(screen.getByText("選択中のアイデア")).toBeTruthy();

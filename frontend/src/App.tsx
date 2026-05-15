@@ -123,7 +123,7 @@ function isIdeasMeta(value: unknown): value is IdeasMeta {
 }
 
 function App(): JSX.Element {
-  const [activeView, setActiveView] = useState<WorkspaceView>('trends');
+  const [activeView, setActiveView] = useState<WorkspaceView>('ideas');
   const [trends, setTrends] = useState<TrendScan | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [trendError, setTrendError] = useState<string | null>(null);
@@ -352,18 +352,18 @@ function App(): JSX.Element {
         <nav className="workspace-tabs" aria-label="主要機能">
           <button
             type="button"
-            className={`workspace-tabs__item ${activeView === 'trends' ? 'workspace-tabs__item--active' : ''}`}
-            onClick={() => setActiveView('trends')}
-          >
-            トレンド
-          </button>
-          <button
-            type="button"
             className={`workspace-tabs__item ${activeView === 'ideas' ? 'workspace-tabs__item--active' : ''}`}
             onClick={handleOpenIdeas}
           >
             作るもの提案
             {hasIdeas && <span>{ideas.length}</span>}
+          </button>
+          <button
+            type="button"
+            className={`workspace-tabs__item ${activeView === 'trends' ? 'workspace-tabs__item--active' : ''}`}
+            onClick={() => setActiveView('trends')}
+          >
+            トレンド
           </button>
         </nav>
 

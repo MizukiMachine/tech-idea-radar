@@ -59,11 +59,13 @@ export interface RssTrendItem {
 
 export interface RssArticle {
   title: string;
+  titleJa?: string;
   link: string;
   url?: string;
   published: string;
   publishedAt?: string;
   summary: string;
+  summaryJa?: string;
   description?: string;
   source: string;
   keywords?: string[];
@@ -79,6 +81,8 @@ const MCP_TIMEOUT = 5000;
 const PUBLIC_RSS_TIMEOUT = 8000;
 const PUBLIC_RSS_CACHE_TTL = 30 * 60 * 1000;
 const MAX_RELATED_ARTICLES = 18;
+const SOURCE_FIRST_PASS_LIMIT = 2;
+const SOURCE_TOTAL_LIMIT = 5;
 
 interface PublicFeed {
   name: string;
@@ -280,7 +284,7 @@ function rankArticles(articles: RssArticle[], keywords: string[]): RssArticle[] 
     return true;
   });
 
-  return deduped
+  const ranked = deduped
     .map((article) => {
       const text = `${article.title} ${article.summary} ${(article.keywords ?? []).join(' ')}`.toLowerCase();
       const keywordScore = keywords.reduce((score, keyword) => (
@@ -290,9 +294,38 @@ function rankArticles(articles: RssArticle[], keywords: string[]): RssArticle[] 
       const recencyScore = Number.isNaN(publishedTime) ? 0 : Math.max(0, 7 - ((Date.now() - publishedTime) / 86_400_000));
       return { article, score: keywordScore + recencyScore };
     })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_RELATED_ARTICLES)
-    .map(({ article }) => article);
+    .sort((a, b) => b.score - a.score);
+
+  const sourceOrder = [
+    ...PUBLIC_RSS_FEEDS.map((feed) => feed.name),
+    ...new Set(ranked.map(({ article }) => article.source).filter((source) => !PUBLIC_RSS_FEEDS.some((feed) => feed.name === source))),
+  ];
+  const selected: RssArticle[] = [];
+  const selectedUrls = new Set<string>();
+  const sourceCounts = new Map<string, number>();
+
+  const addArticle = (article: RssArticle, sourceLimit: number): void => {
+    if (selected.length >= MAX_RELATED_ARTICLES) return;
+    const key = article.link || article.title;
+    if (selectedUrls.has(key)) return;
+    const currentCount = sourceCounts.get(article.source) ?? 0;
+    if (currentCount >= sourceLimit) return;
+    selected.push(article);
+    selectedUrls.add(key);
+    sourceCounts.set(article.source, currentCount + 1);
+  };
+
+  for (const source of sourceOrder) {
+    for (const { article } of ranked.filter((item) => item.article.source === source).slice(0, SOURCE_FIRST_PASS_LIMIT)) {
+      addArticle(article, SOURCE_FIRST_PASS_LIMIT);
+    }
+  }
+
+  for (const { article } of ranked) {
+    addArticle(article, SOURCE_TOTAL_LIMIT);
+  }
+
+  return selected;
 }
 
 async function fetchPublicRssContext(keywords: string[]): Promise<RssContext> {
