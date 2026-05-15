@@ -4,6 +4,17 @@ import type { IdeaCandidate } from './idea-candidate';
 export interface IdeaGenerationInput {
   rssContext?: RssContext;
   focusKeywords?: string[];
+  previousIdeas?: IdeaCandidate[];
+  requestedIdeaCount?: number;
+  recentlyUsedSources?: UsedRssSource[];
+}
+
+export interface UsedRssSource {
+  title: string;
+  url: string;
+  lastUsedAt?: string;
+  count?: number;
+  ideaTitles?: string[];
 }
 
 export interface IdeaGenerationOutput {
@@ -14,6 +25,13 @@ export interface IdeaGenerationOutput {
     usedLLMFallback: boolean;
     dataQuality?: 'external' | 'llm_fallback';
     warnings?: string[];
+    generatedIdeaCount?: number;
+    newIdeaCount?: number;
+    duplicateIdeaCount?: number;
+    totalIdeaCount?: number;
+    maxStoredIdeaCount?: number;
+    usedSourceUrlCount?: number;
+    skippedPreviouslyUsedRssCount?: number;
   };
 }
 

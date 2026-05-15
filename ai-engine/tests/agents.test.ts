@@ -67,6 +67,15 @@ describe('IdeaGenerationAgent', () => {
     const result = await agent.execute({
       rssContext: { trendingKeywords: [{ word: 'AI', count: 2 }], relatedArticles: [] },
       focusKeywords: ['AI', 'SaaS'],
+      previousIdeas: [candidate],
+      requestedIdeaCount: 5,
+      recentlyUsedSources: [{
+        title: 'Already used article',
+        url: 'https://example.com/used-rss',
+        lastUsedAt: '2026-05-14T00:00:00.000Z',
+        count: 1,
+        ideaTitles: ['Used idea'],
+      }],
     });
 
     expect(result[0].title).toBe('AI Ops Memo');
@@ -75,6 +84,11 @@ describe('IdeaGenerationAgent', () => {
     expect(prompt).toContain('AI, SaaS');
     expect(prompt).toContain('### RSSコンテキスト');
     expect(prompt).toContain('### フォーカスキーワード');
+    expect(prompt).toContain('### 既存アイデア');
+    expect(prompt).toContain('### 使用済みRSS記事');
+    expect(prompt).toContain('最大 5 件');
+    expect(prompt).toContain('障害対応の知見が散らばる');
+    expect(prompt).toContain('https://example.com/used-rss');
   });
 });
 
@@ -110,6 +124,35 @@ describe('EntrepreneurAgent', () => {
     ]);
     expect(result.sourceSummary.usedLLMFallback).toBe(false);
     expect(progress.length).toBeGreaterThan(0);
+  });
+
+  it('passes previous ideas and requested count into the generation prompt', async () => {
+    const client = createMockClient(JSON.stringify([candidate]));
+    const agent = new EntrepreneurAgent(client);
+
+    await agent.generateIdeas(undefined, ['AI'], [candidate], 3);
+
+    const prompt = vi.mocked(client.send).mock.calls[0]?.[1] ?? '';
+    expect(prompt).toContain('最大 3 件');
+    expect(prompt).toContain('AI Ops Memo');
+    expect(prompt).toContain('既存アイデアと実質的に同じものは除外');
+  });
+
+  it('filters previously used RSS articles from idea evidence', async () => {
+    const client = createMockClient(JSON.stringify([candidate]));
+    const agent = new EntrepreneurAgent(client);
+
+    const result = await agent.generateIdeas(undefined, ['AI'], [], 3, [{
+      title: 'AI Ops article',
+      url: 'https://example.com/ai-ops',
+      lastUsedAt: '2026-05-14T00:00:00.000Z',
+      count: 1,
+    }]);
+
+    const prompt = vi.mocked(client.send).mock.calls[0]?.[1] ?? '';
+    expect(prompt).toContain('使用済みRSS記事');
+    expect(result.sourceSummary.skippedPreviouslyUsedRssCount).toBe(1);
+    expect(result.candidates[0].sources.evidenceUrls).toEqual([]);
   });
 
   it('sorts empty filter queries by trend score without calling the LLM', async () => {

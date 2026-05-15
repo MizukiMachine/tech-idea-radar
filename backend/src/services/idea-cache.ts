@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
+  DEFAULT_IDEA_COUNT,
   EntrepreneurAgent,
   type IdeaGenerationOutput,
   type SemanticFilterInput,
@@ -9,6 +10,13 @@ import {
 } from 'ai-engine';
 import { getClient } from './ai-engine';
 import { CACHE_REFRESH_INTERVAL_MS } from 'ai-engine';
+import { mergeIdeaHistory } from './idea-history';
+import {
+  buildSourceUsageHistory,
+  mergeSourceUsageHistory,
+  sourceUsageForPrompt,
+  type SourceUsageRecord,
+} from './source-usage';
 
 const SERVER_STARTED_AT = new Date().toISOString();
 const INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
@@ -24,6 +32,9 @@ const WARMUP_ON_START = process.env.IDEA_WARMUP_ON_START === undefined
   ? true
   : isTruthy(process.env.IDEA_WARMUP_ON_START);
 const BACKGROUND_REFRESH_INTERVAL_MS = parseHoursToMs(process.env.IDEA_BACKGROUND_REFRESH_HOURS, 0);
+const IDEA_GENERATION_BATCH_SIZE = parsePositiveInt(process.env.IDEA_GENERATION_BATCH_SIZE, DEFAULT_IDEA_COUNT);
+const IDEA_MAX_STORED_CANDIDATES = parsePositiveInt(process.env.IDEA_MAX_STORED_CANDIDATES, 60);
+const IDEA_SOURCE_HISTORY_LIMIT = parsePositiveInt(process.env.IDEA_SOURCE_HISTORY_LIMIT, 240);
 
 type CacheStatus = 'empty' | 'cached' | 'stale';
 
@@ -38,6 +49,7 @@ let trendCache: {
   expiresAt: number;
 } | null = null;
 let trendScanLock: Promise<TrendScanOutput> | null = null;
+let sourceUsageHistory: SourceUsageRecord[] = [];
 let persistentCacheLoaded = false;
 let backgroundRefreshLock: Promise<void> | null = null;
 let backgroundRefreshTimer: NodeJS.Timeout | null = null;
@@ -52,6 +64,12 @@ function parseHoursToMs(value: string | undefined, fallbackMs: number): number {
   return parsed * 60 * 60 * 1000;
 }
 
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
+  return parsed;
+}
+
 function loadPersistentCache(): void {
   if (persistentCacheLoaded || !PERSISTENT_CACHE_FILE) return;
   persistentCacheLoaded = true;
@@ -62,11 +80,22 @@ function loadPersistentCache(): void {
       version?: number;
       ideas?: { data: IdeaGenerationOutput; expiresAt: number };
       trends?: { data: TrendScanOutput; expiresAt: number };
+      sourceUsageHistory?: SourceUsageRecord[];
     };
 
     if (parsed.version !== PERSISTENT_CACHE_VERSION) return;
     if (parsed.ideas?.data && Number.isFinite(parsed.ideas.expiresAt)) cache = parsed.ideas;
     if (parsed.trends?.data && Number.isFinite(parsed.trends.expiresAt)) trendCache = parsed.trends;
+    if (Array.isArray(parsed.sourceUsageHistory)) {
+      sourceUsageHistory = parsed.sourceUsageHistory.slice(0, IDEA_SOURCE_HISTORY_LIMIT);
+    }
+    if (sourceUsageHistory.length === 0 && cache?.data.candidates.length) {
+      sourceUsageHistory = buildSourceUsageHistory(
+        cache.data.candidates,
+        cache.data.generatedAt,
+        IDEA_SOURCE_HISTORY_LIMIT,
+      );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[Cache] Failed to load persistent cache: ${message}`);
@@ -85,6 +114,7 @@ function persistCache(): void {
         updatedAt: new Date().toISOString(),
         ideas: cache,
         trends: trendCache,
+        sourceUsageHistory,
       }, null, 2),
     );
   } catch (error) {
@@ -151,12 +181,16 @@ export function getRuntimeMeta(): {
     cacheTtlHours: number;
     warmupOnStart: boolean;
     backgroundRefreshIntervalHours: number;
+    ideaGenerationBatchSize: number;
+    ideaMaxStoredCandidates: number;
+    ideaSourceHistoryLimit: number;
   };
   cache: {
     status: CacheStatus;
     expiresAt: string | null;
     generatedAt: string | null;
     candidateCount: number;
+    sourceUsageCount: number;
     sourceSummary: IdeaGenerationOutput['sourceSummary'] | null;
   };
   generationInProgress: boolean;
@@ -178,18 +212,23 @@ export function getRuntimeMeta(): {
       cacheTtlHours: CACHE_TTL_MS / 60 / 60 / 1000,
       warmupOnStart: WARMUP_ON_START,
       backgroundRefreshIntervalHours: BACKGROUND_REFRESH_INTERVAL_MS / 60 / 60 / 1000,
+      ideaGenerationBatchSize: IDEA_GENERATION_BATCH_SIZE,
+      ideaMaxStoredCandidates: IDEA_MAX_STORED_CANDIDATES,
+      ideaSourceHistoryLimit: IDEA_SOURCE_HISTORY_LIMIT,
     },
     cache: cached ? {
       status: ideaStatus,
       expiresAt: cache ? new Date(cache.expiresAt).toISOString() : null,
       generatedAt: cached.generatedAt,
       candidateCount: cached.candidates.length,
+      sourceUsageCount: sourceUsageHistory.length,
       sourceSummary: cached.sourceSummary,
     } : {
       status: 'empty',
       expiresAt: null,
       generatedAt: null,
       candidateCount: 0,
+      sourceUsageCount: sourceUsageHistory.length,
       sourceSummary: null,
     },
     generationInProgress: Boolean(generationLock),
@@ -201,20 +240,68 @@ export function getRuntimeMeta(): {
 export async function generateAndCacheIdeas(
   onProgress?: (text: string) => void,
   focusKeywords?: string[],
+  trendScanOverride?: TrendScanOutput,
 ): Promise<IdeaGenerationOutput> {
   // If already generating, reuse the same promise
   if (generationLock) return generationLock;
 
   generationLock = (async () => {
     try {
+      loadPersistentCache();
+      const existingCandidates = cache?.data.candidates ?? [];
+      if (sourceUsageHistory.length === 0 && existingCandidates.length > 0) {
+        sourceUsageHistory = buildSourceUsageHistory(
+          existingCandidates,
+          cache?.data.generatedAt ?? new Date().toISOString(),
+          IDEA_SOURCE_HISTORY_LIMIT,
+        );
+      }
+      const recentlyUsedSources = sourceUsageForPrompt(sourceUsageHistory);
       const agent = new EntrepreneurAgent(getClient());
-      const result = await agent.generateIdeas(onProgress, focusKeywords);
+      const result = trendScanOverride && !focusKeywords
+        ? await agent.generateIdeasFromTrendScan(
+          trendScanOverride,
+          onProgress,
+          existingCandidates,
+          IDEA_GENERATION_BATCH_SIZE,
+          recentlyUsedSources,
+        )
+        : await agent.generateIdeas(
+          onProgress,
+          focusKeywords,
+          existingCandidates,
+          IDEA_GENERATION_BATCH_SIZE,
+          recentlyUsedSources,
+        );
+      const merged = mergeIdeaHistory(existingCandidates, result.candidates, {
+        maxCandidates: IDEA_MAX_STORED_CANDIDATES,
+      });
+      const output: IdeaGenerationOutput = {
+        ...result,
+        candidates: merged.candidates,
+        sourceSummary: {
+          ...result.sourceSummary,
+          generatedIdeaCount: result.candidates.length,
+          newIdeaCount: merged.addedCandidates.length,
+          duplicateIdeaCount: merged.duplicateCandidates.length,
+          totalIdeaCount: merged.candidates.length,
+          maxStoredIdeaCount: IDEA_MAX_STORED_CANDIDATES,
+          usedSourceUrlCount: sourceUsageHistory.length,
+        },
+      };
+      sourceUsageHistory = mergeSourceUsageHistory(
+        sourceUsageHistory,
+        merged.addedCandidates,
+        output.generatedAt,
+        IDEA_SOURCE_HISTORY_LIMIT,
+      );
+      output.sourceSummary.usedSourceUrlCount = sourceUsageHistory.length;
       cache = {
-        data: result,
+        data: output,
         expiresAt: Date.now() + CACHE_TTL_MS,
       };
       persistCache();
-      return result;
+      return output;
     } finally {
       generationLock = null;
     }
@@ -260,11 +347,12 @@ export function refreshCachesInBackground(reason: string, force = false): Promis
 
   backgroundRefreshLock = (async () => {
     console.log(`[Cache] Background refresh started (${reason})`);
+    let refreshedTrendScan: TrendScanOutput | undefined;
     if (shouldRefreshTrends) {
-      await scanAndCacheTrends();
+      refreshedTrendScan = await scanAndCacheTrends();
     }
     if (shouldRefreshIdeas) {
-      await generateAndCacheIdeas();
+      await generateAndCacheIdeas(undefined, undefined, refreshedTrendScan);
     }
     console.log(`[Cache] Background refresh completed (${reason})`);
   })()

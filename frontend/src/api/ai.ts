@@ -11,6 +11,13 @@ export interface SourceSummary {
   usedLLMFallback: boolean;
   dataQuality?: 'external' | 'llm_fallback';
   warnings?: string[];
+  generatedIdeaCount?: number;
+  newIdeaCount?: number;
+  duplicateIdeaCount?: number;
+  totalIdeaCount?: number;
+  maxStoredIdeaCount?: number;
+  usedSourceUrlCount?: number;
+  skippedPreviouslyUsedRssCount?: number;
 }
 
 export interface IdeasMeta {
@@ -26,12 +33,16 @@ export interface IdeasMeta {
     cacheTtlHours?: number;
     warmupOnStart?: boolean;
     backgroundRefreshIntervalHours?: number;
+    ideaGenerationBatchSize?: number;
+    ideaMaxStoredCandidates?: number;
+    ideaSourceHistoryLimit?: number;
   };
   cache: {
     status: 'empty' | 'cached' | 'stale';
     expiresAt: string | null;
     generatedAt: string | null;
     candidateCount: number;
+    sourceUsageCount?: number;
     sourceSummary: SourceSummary | null;
   };
   generationInProgress: boolean;

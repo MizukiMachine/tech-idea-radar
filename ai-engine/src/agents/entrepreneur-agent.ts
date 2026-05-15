@@ -3,7 +3,8 @@ import { ResponseParser } from '../services/response-parser';
 import { IdeaGenerationAgent } from './idea-generation-agent';
 import { FilterAgent } from './filter-agent';
 import { fetchRssContext } from '../services/mcp-client';
-import type { IdeaGenerationInput, IdeaGenerationOutput, TrendScanOutput } from '../types/idea-generation';
+import { DEFAULT_IDEA_COUNT } from '../config/constants';
+import type { IdeaGenerationInput, IdeaGenerationOutput, TrendScanOutput, UsedRssSource } from '../types/idea-generation';
 import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semantic-filter';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { RssArticle, RssContext } from '../services/mcp-client';
@@ -19,6 +20,80 @@ const GENERIC_EVIDENCE_TERMS = new Set([
   'スキル', '欲しい', '不便', '困ってる', '改善', '問題', '課題', '自動化',
   '文章を', '章を書', 'を書く',
 ]);
+
+function normalizeSourceUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.hash = '';
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (key.toLowerCase().startsWith('utm_') || ['fbclid', 'gclid'].includes(key.toLowerCase())) {
+        parsed.searchParams.delete(key);
+      }
+    }
+    return parsed.toString();
+  } catch {
+    return url.trim();
+  }
+}
+
+function articleUrl(article: RssArticle): string {
+  return article.url ?? article.link;
+}
+
+function filterUsedRssArticles(rssContext: RssContext, usedSources: UsedRssSource[]): {
+  rssContext: RssContext;
+  skippedCount: number;
+} {
+  if (usedSources.length === 0) {
+    return { rssContext, skippedCount: 0 };
+  }
+
+  const usedUrls = new Set(
+    usedSources
+      .map((source) => normalizeSourceUrl(source.url))
+      .filter(Boolean),
+  );
+
+  const relatedArticles = rssContext.relatedArticles.filter((article) => {
+    const url = articleUrl(article);
+    return !url || !usedUrls.has(normalizeSourceUrl(url));
+  });
+
+  return {
+    rssContext: {
+      ...rssContext,
+      relatedArticles,
+    },
+    skippedCount: rssContext.relatedArticles.length - relatedArticles.length,
+  };
+}
+
+function applySourceUsageHistory(
+  trendScan: TrendScanOutput,
+  usedSources: UsedRssSource[],
+): TrendScanOutput {
+  const filtered = filterUsedRssArticles(trendScan.rssContext, usedSources);
+  if (filtered.skippedCount === 0 && usedSources.length === 0) return trendScan;
+
+  const warnings = [
+    ...(trendScan.sourceSummary.warnings ?? []),
+    ...(filtered.skippedCount > 0
+      ? [`過去に根拠として使ったRSS記事 ${filtered.skippedCount}件を今回の生成材料から除外しました。`]
+      : []),
+  ];
+
+  return {
+    ...trendScan,
+    rssContext: filtered.rssContext,
+    sourceSummary: {
+      ...trendScan.sourceSummary,
+      rssItemCount: filtered.rssContext.trendingKeywords.length + filtered.rssContext.relatedArticles.length,
+      warnings,
+      usedSourceUrlCount: usedSources.length,
+      skippedPreviouslyUsedRssCount: filtered.skippedCount,
+    },
+  };
+}
 
 interface RssArticleTranslation {
   title: string;
@@ -321,18 +396,27 @@ export class EntrepreneurAgent {
     };
   }
 
-  async generateIdeas(onProgress?: (text: string) => void, inputFocusKeywords?: string[]): Promise<IdeaGenerationOutput> {
+  async generateIdeasFromTrendScan(
+    trendScan: TrendScanOutput,
+    onProgress?: (text: string) => void,
+    previousIdeas: IdeaCandidate[] = [],
+    requestedIdeaCount = DEFAULT_IDEA_COUNT,
+    recentlyUsedSources: UsedRssSource[] = [],
+  ): Promise<IdeaGenerationOutput> {
     const startTime = Date.now();
-    console.log('[IdeaGeneration] Starting idea generation pipeline');
-
-    const trendScan = await this.scanTrendContext(onProgress, inputFocusKeywords);
-    const { rssContext, focusKeywords } = trendScan;
-    const sourceCountText = `RSS: ${trendScan.sourceSummary.rssItemCount}件`;
-    onProgress?.(`[Enrichment] ${sourceCountText}\n\nアイデア生成中...`);
+    const effectiveTrendScan = applySourceUsageHistory(trendScan, recentlyUsedSources);
+    const { rssContext, focusKeywords } = effectiveTrendScan;
+    const sourceCountText = `RSS: ${effectiveTrendScan.sourceSummary.rssItemCount}件`;
+    const previousCountText = previousIdeas.length > 0 ? `既存: ${previousIdeas.length}件` : '既存: 0件';
+    const usedSourceText = recentlyUsedSources.length > 0 ? `使用済みRSS: ${recentlyUsedSources.length}件` : '使用済みRSS: 0件';
+    onProgress?.(`[Enrichment] ${sourceCountText} / ${previousCountText} / ${usedSourceText}\n\n新しいアイデアを生成中...`);
 
     const input: IdeaGenerationInput = {
       rssContext,
       focusKeywords,
+      previousIdeas,
+      requestedIdeaCount,
+      recentlyUsedSources,
     };
 
     onProgress?.('アイデア候補を生成中...');
@@ -342,13 +426,35 @@ export class EntrepreneurAgent {
     const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext);
 
     const totalTime = Date.now() - startTime;
-    console.log(`[IdeaGeneration] Generated ${candidates.length} ideas in ${totalTime}ms (fallback: ${trendScan.sourceSummary.usedLLMFallback})`);
+    console.log(`[IdeaGeneration] Generated ${candidates.length} ideas in ${totalTime}ms (fallback: ${effectiveTrendScan.sourceSummary.usedLLMFallback})`);
 
     return {
       candidates,
       generatedAt: new Date().toISOString(),
-      sourceSummary: trendScan.sourceSummary,
+      sourceSummary: effectiveTrendScan.sourceSummary,
     };
+  }
+
+  async generateIdeas(
+    onProgress?: (text: string) => void,
+    inputFocusKeywords?: string[],
+    previousIdeas: IdeaCandidate[] = [],
+    requestedIdeaCount = DEFAULT_IDEA_COUNT,
+    recentlyUsedSources: UsedRssSource[] = [],
+  ): Promise<IdeaGenerationOutput> {
+    const startTime = Date.now();
+    console.log('[IdeaGeneration] Starting idea generation pipeline');
+
+    const trendScan = await this.scanTrendContext(onProgress, inputFocusKeywords);
+    const result = await this.generateIdeasFromTrendScan(
+      trendScan,
+      onProgress,
+      previousIdeas,
+      requestedIdeaCount,
+      recentlyUsedSources,
+    );
+    console.log(`[IdeaGeneration] Pipeline completed in ${Date.now() - startTime}ms`);
+    return result;
   }
 
   async filterIdeas(input: SemanticFilterInput): Promise<SemanticFilterOutput> {
