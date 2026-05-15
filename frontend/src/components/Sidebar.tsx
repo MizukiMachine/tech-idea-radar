@@ -2,85 +2,69 @@ import { useState } from 'react';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import './Sidebar.css';
 
-const TECH_GROUPS = [
-    {
-        id: 'languages',
-        label: '言語',
-        tags: ['TypeScript', 'JavaScript', 'Python', 'Go', 'Rust', 'Java', 'Kotlin', 'Swift', 'PHP', 'Ruby'],
-    },
-    {
-        id: 'frontend',
-        label: 'フロントエンド',
-        tags: ['React', 'Next.js', 'Vue', 'Nuxt', 'Svelte', 'Astro', 'Tailwind', 'UI・UX'],
-    },
-    {
-        id: 'backend',
-        label: 'バックエンド/API',
-        tags: ['Node.js', 'FastAPI', 'Django', 'Rails', 'GraphQL', 'REST API', 'OpenAPI', '認証'],
-    },
-    {
-        id: 'ai-data',
-        label: 'AI・データ',
-        tags: ['AI', 'LLM', '機械学習', 'RAG', 'データ分析', 'BI', 'ETL', 'ベクトルDB'],
-    },
-    {
-        id: 'cloud',
-        label: 'クラウド/インフラ',
-        tags: ['AWS', 'GCP', 'Azure', 'Vercel', 'Docker', 'Kubernetes', 'Supabase', 'Firebase'],
-    },
-    {
-        id: 'product',
-        label: 'ジャンル',
-        tags: ['SaaS', 'dev-tools', 'B2B', 'B2Cアプリ', 'productivity', 'ブラウザ拡張機能', 'モバイル', 'マーケットプレイス'],
-    },
+const CATEGORY_FILTERS = [
+    { id: 'SaaS', label: 'SaaS' },
+    { id: 'B2B', label: 'B2B' },
+    { id: 'B2Cアプリ', label: 'B2Cアプリ' },
+    { id: '開発ツール', label: '開発ツール' },
+    { id: 'ブラウザ拡張機能', label: 'ブラウザ拡張' },
+    { id: 'モバイル', label: 'モバイル' },
+    { id: 'AI・データ', label: 'AI・データ' },
+    { id: '業務効率化', label: '業務効率化' },
 ];
 
 const INTEREST_FIELDS = [
-    { id: 'business', label: '業務効率化', defaultChecked: true },
-    { id: 'ai', label: 'AI・自動化', defaultChecked: true },
-    { id: 'finance', label: '金融・お金', defaultChecked: false },
-    { id: 'education', label: '学習・教育', defaultChecked: true },
-    { id: 'health', label: 'ヘルスケア', defaultChecked: false },
-    { id: 'entertainment', label: 'エンタメ', defaultChecked: false },
-    { id: 'other', label: 'その他', defaultChecked: false },
+    { id: 'business', label: '業務効率化' },
+    { id: 'ai', label: 'AI・自動化' },
+    { id: 'finance', label: '金融・お金' },
+    { id: 'education', label: '学習・教育' },
+    { id: 'health', label: 'ヘルスケア' },
+    { id: 'entertainment', label: 'エンタメ' },
+];
+
+const SCALE_FILTERS = [
+    { value: null, label: 'すべて' },
+    { value: 1, label: '★まで' },
+    { value: 2, label: '★★まで' },
+    { value: 3, label: '★★★まで' },
+    { value: 4, label: '★★★★まで' },
+];
+
+const REVENUE_FILTERS = [
+    { value: null, label: 'すべて' },
+    { value: 55, label: '中以上' },
+    { value: 78, label: '高以上' },
+    { value: 95, label: '最高のみ' },
 ];
 
 interface SidebarProps {
-    onTechFilter?: (tech: string) => void;
+    onCategoryFilter?: (category: string) => void;
     onInterestChange?: (interests: string[]) => void;
     onRevenueChange?: (value: number | null) => void;
-    onTimeframeChange?: (value: number | null) => void;
+    onScaleChange?: (value: number | null) => void;
     onSortChange?: (sort: string) => void;
     highlightedIdea?: IdeaCandidate;
 }
 
 export default function Sidebar({
-    onTechFilter,
+    onCategoryFilter,
     onInterestChange,
     onRevenueChange,
-    onTimeframeChange,
+    onScaleChange,
     onSortChange,
     highlightedIdea,
 }: SidebarProps): JSX.Element {
-    const [activeTech, setActiveTech] = useState('すべて');
+    const [activeCategory, setActiveCategory] = useState('すべて');
     const [interests, setInterests] = useState<Record<string, boolean>>(
-        Object.fromEntries(INTEREST_FIELDS.map((f) => [f.id, f.defaultChecked]))
+        Object.fromEntries(INTEREST_FIELDS.map((field) => [field.id, false]))
     );
-    const [revenue, setRevenue] = useState(70);
-    const [timeframe, setTimeframe] = useState(60);
+    const [revenueMin, setRevenueMin] = useState<number | null>(null);
+    const [scaleMax, setScaleMax] = useState<number | null>(null);
     const [sort, setSort] = useState('おすすめ順');
-    const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-        languages: true,
-        frontend: true,
-        backend: false,
-        'ai-data': true,
-        cloud: false,
-        product: false,
-    });
 
-    const handleTechClick = (tag: string) => {
-        setActiveTech(tag);
-        onTechFilter?.(tag);
+    const handleCategoryClick = (category: string) => {
+        setActiveCategory(category);
+        onCategoryFilter?.(category);
     };
 
     const handleInterestToggle = (id: string) => {
@@ -89,14 +73,14 @@ export default function Sidebar({
         onInterestChange?.(Object.entries(updated).filter(([, v]) => v).map(([k]) => k));
     };
 
-    const handleRevenueChange = (val: number) => {
-        setRevenue(val);
+    const handleRevenueChange = (val: number | null) => {
+        setRevenueMin(val);
         onRevenueChange?.(val);
     };
 
-    const handleTimeframeChange = (val: number) => {
-        setTimeframe(val);
-        onTimeframeChange?.(val);
+    const handleScaleChange = (val: number | null) => {
+        setScaleMax(val);
+        onScaleChange?.(val);
     };
 
     const handleSortChange = (val: string) => {
@@ -106,20 +90,16 @@ export default function Sidebar({
 
     const resetAll = () => {
         const clearedInterests = Object.fromEntries(INTEREST_FIELDS.map((f) => [f.id, false]));
-        setActiveTech('すべて');
+        setActiveCategory('すべて');
         setInterests(clearedInterests);
-        setRevenue(70);
-        setTimeframe(60);
+        setRevenueMin(null);
+        setScaleMax(null);
         setSort('おすすめ順');
-        onTechFilter?.('すべて');
+        onCategoryFilter?.('すべて');
         onInterestChange?.([]);
         onRevenueChange?.(null);
-        onTimeframeChange?.(null);
+        onScaleChange?.(null);
         onSortChange?.('おすすめ順');
-    };
-
-    const toggleGroup = (id: string) => {
-        setOpenGroups((current) => ({ ...current, [id]: !current[id] }));
     };
 
     return (
@@ -133,50 +113,31 @@ export default function Sidebar({
                 </div>
             </div>
 
-            {/* 得意技術 */}
+            {/* ジャンル・テーマ */}
             <div className="sidebar__section">
                 <div className="sidebar__section-header">
-                    <span className="sidebar__section-title">得意技術</span>
-                    <button type="button" className="sidebar__reset-btn" onClick={() => handleTechClick('すべて')}>
+                    <span className="sidebar__section-title">ジャンル・テーマ</span>
+                    <button type="button" className="sidebar__reset-btn" onClick={() => handleCategoryClick('すべて')}>
                         リセット
                     </button>
                 </div>
                 <div className="sidebar__tags">
                     <button
                         type="button"
-                        className={`sidebar__tag ${activeTech === 'すべて' ? 'sidebar__tag--active' : ''}`}
-                        onClick={() => handleTechClick('すべて')}
+                        className={`sidebar__tag ${activeCategory === 'すべて' ? 'sidebar__tag--active' : ''}`}
+                        onClick={() => handleCategoryClick('すべて')}
                     >
                         すべて
                     </button>
-                </div>
-                <div className="sidebar__tech-groups">
-                    {TECH_GROUPS.map((group) => (
-                        <div key={group.id} className="sidebar__tech-group">
-                            <button
-                                type="button"
-                                className="sidebar__tech-group-toggle"
-                                onClick={() => toggleGroup(group.id)}
-                                aria-expanded={openGroups[group.id]}
-                            >
-                                <span>{group.label}</span>
-                                <span>{openGroups[group.id] ? '−' : '+'}</span>
-                            </button>
-                            {openGroups[group.id] && (
-                                <div className="sidebar__tags sidebar__tags--nested">
-                                    {group.tags.map((tag) => (
-                                        <button
-                                            key={tag}
-                                            type="button"
-                                            className={`sidebar__tag ${activeTech === tag ? 'sidebar__tag--active' : ''}`}
-                                            onClick={() => handleTechClick(tag)}
-                                        >
-                                            {tag}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                    {CATEGORY_FILTERS.map((category) => (
+                        <button
+                            key={category.id}
+                            type="button"
+                            className={`sidebar__tag ${activeCategory === category.id ? 'sidebar__tag--active' : ''}`}
+                            onClick={() => handleCategoryClick(category.id)}
+                        >
+                            {category.label}
+                        </button>
                     ))}
                 </div>
             </div>
@@ -207,47 +168,43 @@ export default function Sidebar({
             <div className="sidebar__section">
                 <div className="sidebar__section-header">
                     <span className="sidebar__section-title">収益化しやすさ</span>
-                    <button type="button" className="sidebar__reset-btn" onClick={() => { setRevenue(70); onRevenueChange?.(null); }}>
+                    <button type="button" className="sidebar__reset-btn" onClick={() => handleRevenueChange(null)}>
                         リセット
                     </button>
                 </div>
-                <div className="sidebar__slider-group">
-                    <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={revenue}
-                        onChange={(e) => handleRevenueChange(Number(e.target.value))}
-                        className="sidebar__slider"
-                    />
-                    <div className="sidebar__slider-labels">
-                        <span>低</span>
-                        <span>高</span>
-                    </div>
+                <div className="sidebar__tags">
+                    {REVENUE_FILTERS.map((filter) => (
+                        <button
+                            key={filter.label}
+                            type="button"
+                            className={`sidebar__tag ${revenueMin === filter.value ? 'sidebar__tag--active' : ''}`}
+                            onClick={() => handleRevenueChange(filter.value)}
+                        >
+                            {filter.label}
+                        </button>
+                    ))}
                 </div>
             </div>
 
-            {/* 短期開発向け */}
+            {/* 開発規模 */}
             <div className="sidebar__section">
                 <div className="sidebar__section-header">
-                    <span className="sidebar__section-title">短期開発向け</span>
-                    <button type="button" className="sidebar__reset-btn" onClick={() => { setTimeframe(60); onTimeframeChange?.(null); }}>
+                    <span className="sidebar__section-title">開発規模</span>
+                    <button type="button" className="sidebar__reset-btn" onClick={() => handleScaleChange(null)}>
                         リセット
                     </button>
                 </div>
-                <div className="sidebar__slider-group">
-                    <input
-                        type="range"
-                        min="0"
-                        max="100"
-                        value={timeframe}
-                        onChange={(e) => handleTimeframeChange(Number(e.target.value))}
-                        className="sidebar__slider"
-                    />
-                    <div className="sidebar__slider-labels">
-                        <span>じっくり</span>
-                        <span>短期間</span>
-                    </div>
+                <div className="sidebar__tags">
+                    {SCALE_FILTERS.map((filter) => (
+                        <button
+                            key={filter.label}
+                            type="button"
+                            className={`sidebar__tag ${scaleMax === filter.value ? 'sidebar__tag--active' : ''}`}
+                            onClick={() => handleScaleChange(filter.value)}
+                        >
+                            {filter.label}
+                        </button>
+                    ))}
                 </div>
             </div>
 
@@ -260,14 +217,14 @@ export default function Sidebar({
                     <option>おすすめ順</option>
                     <option>トレンドスコア順</option>
                     <option>収益性順</option>
-                    <option>開発期間順</option>
+                    <option>開発規模 小さい順</option>
                 </select>
             </div>
 
             {highlightedIdea && (
                 <div className="sidebar__section" style={{ marginTop: 16 }}>
                     <div className="sidebar__highlight-card">
-                        <div className="sidebar__highlight-badge">短期開発におすすめ</div>
+                        <div className="sidebar__highlight-badge">トレンド上位</div>
                         <div className="sidebar__highlight-title">{highlightedIdea.title}</div>
                         <div className="sidebar__highlight-desc">
                             {highlightedIdea.tagline || highlightedIdea.coreProblem}

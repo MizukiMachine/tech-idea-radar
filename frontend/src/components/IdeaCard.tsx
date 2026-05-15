@@ -1,7 +1,8 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
+import { developmentScaleStars, getDevelopmentScale } from '../utils/idea-metrics';
 import './IdeaCard.css';
 
-const CARD_ICONS = ['AI', 'PR', 'DB', 'UX', 'API', 'SaaS', 'Ops', 'MVP', 'Dev', 'Web', 'Doc', 'Rev', 'Fit', 'CMS', 'BI'];
+const CARD_ICONS = ['AI', 'PR', 'DB', 'UX', 'API', 'SaaS', 'Ops', 'Sc', 'Dev', 'Web', 'Doc', 'Rev', 'Fit', 'CMS', 'BI'];
 const ICON_COLORS = [
     '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
     '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#6366f1',
@@ -26,6 +27,7 @@ interface IdeaCardProps {
 
 export default function IdeaCard({ idea, index, viewMode = 'grid', selected = false, onSelect }: IdeaCardProps): JSX.Element {
     const { icon, color } = getIconForIdea(idea.id, index);
+    const developmentScale = getDevelopmentScale(idea);
 
     return (
         <button
@@ -44,6 +46,9 @@ export default function IdeaCard({ idea, index, viewMode = 'grid', selected = fa
             <div className="idea-card__footer" aria-label={`トレンドスコア ${idea.trendScore}`}>
                 <span className="idea-card__score-label">Score</span>
                 <span className="idea-card__score-value">{idea.trendScore}</span>
+                <span className="idea-card__scale" aria-label={`開発規模 ${developmentScale}/5`}>
+                    {developmentScaleStars(developmentScale)}
+                </span>
             </div>
         </button>
     );

@@ -15,7 +15,8 @@ const idea = {
   targetUsers: "小規模な SRE チーム",
   coreProblem: "障害対応の知見が散らばる",
   revenuePotential: "high",
-  estimatedMvpTime: "2週間",
+  developmentScale: 2,
+  developmentScaleReason: "既存のログ連携と要約UIを組み合わせれば小さく検証できる",
   differentiation: "運用トレンドを根拠に提案する",
   sources: { rssKeywords: ["AI"], evidenceUrls: [] },
   generatedAt,
@@ -92,7 +93,12 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByText("AI Build Radar")).toBeTruthy();
     await waitFor(() => expect(screen.getByText("フィルター")).toBeTruthy());
-    expect(screen.getByText("得意技術")).toBeTruthy();
+    expect(screen.getByText("ジャンル・テーマ")).toBeTruthy();
+    expect(screen.getAllByText("開発規模").length).toBeGreaterThan(0);
+    expect(screen.getByText("★まで")).toBeTruthy();
+    expect(screen.getByText("高以上")).toBeTruthy();
+    expect(screen.queryByText("言語")).toBeNull();
+    expect(screen.queryByText("短期開発向け")).toBeNull();
     expect(screen.getByPlaceholderText("キーワードで絞り込み（例: AI ツール、SaaS、副業）")).toBeTruthy();
   });
 

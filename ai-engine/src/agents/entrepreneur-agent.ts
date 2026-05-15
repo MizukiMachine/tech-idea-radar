@@ -9,14 +9,14 @@ import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semanti
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { RssArticle, RssContext } from '../services/mcp-client';
 
-const DEFAULT_KEYWORDS = ['AI', 'SaaS', 'developer', 'productivity', 'automation', 'エンジニア', '個人開発'];
+const DEFAULT_KEYWORDS = ['AI', 'SaaS', 'developer', 'productivity', 'automation', 'エンジニア', 'プロダクト開発'];
 const MAX_EVIDENCE_URLS = 1;
 const MAX_TRANSLATED_RSS_ARTICLES = 18;
 const MIN_RSS_EVIDENCE_SCORE = 4;
 const GENERIC_EVIDENCE_TERMS = new Set([
   'ai', 'api', 'app', 'apps', 'dev', 'developer', 'developers', 'development',
   'cli', 'saas', 'tool', 'tools', 'web', 'service', 'services', 'user', 'users',
-  'アプリ', 'エンジニア', 'サービス', 'ツール', 'ユーザー', '個人開発', '開発',
+  'アプリ', 'エンジニア', 'サービス', 'ツール', 'ユーザー', '開発',
   'スキル', '欲しい', '不便', '困ってる', '改善', '問題', '課題', '自動化',
   '文章を', '章を書', 'を書く',
 ]);

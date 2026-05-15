@@ -8,7 +8,7 @@ const STOP_TERMS = new Set([
   'ai', 'api', 'app', 'apps', 'dev', 'developer', 'developers', 'development',
   'saas', 'tool', 'tools', 'web', 'service', 'services', 'user', 'users',
   'for', 'and', 'the', 'with', 'from', 'that', 'this', 'into', 'using',
-  'アプリ', 'サービス', 'ツール', 'ユーザー', '個人開発', '開発', '課題', '解決',
+  'アプリ', 'サービス', 'ツール', 'ユーザー', '開発', '課題', '解決',
   '自動化', '管理', '支援', '向け',
 ]);
 

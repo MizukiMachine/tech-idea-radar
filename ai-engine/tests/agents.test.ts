@@ -21,7 +21,8 @@ const candidate: IdeaCandidate = {
   targetUsers: '小規模な SRE チーム',
   coreProblem: '障害対応の知見が散らばる',
   revenuePotential: 'high',
-  estimatedMvpTime: '2週間',
+  developmentScale: 2,
+  developmentScaleReason: '既存のログ連携と要約UIを組み合わせれば小さく検証できる',
   differentiation: 'RSS 由来の運用トレンドを根拠に提案する',
   sources: {
     rssKeywords: ['AI', 'SRE'],
@@ -87,6 +88,7 @@ describe('IdeaGenerationAgent', () => {
     expect(prompt).toContain('### 既存アイデア');
     expect(prompt).toContain('### 使用済みRSS記事');
     expect(prompt).toContain('最大 5 件');
+    expect(agent.systemPrompt).toContain('developmentScale');
     expect(prompt).toContain('障害対応の知見が散らばる');
     expect(prompt).toContain('https://example.com/used-rss');
   });

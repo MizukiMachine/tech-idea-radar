@@ -18,6 +18,7 @@ import IdeaCard from './components/IdeaCard';
 import RightPanel from './components/RightPanel';
 import IdeaDetailModal from './components/IdeaDetailModal';
 import TrendBoard from './components/TrendBoard';
+import { getDevelopmentScale } from './utils/idea-metrics';
 import './App.css';
 
 type ViewMode = 'grid' | 'list';
@@ -30,7 +31,17 @@ const INTEREST_KEYWORDS: Record<string, string[]> = {
   education: ['学習', '教育', '研修', '教材', 'ナレッジ', 'メモ'],
   health: ['ヘルスケア', '健康', '医療', 'メンタル', '運動'],
   entertainment: ['エンタメ', 'ゲーム', '音楽', '動画', '配信', 'コミュニティ'],
-  other: [],
+};
+
+const CATEGORY_KEYWORDS: Record<string, string[]> = {
+  SaaS: ['SaaS', 'サブスク'],
+  B2B: ['B2B', '法人', '企業', 'チーム', '業務'],
+  B2Cアプリ: ['B2C', 'B2Cアプリ', '個人ユーザー', '生活者', '消費者'],
+  開発ツール: ['開発ツール', 'dev-tools', '開発者', 'API', 'SDK', 'CLI'],
+  ブラウザ拡張機能: ['ブラウザ拡張機能', 'ブラウザ拡張', 'Chrome拡張'],
+  モバイル: ['モバイル', 'スマホ', 'iOS', 'Android'],
+  'AI・データ': ['AI', 'LLM', '機械学習', 'データ', '分析', 'RAG'],
+  業務効率化: ['業務', '効率', '自動化', '管理'],
 };
 
 function ideaText(idea: IdeaCandidate): string {
@@ -55,21 +66,13 @@ function revenueScore(value: string): number {
   return 50;
 }
 
-function timeframeScore(value: string): number {
-  if (value.includes('日') || value.includes('1週') || value.includes('2週')) return 95;
-  if (value.includes('週') || value.includes('1ヶ月')) return 82;
-  if (value.includes('2ヶ月')) return 62;
-  if (value.includes('3ヶ月')) return 45;
-  return 35;
-}
-
 function matchesTab(idea: IdeaCandidate, tab: string): boolean {
   if (tab === 'すべて') return true;
   const text = ideaText(idea);
   const tabKeywords: Record<string, string[]> = {
     SaaS: ['SaaS', 'サブスク', 'B2B'],
     AI: ['AI', '機械学習', 'LLM', '生成', '自動化'],
-    個人開発: ['個人', '開発', 'ツール', '小規模'],
+    プロダクト仮説: ['仮説', '検証', 'プロダクト', '市場', '課題'],
     業務効率化: ['業務', '効率', '自動化', '管理'],
     データ: ['データ', '分析', '可視化', 'レポート'],
     学習: ['学習', '教育', '研修', 'ナレッジ'],
@@ -78,14 +81,23 @@ function matchesTab(idea: IdeaCandidate, tab: string): boolean {
   return (tabKeywords[tab] ?? [tab]).some((keyword) => text.includes(keyword));
 }
 
+function matchesCategory(idea: IdeaCandidate, category: string): boolean {
+  if (category === 'すべて') return true;
+  const keywords = CATEGORY_KEYWORDS[category] ?? [category];
+  const text = ideaText(idea);
+  return keywords.some((keyword) => text.includes(keyword));
+}
+
 function sortIdeas(ideas: IdeaCandidate[], sort: string): IdeaCandidate[] {
   const sorted = [...ideas];
   if (sort === 'トレンドスコア順') return sorted.sort((a, b) => b.trendScore - a.trendScore);
   if (sort === '収益性順') return sorted.sort((a, b) => revenueScore(b.revenuePotential) - revenueScore(a.revenuePotential));
-  if (sort === '開発期間順') return sorted.sort((a, b) => timeframeScore(b.estimatedMvpTime) - timeframeScore(a.estimatedMvpTime));
+  if (sort === '開発規模 小さい順' || sort === '開発規模順') {
+    return sorted.sort((a, b) => getDevelopmentScale(a) - getDevelopmentScale(b) || b.trendScore - a.trendScore);
+  }
   return sorted.sort((a, b) => {
-    const aScore = a.trendScore + revenueScore(a.revenuePotential) + timeframeScore(a.estimatedMvpTime);
-    const bScore = b.trendScore + revenueScore(b.revenuePotential) + timeframeScore(b.estimatedMvpTime);
+    const aScore = a.trendScore + revenueScore(a.revenuePotential);
+    const bScore = b.trendScore + revenueScore(b.revenuePotential);
     return bScore - aScore;
   });
 }
@@ -150,10 +162,10 @@ function App(): JSX.Element {
   const [semanticFiltering, setSemanticFiltering] = useState(false);
   const [sourceSummary, setSourceSummary] = useState<SourceSummary | null>(null);
   const [ideasMeta, setIdeasMeta] = useState<IdeasMeta | null>(null);
-  const [activeTech, setActiveTech] = useState('すべて');
-  const [activeInterests, setActiveInterests] = useState(['business', 'ai', 'education']);
+  const [activeCategory, setActiveCategory] = useState('すべて');
+  const [activeInterests, setActiveInterests] = useState<string[]>([]);
   const [revenueMin, setRevenueMin] = useState<number | null>(null);
-  const [timeframeMin, setTimeframeMin] = useState<number | null>(null);
+  const [scaleMax, setScaleMax] = useState<number | null>(null);
   const [sortLabel, setSortLabel] = useState('おすすめ順');
   const [activeTab, setActiveTab] = useState('すべて');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
@@ -321,7 +333,7 @@ function App(): JSX.Element {
       const text = ideaText(idea);
       const normalizedSearch = searchQuery.trim().toLowerCase();
       if (!semanticFilteredIdeas && normalizedSearch && !matchesSearchQuery(text, normalizedSearch)) return false;
-      if (activeTech !== 'すべて' && !text.includes(activeTech.replace('AI・機械学習', 'AI'))) return false;
+      if (!matchesCategory(idea, activeCategory)) return false;
       if (activeInterests.length > 0) {
         const hasInterestMatch = activeInterests.some((interest) => {
           const keywords = INTEREST_KEYWORDS[interest] ?? [];
@@ -330,7 +342,7 @@ function App(): JSX.Element {
         if (!hasInterestMatch) return false;
       }
       if (revenueMin !== null && revenueScore(idea.revenuePotential) < revenueMin) return false;
-      if (timeframeMin !== null && timeframeScore(idea.estimatedMvpTime) < timeframeMin) return false;
+      if (scaleMax !== null && getDevelopmentScale(idea) > scaleMax) return false;
       return matchesTab(idea, activeTab);
     }),
     sortLabel,
@@ -355,7 +367,7 @@ function App(): JSX.Element {
             <div>
               <span className="app-header__eyebrow">AI Build Radar</span>
               <h1>作るものが決まっていないエンジニアへ</h1>
-              <p>今日の技術ニュースとAI開発トレンドから、個人開発で作れるプロダクト案を提案します。</p>
+              <p>今日の技術ニュースとAI開発トレンドから、検証の起点になるプロダクト仮説を提案します。</p>
             </div>
           </div>
           <div className="app-header__status">
@@ -479,7 +491,7 @@ function App(): JSX.Element {
                 <p>
                   {publicReadonlyMode
                     ? '現在表示できるアイデアがありません。データ更新後に候補が表示されます。'
-                    : '技術ニュースとRSSシグナルを材料に、個人開発で検証しやすいプロダクト案を出します。'}
+                    : '技術ニュースとRSSシグナルを材料に、検証の起点になるプロダクト仮説を出します。'}
                 </p>
                 {!publicReadonlyMode && (
                   <button type="button" className="setup-state__button" onClick={() => handleRefresh()}>
@@ -493,10 +505,10 @@ function App(): JSX.Element {
               <div className="dashboard">
                 {hasIdeas && (
                   <Sidebar
-                    onTechFilter={setActiveTech}
+                    onCategoryFilter={setActiveCategory}
                     onInterestChange={setActiveInterests}
                     onRevenueChange={setRevenueMin}
-                    onTimeframeChange={setTimeframeMin}
+                    onScaleChange={setScaleMax}
                     onSortChange={setSortLabel}
                     highlightedIdea={topTrendIdea}
                   />

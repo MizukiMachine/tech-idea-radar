@@ -1,4 +1,5 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
+import { developmentScaleStars, getDevelopmentScale } from '../utils/idea-metrics';
 import './StatsBar.css';
 
 interface StatsBarProps {
@@ -8,9 +9,7 @@ interface StatsBarProps {
 export default function StatsBar({ ideas }: StatsBarProps): JSX.Element {
     const count = ideas.length;
     const avgScore = count > 0 ? Math.round(ideas.reduce((s, i) => s + i.trendScore, 0) / count) : 0;
-    const shortTermCount = ideas.filter(
-        (i) => i.estimatedMvpTime.includes('週') || i.estimatedMvpTime.includes('1ヶ月')
-    ).length;
+    const avgScale = count > 0 ? Math.round(ideas.reduce((s, i) => s + getDevelopmentScale(i), 0) / count) : 0;
     const highRevCount = ideas.filter(
         (i) => ['high', 'very high'].includes(i.revenuePotential.toLowerCase())
     ).length;
@@ -48,17 +47,18 @@ export default function StatsBar({ ideas }: StatsBarProps): JSX.Element {
             </div>
 
             <div className="stats-bar__item">
-                <div className="stats-bar__icon stats-bar__icon--purple">MVP</div>
+                <div className="stats-bar__icon stats-bar__icon--purple">Sc</div>
                 <div className="stats-bar__content">
-                    <div className="stats-bar__label">短期開発向け</div>
+                    <div className="stats-bar__label">平均開発規模</div>
                     <div className="stats-bar__value">
-                        <span className="stats-bar__number">{shortTermCount}</span>
-                        <span className="stats-bar__unit">件</span>
+                        <span className="stats-bar__number stats-bar__number--scale">
+                            {avgScale > 0 ? developmentScaleStars(avgScale) : '-'}
+                        </span>
                         <div className="stats-bar__mini-bars">
-                            <span className={`stats-bar__mini-bar ${shortTermCount >= 5 ? 'stats-bar__mini-bar--active' : ''}`} />
-                            <span className={`stats-bar__mini-bar ${shortTermCount >= 15 ? 'stats-bar__mini-bar--active' : ''}`} />
-                            <span className={`stats-bar__mini-bar ${shortTermCount >= 30 ? 'stats-bar__mini-bar--active' : ''}`} />
-                            <span className={`stats-bar__mini-bar ${shortTermCount >= 50 ? 'stats-bar__mini-bar--active' : ''}`} />
+                            <span className={`stats-bar__mini-bar ${avgScale >= 2 ? 'stats-bar__mini-bar--active' : ''}`} />
+                            <span className={`stats-bar__mini-bar ${avgScale >= 3 ? 'stats-bar__mini-bar--active' : ''}`} />
+                            <span className={`stats-bar__mini-bar ${avgScale >= 4 ? 'stats-bar__mini-bar--active' : ''}`} />
+                            <span className={`stats-bar__mini-bar ${avgScale >= 5 ? 'stats-bar__mini-bar--active' : ''}`} />
                         </div>
                     </div>
                 </div>

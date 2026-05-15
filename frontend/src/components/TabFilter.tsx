@@ -1,6 +1,6 @@
 import './TabFilter.css';
 
-const TABS = ['すべて', 'SaaS', 'AI', '個人開発', '業務効率化', 'データ', '学習', 'API・ツール'];
+const TABS = ['すべて', 'SaaS', 'AI', 'プロダクト仮説', '業務効率化', 'データ', '学習', 'API・ツール'];
 
 interface TabFilterProps {
     activeTab?: string;

@@ -9,7 +9,9 @@ export interface IdeaCandidate {
   targetUsers: string;
   coreProblem: string;
   revenuePotential: string;
-  estimatedMvpTime: string;
+  developmentScale?: number;
+  developmentScaleReason?: string;
+  estimatedMvpTime?: string;
   differentiation: string;
   sources: {
     rssKeywords: string[];

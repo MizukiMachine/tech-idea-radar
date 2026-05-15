@@ -102,6 +102,12 @@
     font-size: 20px;
 }
 
+.idea-modal__score .idea-modal__scale-stars {
+    font-size: 17px;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
 .idea-modal__body {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));

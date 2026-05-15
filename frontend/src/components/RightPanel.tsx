@@ -1,9 +1,10 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
+import { developmentScaleLabel, developmentScaleStars, getDevelopmentScale } from '../utils/idea-metrics';
 import './RightPanel.css';
 
-const TECH_COLORS = ['#1a1f36', '#3b82f6', '#3178c6', '#ff9900', '#00B67A'];
+const TAG_COLORS = ['#1a1f36', '#3b82f6', '#3178c6', '#ff9900', '#00B67A'];
 
-function buildTechStackData(ideas: IdeaCandidate[]) {
+function buildTagData(ideas: IdeaCandidate[]) {
     const counts = new Map<string, number>();
     ideas.forEach((idea) => {
         idea.tags.forEach((tag) => {
@@ -18,7 +19,7 @@ function buildTechStackData(ideas: IdeaCandidate[]) {
         .map(([name, count], index) => ({
             name,
             pct: Math.max(8, Math.round((count / total) * 100)),
-            color: TECH_COLORS[index % TECH_COLORS.length],
+            color: TAG_COLORS[index % TAG_COLORS.length],
         }));
 }
 
@@ -35,8 +36,9 @@ export default function RightPanel({
     topRevenueIdea,
     topTrendIdea,
 }: RightPanelProps): JSX.Element {
-    const techStackData = buildTechStackData(ideas);
+    const tagData = buildTagData(ideas);
     const detailIdea = selectedIdea ?? topTrendIdea;
+    const detailScale = detailIdea ? getDevelopmentScale(detailIdea) : null;
 
     return (
         <aside className="right-panel">
@@ -77,28 +79,31 @@ export default function RightPanel({
                         <dd>{detailIdea?.differentiation ?? '-'}</dd>
                     </div>
                     <div>
-                        <dt>MVP目安</dt>
-                        <dd>{detailIdea?.estimatedMvpTime ?? '-'}</dd>
+                        <dt>開発規模</dt>
+                        <dd>
+                            {detailScale
+                                ? `${developmentScaleStars(detailScale)} ${developmentScaleLabel(detailScale)}`
+                                : '-'}
+                        </dd>
                     </div>
                 </dl>
             </div>
 
-            {/* Tech Stack Chart */}
             <div className="right-panel__card">
-                <h4 className="right-panel__chart-title">人気の技術スタック</h4>
+                <h4 className="right-panel__chart-title">よく出るタグ</h4>
                 <div className="right-panel__chart">
-                    {techStackData.map((tech) => (
-                        <div key={tech.name} className="right-panel__chart-row">
+                    {tagData.map((tag) => (
+                        <div key={tag.name} className="right-panel__chart-row">
                             <div className="right-panel__chart-label">
-                                <span className="right-panel__chart-name">{tech.name}</span>
+                                <span className="right-panel__chart-name">{tag.name}</span>
                             </div>
                             <div className="right-panel__chart-bar-bg">
                                 <div
                                     className="right-panel__chart-bar"
-                                    style={{ width: `${tech.pct}%`, backgroundColor: tech.color }}
+                                    style={{ width: `${tag.pct}%`, backgroundColor: tag.color }}
                                 />
                             </div>
-                            <span className="right-panel__chart-pct">{tech.pct}%</span>
+                            <span className="right-panel__chart-pct">{tag.pct}%</span>
                         </div>
                     ))}
                 </div>

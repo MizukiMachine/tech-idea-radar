@@ -72,6 +72,12 @@
     color: #1a1f36;
 }
 
+.stats-bar__number--scale {
+    font-size: 17px;
+    letter-spacing: 0;
+    white-space: nowrap;
+}
+
 .stats-bar__unit {
     font-size: 13px;
     color: #7c8db5;

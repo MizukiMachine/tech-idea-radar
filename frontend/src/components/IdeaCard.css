@@ -89,7 +89,7 @@
 
 .idea-card__footer {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 4px;
     margin-top: auto;
     color: #4a6cf7;
@@ -111,6 +111,15 @@
     font-size: 18px;
     font-weight: 800;
     line-height: 1;
+}
+
+.idea-card__scale {
+    margin-left: auto;
+    font-size: 12px;
+    font-weight: 700;
+    color: #7c3aed;
+    letter-spacing: 0;
+    white-space: nowrap;
 }
 
 @media (max-width: 900px) {

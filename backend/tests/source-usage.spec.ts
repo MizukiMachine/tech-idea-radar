@@ -18,7 +18,8 @@ const idea: IdeaCandidate = {
   targetUsers: "SRE チーム",
   coreProblem: "障害対応の知見が散らばる",
   revenuePotential: "high",
-  estimatedMvpTime: "2週間",
+  developmentScale: 2,
+  developmentScaleReason: "既存のログ連携と要約UIを組み合わせれば小さく検証できる",
   differentiation: "運用トレンドを根拠に提案する",
   sources: {
     rssKeywords: ["AI"],

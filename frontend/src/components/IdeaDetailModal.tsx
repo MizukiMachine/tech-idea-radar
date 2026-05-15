@@ -1,4 +1,5 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
+import { developmentScaleLabel, developmentScaleStars, getDevelopmentScale } from '../utils/idea-metrics';
 import './IdeaDetailModal.css';
 
 interface IdeaDetailModalProps {
@@ -8,6 +9,7 @@ interface IdeaDetailModalProps {
 
 export default function IdeaDetailModal({ idea, onClose }: IdeaDetailModalProps): JSX.Element {
     const evidenceUrls = idea.sources.evidenceUrls ?? [];
+    const developmentScale = getDevelopmentScale(idea);
 
     return (
         <div className="idea-modal" role="dialog" aria-modal="true" aria-labelledby="idea-modal-title">
@@ -32,8 +34,8 @@ export default function IdeaDetailModal({ idea, onClose }: IdeaDetailModalProps)
                         <strong>{idea.revenuePotential}</strong>
                     </div>
                     <div className="idea-modal__score">
-                        <span>MVP目安</span>
-                        <strong>{idea.estimatedMvpTime}</strong>
+                        <span>開発規模</span>
+                        <strong className="idea-modal__scale-stars">{developmentScaleStars(developmentScale)}</strong>
                     </div>
                 </div>
 
@@ -56,6 +58,11 @@ export default function IdeaDetailModal({ idea, onClose }: IdeaDetailModalProps)
                     <section className="idea-modal__section">
                         <h3>差別化</h3>
                         <p>{idea.differentiation}</p>
+                    </section>
+
+                    <section className="idea-modal__section">
+                        <h3>開発規模</h3>
+                        <p>{idea.developmentScaleReason ?? developmentScaleLabel(developmentScale)}</p>
                     </section>
 
                     <section className="idea-modal__section">
