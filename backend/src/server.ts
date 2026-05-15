@@ -1,5 +1,6 @@
 import "dotenv/config";
 import app from "./app";
+import { startBackgroundCacheRefresh } from "./services/idea-cache";
 
 const DEFAULT_PORT = 3001;
 const rawPort = process.env.PORT ?? DEFAULT_PORT;
@@ -11,4 +12,5 @@ if (Number.isNaN(port)) {
 
 app.listen(port, () => {
   console.log(`Backend service listening on port ${port}`);
+  startBackgroundCacheRefresh();
 });

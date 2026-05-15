@@ -8,6 +8,8 @@ import {
   getRuntimeMeta,
   getXUsageSnapshot,
   getAdminApiToken,
+  getIdeaCacheStatus,
+  getTrendCacheStatus,
   isAdminAuthEnabled,
   isPublicReadonlyMode,
   scanAndCacheTrends,
@@ -115,7 +117,7 @@ router.get('/ideas', async (_req: Request, res: Response) => {
   try {
     const cached = getCachedIdeas();
     if (cached) {
-      res.json({ status: 'cached', ...cached });
+      res.json({ status: getIdeaCacheStatus(), ...cached });
       return;
     }
 
@@ -142,7 +144,7 @@ router.get('/trends', async (_req: Request, res: Response) => {
   try {
     const cached = getCachedTrends();
     if (cached) {
-      res.json({ status: 'cached', ...cached });
+      res.json({ status: getTrendCacheStatus(), ...cached });
       return;
     }
 

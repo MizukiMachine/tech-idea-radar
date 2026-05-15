@@ -39,6 +39,8 @@ const meta = {
     adminAuthEnabled: false,
     persistentCacheEnabled: false,
     cacheTtlHours: 1,
+    warmupOnStart: true,
+    backgroundRefreshIntervalHours: 0,
   },
   xUsage: null,
   cache: {
@@ -49,6 +51,8 @@ const meta = {
     sourceSummary: { rssItemCount: 3, xSignalCount: 2, usedLLMFallback: false },
   },
   generationInProgress: false,
+  trendScanInProgress: false,
+  backgroundRefreshInProgress: false,
 };
 const trends = {
   status: "cached",

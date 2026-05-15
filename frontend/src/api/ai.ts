@@ -34,6 +34,8 @@ export interface IdeasMeta {
     adminAuthEnabled?: boolean;
     persistentCacheEnabled?: boolean;
     cacheTtlHours?: number;
+    warmupOnStart?: boolean;
+    backgroundRefreshIntervalHours?: number;
   };
   xUsage?: {
     source: string;
@@ -41,13 +43,15 @@ export interface IdeasMeta {
     data: unknown;
   } | null;
   cache: {
-    status: 'empty' | 'cached';
+    status: 'empty' | 'cached' | 'stale';
     expiresAt: string | null;
     generatedAt: string | null;
     candidateCount: number;
     sourceSummary: SourceSummary | null;
   };
   generationInProgress: boolean;
+  trendScanInProgress?: boolean;
+  backgroundRefreshInProgress?: boolean;
 }
 
 export interface RssTrendItem {

@@ -24,6 +24,12 @@ const CACHE_TTL_MS = parseHoursToMs(
   process.env.IDEA_CACHE_TTL_HOURS,
   PUBLIC_READONLY_MODE ? 24 * 60 * 60 * 1000 : CACHE_REFRESH_INTERVAL_MS,
 );
+const WARMUP_ON_START = process.env.IDEA_WARMUP_ON_START === undefined
+  ? true
+  : isTruthy(process.env.IDEA_WARMUP_ON_START);
+const BACKGROUND_REFRESH_INTERVAL_MS = parseHoursToMs(process.env.IDEA_BACKGROUND_REFRESH_HOURS, 0);
+
+type CacheStatus = 'empty' | 'cached' | 'stale';
 
 let cache: {
   data: IdeaGenerationOutput;
@@ -37,6 +43,8 @@ let trendCache: {
 } | null = null;
 let trendScanLock: Promise<TrendScanOutput> | null = null;
 let persistentCacheLoaded = false;
+let backgroundRefreshLock: Promise<void> | null = null;
+let backgroundRefreshTimer: NodeJS.Timeout | null = null;
 
 function isTruthy(value: string | undefined): boolean {
   return ['1', 'true', 'yes', 'on'].includes((value ?? '').trim().toLowerCase());
@@ -89,26 +97,33 @@ function persistCache(): void {
   }
 }
 
+function isExpired(entry: { expiresAt: number } | null): boolean {
+  return Boolean(entry && Date.now() > entry.expiresAt);
+}
+
+function cacheStatus(entry: { expiresAt: number } | null): CacheStatus {
+  if (!entry) return 'empty';
+  return isExpired(entry) ? 'stale' : 'cached';
+}
+
 export function getCachedIdeas(): IdeaGenerationOutput | null {
   loadPersistentCache();
-  if (!cache) return null;
-  if (Date.now() > cache.expiresAt) {
-    cache = null;
-    persistCache();
-    return null;
-  }
-  return cache.data;
+  return cache?.data ?? null;
 }
 
 export function getCachedTrends(): TrendScanOutput | null {
   loadPersistentCache();
-  if (!trendCache) return null;
-  if (Date.now() > trendCache.expiresAt) {
-    trendCache = null;
-    persistCache();
-    return null;
-  }
-  return trendCache.data;
+  return trendCache?.data ?? null;
+}
+
+export function getIdeaCacheStatus(): CacheStatus {
+  loadPersistentCache();
+  return cacheStatus(cache);
+}
+
+export function getTrendCacheStatus(): CacheStatus {
+  loadPersistentCache();
+  return cacheStatus(trendCache);
 }
 
 export function isPublicReadonlyMode(): boolean {
@@ -147,19 +162,24 @@ export function getRuntimeMeta(): {
     adminAuthEnabled: boolean;
     persistentCacheEnabled: boolean;
     cacheTtlHours: number;
+    warmupOnStart: boolean;
+    backgroundRefreshIntervalHours: number;
   };
   xUsage: XUsageSnapshot | null;
   cache: {
-    status: 'empty' | 'cached';
+    status: CacheStatus;
     expiresAt: string | null;
     generatedAt: string | null;
     candidateCount: number;
     sourceSummary: IdeaGenerationOutput['sourceSummary'] | null;
   };
   generationInProgress: boolean;
+  trendScanInProgress: boolean;
+  backgroundRefreshInProgress: boolean;
 } {
   const cached = getCachedIdeas();
   const xRuntime = getXRuntimeConfig();
+  const ideaStatus = getIdeaCacheStatus();
   return {
     instanceId: INSTANCE_ID,
     pid: process.pid,
@@ -180,10 +200,12 @@ export function getRuntimeMeta(): {
       adminAuthEnabled: Boolean(ADMIN_API_TOKEN),
       persistentCacheEnabled: Boolean(PERSISTENT_CACHE_FILE),
       cacheTtlHours: CACHE_TTL_MS / 60 / 60 / 1000,
+      warmupOnStart: WARMUP_ON_START,
+      backgroundRefreshIntervalHours: BACKGROUND_REFRESH_INTERVAL_MS / 60 / 60 / 1000,
     },
     xUsage: getCachedXUsage(),
     cache: cached ? {
-      status: 'cached',
+      status: ideaStatus,
       expiresAt: cache ? new Date(cache.expiresAt).toISOString() : null,
       generatedAt: cached.generatedAt,
       candidateCount: cached.candidates.length,
@@ -196,6 +218,8 @@ export function getRuntimeMeta(): {
       sourceSummary: null,
     },
     generationInProgress: Boolean(generationLock),
+    trendScanInProgress: Boolean(trendScanLock),
+    backgroundRefreshInProgress: Boolean(backgroundRefreshLock),
   };
 }
 
@@ -259,6 +283,55 @@ export async function scanAndCacheTrends(
   })();
 
   return trendScanLock;
+}
+
+export function refreshCachesInBackground(reason: string, force = false): Promise<void> {
+  if (backgroundRefreshLock) return backgroundRefreshLock;
+
+  loadPersistentCache();
+  const shouldRefreshTrends = force || !trendCache || isExpired(trendCache);
+  const shouldRefreshIdeas = force || !cache || isExpired(cache);
+
+  if (!shouldRefreshTrends && !shouldRefreshIdeas) {
+    console.log(`[Cache] Background refresh skipped (${reason}): cache is fresh`);
+    return Promise.resolve();
+  }
+
+  backgroundRefreshLock = (async () => {
+    console.log(`[Cache] Background refresh started (${reason})`);
+    if (shouldRefreshTrends) {
+      await scanAndCacheTrends();
+    }
+    if (shouldRefreshIdeas) {
+      await generateAndCacheIdeas();
+    }
+    console.log(`[Cache] Background refresh completed (${reason})`);
+  })()
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[Cache] Background refresh failed (${reason}): ${message}`);
+    })
+    .finally(() => {
+      backgroundRefreshLock = null;
+    });
+
+  return backgroundRefreshLock;
+}
+
+export function startBackgroundCacheRefresh(): void {
+  loadPersistentCache();
+
+  if (WARMUP_ON_START) {
+    void refreshCachesInBackground('startup');
+  }
+
+  if (BACKGROUND_REFRESH_INTERVAL_MS <= 0 || backgroundRefreshTimer) return;
+
+  backgroundRefreshTimer = setInterval(() => {
+    void refreshCachesInBackground('scheduled', true);
+  }, BACKGROUND_REFRESH_INTERVAL_MS);
+  backgroundRefreshTimer.unref?.();
+  console.log(`[Cache] Scheduled background refresh every ${BACKGROUND_REFRESH_INTERVAL_MS / 60 / 60 / 1000} hours`);
 }
 
 export async function filterCachedIdeas(input: SemanticFilterInput): Promise<SemanticFilterOutput> {
