@@ -32,8 +32,6 @@ interface TrendBoardProps {
   error: string | null;
   onRefresh: () => void;
   refreshDisabled?: boolean;
-  onOpenIdeas: () => void;
-  onUseSignal: (query: string) => void;
 }
 
 export default function TrendBoard({
@@ -42,8 +40,6 @@ export default function TrendBoard({
   error,
   onRefresh,
   refreshDisabled = false,
-  onOpenIdeas,
-  onUseSignal,
 }: TrendBoardProps): JSX.Element {
   const [expandedArticleUrl, setExpandedArticleUrl] = useState<string | null>(null);
   const rssArticles = trends?.rssContext.relatedArticles ?? [];
@@ -59,12 +55,11 @@ export default function TrendBoard({
           <h2 className="trend-board__title">今日のAI開発シグナル</h2>
         </div>
         <div className="trend-board__actions">
-          <button type="button" className="trend-board__secondary-btn" onClick={onRefresh} disabled={loading || refreshDisabled}>
-            {loading ? '取得中...' : refreshDisabled ? '公開キャッシュ' : '再取得'}
-          </button>
-          <button type="button" className="trend-board__primary-btn" onClick={onOpenIdeas}>
-            アイデアを見る
-          </button>
+          {!refreshDisabled && (
+            <button type="button" className="trend-board__secondary-btn" onClick={onRefresh} disabled={loading}>
+              {loading ? '取得中...' : '再取得'}
+            </button>
+          )}
         </div>
       </div>
 
@@ -107,7 +102,7 @@ export default function TrendBoard({
       {!loading && trends && rssArticles.length === 0 && (
         <div className="trend-board__empty">
           <h3>表示できるRSS記事がありません</h3>
-          <p>RSS の接続状態を確認して、再取得してください。</p>
+          <p>{refreshDisabled ? 'データ更新後に表示されます。' : 'RSS の接続状態を確認して、再取得してください。'}</p>
         </div>
       )}
 
@@ -132,7 +127,6 @@ export default function TrendBoard({
                       const url = articleUrl(article);
                       setExpandedArticleUrl((current) => (current === url ? null : url));
                     }}
-                    onUseSignal={onUseSignal}
                   />
                 ))}
               </div>
@@ -144,23 +138,15 @@ export default function TrendBoard({
               <h3>注目キーワード</h3>
               <div className="trend-keywords">
                 {keywords.slice(0, 18).map((keyword) => (
-                  <button
-                    type="button"
+                  <span
                     key={keyword.word}
                     className="trend-keyword"
-                    onClick={() => onUseSignal(keyword.word)}
                   >
                     <span>{keyword.word}</span>
                     <strong>{keyword.count}</strong>
-                  </button>
+                  </span>
                 ))}
               </div>
-            </div>
-
-            <div className="trend-side-panel trend-side-panel--focus">
-              <h3>次の一手</h3>
-              <p>気になるRSS記事やキーワードを起点にすると、アイデア一覧をその文脈で絞り込めます。</p>
-              <button type="button" onClick={onOpenIdeas}>全候補を確認</button>
             </div>
           </aside>
         </div>
@@ -173,15 +159,12 @@ function ArticleRow({
   article,
   expanded,
   onToggleSummary,
-  onUseSignal,
 }: {
   article: RssArticle;
   expanded: boolean;
   onToggleSummary: () => void;
-  onUseSignal: (query: string) => void;
 }): JSX.Element {
   const displayTitle = article.titleJa || article.title;
-  const query = displayTitle;
 
   return (
     <article className="rss-row">
@@ -197,7 +180,6 @@ function ArticleRow({
         <button type="button" className="rss-row__summary-btn" onClick={onToggleSummary}>
           {expanded ? '要約を閉じる' : '記事の要約'}
         </button>
-        <button type="button" onClick={() => onUseSignal(query)}>案を見る</button>
       </div>
       {expanded && (
         <div className="rss-row__summary">

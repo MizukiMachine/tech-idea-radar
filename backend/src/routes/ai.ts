@@ -229,6 +229,8 @@ router.get('/ideas/stream', async (_req: Request, res: Response) => {
 
 // POST /api/ideas/filter — LLM semantic filter
 router.post('/ideas/filter', async (req: Request, res: Response) => {
+  if (isPublicReadonlyMode() && !requireAdmin(req, res)) return;
+
   const parsed = FilterInputSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: `Validation failed: ${formatZodError(parsed.error)}` });

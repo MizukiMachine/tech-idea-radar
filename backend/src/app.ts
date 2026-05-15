@@ -4,9 +4,13 @@ import healthRouter from "./routes/health";
 import aiRouter from "./routes/ai";
 
 const app = express();
+const allowedOrigins = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.disable("x-powered-by");
-app.use(cors());
+app.use(allowedOrigins.length > 0 ? cors({ origin: allowedOrigins }) : cors());
 app.use(express.json());
 
 app.get("/", (_req, res) => {

@@ -34,7 +34,6 @@
   justify-content: flex-end;
 }
 
-.trend-board__primary-btn,
 .trend-board__secondary-btn {
   min-height: 42px;
   padding: 0 20px;
@@ -44,19 +43,12 @@
   transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 }
 
-.trend-board__primary-btn {
-  background: var(--accent-blue);
-  color: #fff;
-  box-shadow: var(--shadow-glow);
-}
-
 .trend-board__secondary-btn {
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   color: var(--text-primary);
 }
 
-.trend-board__primary-btn:hover,
 .trend-board__secondary-btn:hover:not(:disabled) {
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
@@ -215,22 +207,16 @@
   font-weight: 800;
 }
 
-.rss-row__actions button,
-.trend-side-panel--focus button {
+.rss-row__actions .rss-row__summary-btn {
   min-height: 34px;
   padding: 0 14px;
   border-radius: 999px;
-  background: var(--accent-blue);
-  color: #fff;
-  font-size: 13px;
-  font-weight: 800;
-  white-space: nowrap;
-}
-
-.rss-row__actions .rss-row__summary-btn {
   border: 1px solid var(--border-color);
   background: var(--bg-card);
   color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .rss-list {
@@ -337,18 +323,6 @@
   color: var(--accent-blue);
 }
 
-.trend-side-panel--focus {
-  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
-  border-color: #bfdbfe;
-}
-
-.trend-side-panel--focus p {
-  margin: 0 0 14px;
-  color: var(--text-secondary);
-  font-size: 14px;
-  line-height: 1.7;
-}
-
 @media (max-width: 1200px) {
   .trend-board__layout {
     grid-template-columns: minmax(0, 1fr);
@@ -369,7 +343,6 @@
   }
 
   .trend-board__actions,
-  .trend-board__primary-btn,
   .trend-board__secondary-btn {
     width: 100%;
   }

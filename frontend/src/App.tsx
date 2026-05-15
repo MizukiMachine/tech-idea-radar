@@ -7,7 +7,6 @@ import {
   refreshIdeas,
   refreshTrends,
   filterIdeas,
-  getApiBase,
   type SourceSummary,
   type IdeasMeta,
   type TrendScan,
@@ -91,6 +90,17 @@ function sortIdeas(ideas: IdeaCandidate[], sort: string): IdeaCandidate[] {
   });
 }
 
+function matchesSearchQuery(text: string, query: string): boolean {
+  const terms = query
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (terms.length === 0) return true;
+  const normalizedText = text.toLowerCase();
+  return terms.every((term) => normalizedText.includes(term));
+}
+
 function userFacingError(message: string): string {
   const normalized = message.toLowerCase();
   if (normalized.includes('failed to fetch') || normalized.includes('stream failed')) {
@@ -161,6 +171,12 @@ function App(): JSX.Element {
   }, []);
   const publicReadonlyMode = Boolean(ideasMeta?.env?.publicReadonlyMode);
   const xEnrichmentEnabled = Boolean(ideasMeta?.env?.xEnrichmentEnabled);
+  const generatedAt = ideasMeta?.cache?.generatedAt ?? null;
+  const headerStatusItems = [
+    ideasMeta ? (publicReadonlyMode ? '閲覧用キャッシュ' : '編集・生成モード') : 'データ確認中',
+    `データ元 ${xEnrichmentEnabled ? 'RSS + X' : 'RSS'}`,
+    `最終更新 ${formatStamp(generatedAt)}`,
+  ];
 
   // Load trends and any cached ideas on mount. Idea generation is user-triggered.
   useEffect(() => {
@@ -223,6 +239,11 @@ function App(): JSX.Element {
       setSemanticFilterText(null);
       return;
     }
+    if (publicReadonlyMode) {
+      setSemanticFilteredIdeas(null);
+      setSemanticFilterText(null);
+      return;
+    }
 
     setSemanticFiltering(true);
     setError(null);
@@ -236,7 +257,7 @@ function App(): JSX.Element {
     } finally {
       setSemanticFiltering(false);
     }
-  }, [searchQuery]);
+  }, [publicReadonlyMode, searchQuery]);
 
   // Refresh
   const handleRefresh = useCallback((focusKeyword?: string) => {
@@ -295,28 +316,12 @@ function App(): JSX.Element {
     if (ideas.length === 0 && !loading && !publicReadonlyMode) handleRefresh();
   }, [handleRefresh, ideas.length, loading, publicReadonlyMode]);
 
-  const handleUseSignal = useCallback((query: string) => {
-    const normalized = query.trim();
-    if (!normalized) return;
-    setSemanticFilteredIdeas(null);
-    setSemanticFilterText(null);
-    setError(null);
-    setActiveView('ideas');
-    if (ideas.length > 0) {
-      setSearchQuery(normalized);
-      void handleSemanticSearch(normalized);
-    } else if (!loading && !publicReadonlyMode) {
-      setSearchQuery('');
-      handleRefresh(normalized);
-    }
-  }, [handleRefresh, handleSemanticSearch, ideas.length, loading, publicReadonlyMode]);
-
   const sourceIdeas = semanticFilteredIdeas ?? ideas;
   const displayedIdeas = sortIdeas(
     sourceIdeas.filter((idea) => {
       const text = ideaText(idea);
       const normalizedSearch = searchQuery.trim().toLowerCase();
-      if (!semanticFilteredIdeas && normalizedSearch && !text.toLowerCase().includes(normalizedSearch)) return false;
+      if (!semanticFilteredIdeas && normalizedSearch && !matchesSearchQuery(text, normalizedSearch)) return false;
       if (activeTech !== 'すべて' && !text.includes(activeTech.replace('AI・機械学習', 'AI'))) return false;
       if (activeInterests.length > 0) {
         const hasInterestMatch = activeInterests.some((interest) => {
@@ -336,12 +341,14 @@ function App(): JSX.Element {
   const topTrendIdea = sortIdeas(displayedIdeas, 'トレンドスコア順')[0] ?? ideas[0];
   const hasIdeas = ideas.length > 0;
   const showXMissingWarning = hasIdeas
+    && !publicReadonlyMode
     && (sourceSummary?.xSignalCount ?? 0) === 0
     && xEnrichmentEnabled
     && ideasMeta?.env?.hasXBearerToken
     && ideasMeta?.env?.xSearchFixtureMode !== 'replay';
   const showDashboard = loading || hasIdeas;
   const showSetupState = !loading && !hasIdeas;
+  const showIdeaCommandBar = activeView === 'ideas' && (hasIdeas || !publicReadonlyMode);
   const handleIdeaSelect = useCallback((idea: IdeaCandidate) => {
     setSelectedIdea(idea);
     setModalIdea(idea);
@@ -359,10 +366,9 @@ function App(): JSX.Element {
             </div>
           </div>
           <div className="app-header__status">
-            <span>API {getApiBase()}</span>
-            <span>{publicReadonlyMode ? '公開キャッシュ' : '開発モード'}</span>
-            <span>データ {xEnrichmentEnabled ? 'RSS + X' : 'RSS'}</span>
-            <span>最終生成 {formatStamp(sourceSummary ? (ideasMeta?.cache?.generatedAt ?? null) : null)}</span>
+            {headerStatusItems.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
           </div>
         </div>
 
@@ -384,7 +390,7 @@ function App(): JSX.Element {
           </button>
         </nav>
 
-        {activeView === 'ideas' && (
+        {showIdeaCommandBar && (
           <div className="idea-command-bar">
             <div className="idea-command-bar__search">
               <span className="idea-command-bar__search-icon">⌕</span>
@@ -395,18 +401,30 @@ function App(): JSX.Element {
                 onChange={(e) => handleSearch(e.target.value)}
                 disabled={!hasIdeas}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleSemanticSearch();
+                  if (e.key === 'Enter' && !publicReadonlyMode) void handleSemanticSearch();
                 }}
               />
+              {searchQuery && hasIdeas && (
+                <button
+                  type="button"
+                  className="idea-command-bar__clear"
+                  onClick={() => handleSearch('')}
+                  aria-label="検索条件をクリア"
+                >
+                  ×
+                </button>
+              )}
             </div>
-            <button
-              type="button"
-              className="idea-command-bar__secondary"
-              onClick={() => void handleSemanticSearch()}
-              disabled={!hasIdeas || loading || semanticFiltering || !searchQuery.trim()}
-            >
-              {semanticFiltering ? '検索中...' : 'AIで絞り込み'}
-            </button>
+            {!publicReadonlyMode && (
+              <button
+                type="button"
+                className="idea-command-bar__secondary"
+                onClick={() => void handleSemanticSearch()}
+                disabled={!hasIdeas || loading || semanticFiltering || !searchQuery.trim()}
+              >
+                {semanticFiltering ? '検索中...' : 'AIで絞り込み'}
+              </button>
+            )}
             {!publicReadonlyMode && (
               <button
                 type="button"
@@ -429,8 +447,6 @@ function App(): JSX.Element {
             error={trendError}
             onRefresh={() => void handleTrendRefresh()}
             refreshDisabled={publicReadonlyMode}
-            onOpenIdeas={handleOpenIdeas}
-            onUseSignal={handleUseSignal}
           />
         )}
 
@@ -479,7 +495,7 @@ function App(): JSX.Element {
                 <h2>{publicReadonlyMode ? '公開データを準備中です' : 'トレンドから作るものを生成します'}</h2>
                 <p>
                   {publicReadonlyMode
-                    ? '現在表示できるキャッシュ済みアイデアがありません。管理環境で生成されると、ここに候補が表示されます。'
+                    ? '現在表示できるアイデアがありません。データ更新後に候補が表示されます。'
                     : '技術ニュースとRSSシグナルを材料に、個人開発で検証しやすいプロダクト案を出します。'}
                 </p>
                 {!publicReadonlyMode && (

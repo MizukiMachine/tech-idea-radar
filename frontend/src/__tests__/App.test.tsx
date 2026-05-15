@@ -156,4 +156,42 @@ describe("App", () => {
     expect(screen.getByText(/急上昇トレンド/)).toBeTruthy();
     expect(screen.getByText("選択中のアイデア")).toBeTruthy();
   });
+
+  it("hides generation controls in public readonly mode", async () => {
+    const publicMeta = {
+      ...meta,
+      env: {
+        ...meta.env,
+        publicReadonlyMode: true,
+        adminAuthEnabled: true,
+      },
+    };
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, xSignalCount: 2, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/ideas/meta")) body = publicMeta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("閲覧用キャッシュ")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "AIで絞り込み" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "再生成" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
+    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "再取得" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "案を見る" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "アイデアを見る" })).toBeNull();
+    expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/ideas/filter"))).toBe(false);
+  });
 });

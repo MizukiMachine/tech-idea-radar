@@ -124,6 +124,7 @@
   justify-content: center;
   width: min(820px, 100%);
   gap: 12px;
+  flex-wrap: wrap;
   padding: 0;
   border: none;
   border-radius: 0;
@@ -133,6 +134,7 @@
 
 .idea-command-bar__search {
   position: relative;
+  flex: 1 1 360px;
   min-width: 0;
 }
 
@@ -149,7 +151,7 @@
 .idea-command-bar input {
   width: 100%;
   min-height: 54px;
-  padding: 0 20px 0 50px;
+  padding: 0 48px 0 50px;
   border: 1px solid var(--border-color);
   border-radius: 999px;
   background: var(--bg-card);
@@ -169,6 +171,30 @@
 .idea-command-bar input:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.idea-command-bar__clear {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  color: var(--text-tertiary);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  transform: translateY(-50%);
+  transition: background 0.2s, color 0.2s;
+}
+
+.idea-command-bar__clear:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
 .idea-command-bar__primary,
@@ -555,7 +581,8 @@
   }
 
   .idea-command-bar {
-    grid-template-columns: minmax(0, 1fr);
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .idea-command-bar__primary,
