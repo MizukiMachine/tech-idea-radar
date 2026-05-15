@@ -1,12 +1,12 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
-  /* Dynamic Gradients and Pale Tones */
+  /* Neutral product workspace */
   --bg-primary: #F4F7FB;
   --bg-secondary: #FFFFFF;
   --bg-tertiary: #EEF2F8;
   --bg-card: #FFFFFF;
-  --bg-card-hover: #F8FAFD;
+  --bg-card-hover: #F8FAFC;
   --bg-input: #F8FAFC;
   --border-color: #E2E8F0;
   --border-active: #1D63ED;
@@ -14,9 +14,9 @@
   --text-secondary: #4A5568;
   --text-tertiary: #718096;
 
-  /* Modern Accent Colors (Vibrant but soft) */
+  /* Accents */
   --accent-blue: #2B6AFF;
-  --accent-blue-glow: rgba(43, 106, 255, 0.15);
+  --accent-blue-glow: rgba(43, 106, 255, 0.14);
   --accent-green: #00B67A;
   --accent-green-glow: rgba(0, 182, 122, 0.15);
   --accent-yellow: #FFB300;
@@ -44,7 +44,6 @@
   font-weight: 500;
   color: var(--text-primary);
   background-color: var(--bg-primary);
-  /* Slight dotted background overall layout */
   background-image: radial-gradient(#e5ecf5 1px, transparent 1px);
   background-size: 20px 20px;
   -webkit-font-smoothing: antialiased;

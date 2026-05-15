@@ -3,7 +3,7 @@ import { IdeaGenerationAgent } from './idea-generation-agent';
 import { FilterAgent } from './filter-agent';
 import { fetchRssContext } from '../services/mcp-client';
 import { fetchXContext } from '../services/x-client';
-import type { IdeaGenerationInput, IdeaGenerationOutput } from '../types/idea-generation';
+import type { IdeaGenerationInput, IdeaGenerationOutput, TrendScanOutput } from '../types/idea-generation';
 import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semantic-filter';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { RssArticle, RssContext } from '../services/mcp-client';
@@ -317,43 +317,30 @@ export class EntrepreneurAgent {
     this.filterAgent = new FilterAgent(llm);
   }
 
-  async generateIdeas(onProgress?: (text: string) => void): Promise<IdeaGenerationOutput> {
-    const startTime = Date.now();
-    console.log('[IdeaGeneration] Starting idea generation pipeline');
-
-    // Fetch RSS + X enrichment data in parallel
-    const keywords = DEFAULT_KEYWORDS;
+  private async scanTrendContext(
+    onProgress?: (text: string) => void,
+    focusKeywords: string[] = DEFAULT_KEYWORDS,
+  ): Promise<TrendScanOutput> {
+    const keywords = [...new Set(focusKeywords.map((keyword) => keyword.trim()).filter(Boolean))];
+    const effectiveKeywords = keywords.length > 0 ? keywords : DEFAULT_KEYWORDS;
     onProgress?.('[Enrichment] RSS + X データ取得中...');
     const [rssContext, xContext] = await Promise.all([
-      fetchRssContext(keywords.slice(0, 3)),
-      fetchXContext(keywords, []),
+      fetchRssContext(effectiveKeywords.slice(0, 3)),
+      fetchXContext(effectiveKeywords, []),
     ]);
     const rssCount = rssContext.trendingKeywords.length + rssContext.relatedArticles.length;
     const xCount = xContext.trendingTopics.length + xContext.demandSignals.length + xContext.competitorSentiments.length;
     console.log(`[IdeaGeneration] Enrichment: RSS: ${rssCount} items, X: ${xCount} signals`);
-    onProgress?.(`[Enrichment] RSS: ${rssCount}件, X: ${xCount}件\n\nアイデア生成中...`);
-
-    const input: IdeaGenerationInput = {
-      rssContext,
-      xContext,
-      focusKeywords: keywords,
-    };
-
-    onProgress?.('アイデア候補を生成中...');
-    const rawCandidates = await this.ideaGeneration.execute(input);
-
-    // LLM may return various formats — normalize to IdeaCandidate[]
-    const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext, xContext);
 
     const usedLLMFallback = rssContext.relatedArticles.length === 0 && xCount === 0;
     const warnings = usedLLMFallback
       ? ['外部RSS/Xデータを取得できなかったため、LLMの一般知識フォールバックで生成しました。']
       : [];
-    const totalTime = Date.now() - startTime;
-    console.log(`[IdeaGeneration] Generated ${candidates.length} ideas in ${totalTime}ms (fallback: ${usedLLMFallback})`);
 
     return {
-      candidates,
+      rssContext,
+      xContext,
+      focusKeywords: effectiveKeywords,
       generatedAt: new Date().toISOString(),
       sourceSummary: {
         rssItemCount: rssCount,
@@ -362,6 +349,41 @@ export class EntrepreneurAgent {
         dataQuality: usedLLMFallback ? 'llm_fallback' : 'external',
         warnings,
       },
+    };
+  }
+
+  async scanTrends(onProgress?: (text: string) => void): Promise<TrendScanOutput> {
+    console.log('[TrendScan] Starting trend scan pipeline');
+    return this.scanTrendContext(onProgress);
+  }
+
+  async generateIdeas(onProgress?: (text: string) => void, inputFocusKeywords?: string[]): Promise<IdeaGenerationOutput> {
+    const startTime = Date.now();
+    console.log('[IdeaGeneration] Starting idea generation pipeline');
+
+    const trendScan = await this.scanTrendContext(onProgress, inputFocusKeywords);
+    const { rssContext, xContext, focusKeywords } = trendScan;
+    onProgress?.(`[Enrichment] RSS: ${trendScan.sourceSummary.rssItemCount}件, X: ${trendScan.sourceSummary.xSignalCount}件\n\nアイデア生成中...`);
+
+    const input: IdeaGenerationInput = {
+      rssContext,
+      xContext,
+      focusKeywords,
+    };
+
+    onProgress?.('アイデア候補を生成中...');
+    const rawCandidates = await this.ideaGeneration.execute(input);
+
+    // LLM may return various formats — normalize to IdeaCandidate[]
+    const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext, xContext);
+
+    const totalTime = Date.now() - startTime;
+    console.log(`[IdeaGeneration] Generated ${candidates.length} ideas in ${totalTime}ms (fallback: ${trendScan.sourceSummary.usedLLMFallback})`);
+
+    return {
+      candidates,
+      generatedAt: new Date().toISOString(),
+      sourceSummary: trendScan.sourceSummary,
     };
   }
 

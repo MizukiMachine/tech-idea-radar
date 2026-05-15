@@ -142,7 +142,7 @@
 .idea-modal__tags span {
     display: inline-flex;
     padding: 5px 10px;
-    border-radius: 8px;
+    border-radius: 12px;
     background: var(--bg-input);
     color: var(--accent-blue);
     font-size: 12px;
@@ -162,7 +162,7 @@
     color: var(--text-primary);
     text-decoration: none;
     border: 1px solid var(--border-color);
-    border-radius: 12px;
+    border-radius: 8px;
     padding: 12px;
     background: var(--bg-input);
     font-size: 13px;

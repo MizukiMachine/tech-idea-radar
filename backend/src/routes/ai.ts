@@ -2,10 +2,12 @@ import { Router, Request, Response } from 'express';
 import { z } from 'zod';
 import {
   getCachedIdeas,
+  getCachedTrends,
   generateAndCacheIdeas,
   filterCachedIdeas,
   getRuntimeMeta,
   getXUsageSnapshot,
+  scanAndCacheTrends,
 } from '../services/idea-cache';
 
 // --- Request schemas ---
@@ -13,6 +15,10 @@ import {
 const FilterInputSchema = z.object({
   query: z.string(),
   topK: z.number().optional(),
+});
+
+const RefreshIdeasInputSchema = z.object({
+  focusKeyword: z.string().trim().min(1).max(120).optional(),
 });
 
 function formatZodError(error: z.ZodError): string {
@@ -76,6 +82,38 @@ router.get('/ideas', async (_req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[API] GET /ideas error: ${message}`);
+    res.status(500).json({ error: message });
+  }
+});
+
+// GET /api/trends — cached or freshly scanned RSS/X trend context
+router.get('/trends', async (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const cached = getCachedTrends();
+    if (cached) {
+      res.json({ status: 'cached', ...cached });
+      return;
+    }
+
+    const result = await scanAndCacheTrends();
+    res.json({ status: 'fresh', ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[API] GET /trends error: ${message}`);
+    res.status(500).json({ error: message });
+  }
+});
+
+// POST /api/trends/refresh — force trend context refresh
+router.post('/trends/refresh', async (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const result = await scanAndCacheTrends();
+    res.json({ status: 'fresh', ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[API] POST /trends/refresh error: ${message}`);
     res.status(500).json({ error: message });
   }
 });
@@ -172,9 +210,17 @@ router.post('/ideas/refresh', async (_req: Request, res: Response) => {
   res.on('close', () => { disconnected = true; });
 
   try {
+    const parsed = RefreshIdeasInputSchema.safeParse(_req.body ?? {});
+    if (!parsed.success) {
+      sseSend(res, 'error', { error: `Validation failed: ${formatZodError(parsed.error)}` }, disconnected);
+      if (!disconnected) res.end();
+      return;
+    }
+
+    const focusKeywords = parsed.data.focusKeyword ? [parsed.data.focusKeyword] : undefined;
     const result = await generateAndCacheIdeas((text) => {
       sseSend(res, 'generation_progress', { text }, disconnected);
-    });
+    }, focusKeywords);
 
     for (const idea of result.candidates) {
       if (!sseSend(res, 'idea_generated', idea, disconnected)) break;

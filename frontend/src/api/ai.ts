@@ -45,6 +45,74 @@ export interface IdeasMeta {
   generationInProgress: boolean;
 }
 
+export interface RssTrendItem {
+  word: string;
+  count: number;
+}
+
+export interface RssArticle {
+  title: string;
+  link: string;
+  url?: string;
+  published: string;
+  publishedAt?: string;
+  summary: string;
+  description?: string;
+  source: string;
+  keywords?: string[];
+}
+
+export interface XTweet {
+  id: string;
+  text: string;
+  author: string;
+  authorHandle: string;
+  likeCount: number;
+  retweetCount: number;
+  replyCount: number;
+  createdAt: string;
+  url: string;
+}
+
+export interface XTrendingTopic {
+  topic: string;
+  tweetVolume: number;
+  url: string;
+  relatedHashtags: string[];
+}
+
+export interface XDemandSignal {
+  tweet: XTweet;
+  needCategory: 'want' | 'frustration' | 'problem' | 'wish';
+  matchedKeywords: string[];
+  relevanceScore: number;
+}
+
+export interface XCompetitorSentiment {
+  competitorName: string;
+  tweets: XTweet[];
+  sentimentSummary: string;
+  keyComplaints: string[];
+  keyPraises: string[];
+}
+
+export interface TrendScan {
+  status: string;
+  rssContext: {
+    trendingKeywords: RssTrendItem[];
+    relatedArticles: RssArticle[];
+  };
+  xContext: {
+    trendingTopics: XTrendingTopic[];
+    demandSignals: XDemandSignal[];
+    competitorSentiments: XCompetitorSentiment[];
+    fetchedAt: string;
+  };
+  focusKeywords: string[];
+  generatedAt: string;
+  sourceSummary: SourceSummary;
+}
+
 // GET /api/ideas
 export async function fetchIdeas(): Promise<{
   status: string;
@@ -64,6 +132,23 @@ export async function fetchIdeasMeta(): Promise<IdeasMeta> {
   return res.json();
 }
 
+// GET /api/trends
+export async function fetchTrends(): Promise<TrendScan> {
+  const res = await fetch(`${API_BASE}/api/ai/trends`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`fetchTrends failed: ${res.status}`);
+  return res.json();
+}
+
+// POST /api/trends/refresh
+export async function refreshTrends(): Promise<TrendScan> {
+  const res = await fetch(`${API_BASE}/api/ai/trends/refresh`, {
+    method: 'POST',
+    cache: 'no-store',
+  });
+  if (!res.ok) throw new Error(`refreshTrends failed: ${res.status}`);
+  return res.json();
+}
+
 // SSE helper for idea generation / refresh streams
 function ideaStream(
   url: string,
@@ -74,10 +159,18 @@ function ideaStream(
     onComplete: (summary: { generatedAt: string; count: number; sourceSummary?: SourceSummary }) => void;
     onError: (error: string) => void;
   },
+  body?: Record<string, unknown>,
 ): AbortController {
   const controller = new AbortController();
 
-  fetch(url, { method, signal: controller.signal })
+  fetch(url, {
+    method,
+    signal: controller.signal,
+    ...(body ? {
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    } : {}),
+  })
     .then(async (res) => {
       if (!res.ok) {
         callbacks.onError(`Stream failed: ${res.status}`);
@@ -142,6 +235,11 @@ export async function filterIdeas(query: string, topK?: number): Promise<{
 }
 
 // POST /api/ideas/refresh
-export function refreshIdeas(callbacks: Parameters<typeof ideaStream>[2]): AbortController {
-  return ideaStream(`${API_BASE}/api/ai/ideas/refresh`, 'POST', callbacks);
+export function refreshIdeas(callbacks: Parameters<typeof ideaStream>[2], focusKeyword?: string): AbortController {
+  return ideaStream(
+    `${API_BASE}/api/ai/ideas/refresh`,
+    'POST',
+    callbacks,
+    focusKeyword ? { focusKeyword } : undefined,
+  );
 }

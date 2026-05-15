@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import App from "../App";
 
 const mockFetch = vi.fn();
+const generatedAt = new Date().toISOString();
 const idea = {
   id: "idea-1",
   title: "AI Ops Memo",
@@ -17,47 +18,127 @@ const idea = {
   estimatedMvpTime: "2週間",
   differentiation: "運用トレンドを根拠に提案する",
   sources: { rssKeywords: ["AI"], demandSignals: 1, evidenceUrls: [] },
-  generatedAt: new Date().toISOString(),
+  generatedAt,
+};
+const meta = {
+  instanceId: "test-instance",
+  pid: 123,
+  startedAt: generatedAt,
+  port: "3010",
+  env: {
+    hasZaiApiKey: true,
+    hasXBearerToken: true,
+    xDataSource: "rest",
+    xIncludeUserFields: false,
+    xCacheTtlHours: 6,
+    xCacheFileEnabled: false,
+    xSearchFixtureMode: "off",
+    xSearchFixtureEnabled: false,
+  },
+  xUsage: null,
+  cache: {
+    status: "cached",
+    expiresAt: generatedAt,
+    generatedAt,
+    candidateCount: 1,
+    sourceSummary: { rssItemCount: 3, xSignalCount: 2, usedLLMFallback: false },
+  },
+  generationInProgress: false,
+};
+const trends = {
+  status: "cached",
+  rssContext: {
+    trendingKeywords: [{ word: "AI", count: 4 }],
+    relatedArticles: [{
+      title: "AI agent tools are moving into product workflows",
+      link: "https://example.com/article",
+      url: "https://example.com/article",
+      published: generatedAt,
+      publishedAt: generatedAt,
+      summary: "Teams are adopting agent tools for product work.",
+      source: "Example RSS",
+      keywords: ["AI", "agent"],
+    }],
+  },
+  xContext: {
+    trendingTopics: [{
+      topic: "AI workflow tools are trending among indie developers",
+      tweetVolume: 42,
+      url: "https://x.com/example/status/1",
+      relatedHashtags: ["AI"],
+    }],
+    demandSignals: [{
+      tweet: {
+        id: "tweet-1",
+        text: "AIツールの比較がめんどくさい。誰か作って",
+        author: "Example",
+        authorHandle: "example",
+        likeCount: 10,
+        retweetCount: 2,
+        replyCount: 1,
+        createdAt: generatedAt,
+        url: "https://x.com/example/status/2",
+      },
+      needCategory: "wish",
+      matchedKeywords: ["誰か作って"],
+      relevanceScore: 80,
+    }],
+    competitorSentiments: [],
+    fetchedAt: generatedAt,
+  },
+  focusKeywords: ["AI"],
+  generatedAt,
+  sourceSummary: { rssItemCount: 3, xSignalCount: 2, usedLLMFallback: false },
 };
 
 beforeEach(() => {
   mockFetch.mockReset();
-  mockFetch.mockResolvedValue({
-    ok: true,
-    json: async () => ({
+  mockFetch.mockImplementation((input: RequestInfo | URL) => {
+    const url = String(input);
+    let body: unknown = {
       status: "cached",
       candidates: [idea],
-      generatedAt: new Date().toISOString(),
-      sourceSummary: { rssItemCount: 0, xSignalCount: 0, usedLLMFallback: false },
-    }),
+      generatedAt,
+      sourceSummary: { rssItemCount: 3, xSignalCount: 2, usedLLMFallback: false },
+    };
+    if (url.includes("/api/ai/trends")) body = trends;
+    if (url.includes("/api/ai/ideas/meta")) body = meta;
+    return Promise.resolve({
+      ok: true,
+      json: async () => body,
+    });
   });
   vi.stubGlobal("fetch", mockFetch);
 });
 
 describe("App", () => {
-  it("renders hero title", async () => {
+  it("renders the trend-first workspace", async () => {
     render(<App />);
-    expect(screen.getByText("作るものが決まっていないエンジニアへ")).toBeTruthy();
-    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    expect(screen.getByText("AI Build Radar")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
+    expect(screen.getByText("X需要シグナル")).toBeTruthy();
+    expect(screen.getByText("RSSフィード")).toBeTruthy();
   });
 
-  it("renders sidebar filter section", async () => {
+  it("renders sidebar filter section after opening ideas", async () => {
     render(<App />);
-    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /作るもの提案/ }));
     await waitFor(() => expect(screen.getByText("フィルター")).toBeTruthy());
     expect(screen.getByText("得意技術")).toBeTruthy();
   });
 
-  it("renders search input", async () => {
+  it("renders search input on the ideas view", async () => {
     render(<App />);
-    const input = screen.getByPlaceholderText("キーワードで絞り込み（例: AI ツール、SaaS、副業）");
-    expect(input).toBeTruthy();
-    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /作るもの提案/ }));
+    expect(screen.getByPlaceholderText("キーワードで絞り込み（例: AI ツール、SaaS、副業）")).toBeTruthy();
   });
 
-  it("renders right panel cards", async () => {
+  it("renders right panel cards on the ideas view", async () => {
     render(<App />);
-    await waitFor(() => expect(mockFetch).toHaveBeenCalled());
+    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: /作るもの提案/ }));
     await waitFor(() => expect(screen.getByText(/高収益ポテンシャル/)).toBeTruthy());
     expect(screen.getByText(/急上昇トレンド/)).toBeTruthy();
     expect(screen.getByText("選択中のアイデア")).toBeTruthy();

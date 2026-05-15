@@ -19,3 +19,11 @@ export interface IdeaGenerationOutput {
     warnings?: string[];
   };
 }
+
+export interface TrendScanOutput {
+  rssContext: RssContext;
+  xContext: XContext;
+  focusKeywords: string[];
+  generatedAt: string;
+  sourceSummary: IdeaGenerationOutput['sourceSummary'];
+}
