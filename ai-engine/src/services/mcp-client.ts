@@ -1,5 +1,6 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { XMLParser } from 'fast-xml-parser';
 
 export interface McpToolResult {
@@ -8,12 +9,22 @@ export interface McpToolResult {
 
 export class McpClient {
   private client: Client | null = null;
-  private transport: StdioClientTransport | null = null;
+  private transport: StdioClientTransport | StreamableHTTPClientTransport | null = null;
 
   async connect(command: string, args: string[] = [], timeoutMs = 10000): Promise<void> {
     this.transport = new StdioClientTransport({ command, args });
     this.client = new Client({ name: 'builder-agent-chain', version: '1.0.0' });
+    await this.connectTransport(timeoutMs);
+  }
 
+  async connectHttp(url: string, timeoutMs = 10000): Promise<void> {
+    this.transport = new StreamableHTTPClientTransport(new URL(url));
+    this.client = new Client({ name: 'builder-agent-chain', version: '1.0.0' });
+    await this.connectTransport(timeoutMs);
+  }
+
+  private async connectTransport(timeoutMs: number): Promise<void> {
+    if (!this.client || !this.transport) throw new Error('MCP transport not initialized');
     let timer: ReturnType<typeof setTimeout> | undefined;
     const connectPromise = this.client.connect(this.transport);
     const timeoutPromise = new Promise<never>((_, reject) => {

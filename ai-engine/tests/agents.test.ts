@@ -74,16 +74,43 @@ describe('IdeaGenerationAgent', () => {
   it('builds a trend-aware prompt and parses idea candidates', async () => {
     const client = createMockClient(JSON.stringify([candidate]));
     const agent = new IdeaGenerationAgent(client);
+    const xContext = {
+      trendingTopics: [],
+      demandSignals: [{
+        tweet: {
+          id: 'x1',
+          text: 'SREの障害対応メモが散らばっていて、再発防止策を自動整理するAI Opsツールが欲しい',
+          author: 'tester',
+          authorHandle: 'tester',
+          likeCount: 10,
+          retweetCount: 2,
+          replyCount: 1,
+          createdAt: '2026-05-14T00:00:00.000Z',
+          url: 'https://x.com/tester/status/x1',
+        },
+        needCategory: 'want' as const,
+        matchedKeywords: ['欲しい'],
+        relevanceScore: 70,
+      }],
+      competitorSentiments: [],
+      fetchedAt: '2026-05-14T00:00:00.000Z',
+    };
 
     const result = await agent.execute({
       rssContext: { trendingKeywords: [{ word: 'AI', count: 2 }], relatedArticles: [] },
-      xContext: { trendingTopics: [], demandSignals: [], competitorSentiments: [], fetchedAt: '2026-05-14T00:00:00.000Z' },
+      xContext,
       focusKeywords: ['AI', 'SaaS'],
     });
 
     expect(result[0].title).toBe('AI Ops Memo');
     expect(client.send).toHaveBeenCalledOnce();
-    expect(vi.mocked(client.send).mock.calls[0]?.[1]).toContain('AI, SaaS');
+    const prompt = vi.mocked(client.send).mock.calls[0]?.[1] ?? '';
+    expect(prompt).toContain('AI, SaaS');
+    expect(prompt).toContain('### X需要シード');
+    expect(prompt).toContain('x-demand-1');
+    expect(prompt).toContain('https://x.com/tester/status/x1');
+    expect(prompt).toContain('SREの障害対応メモ');
+    expect(vi.mocked(client.send).mock.calls[0]?.[0]).toContain('sourceSeedId');
   });
 });
 
@@ -131,5 +158,144 @@ describe('EntrepreneurAgent', () => {
 
     expect(result.filteredCandidates.map((idea) => idea.id)).toEqual(['idea-1', 'idea-2']);
     expect(client.send).not.toHaveBeenCalled();
+  });
+
+  it('includes trusted X URLs only when the post matches the candidate', async () => {
+    vi.mocked(fetchRssContext).mockResolvedValueOnce({
+      trendingKeywords: [],
+      relatedArticles: [],
+    });
+    vi.mocked(fetchXContext).mockResolvedValueOnce({
+      trendingTopics: [],
+      demandSignals: [{
+        tweet: {
+          id: 'x1',
+          text: 'SREの障害対応メモが散らばっていて、再発防止策を自動整理するAI Opsツールが欲しい',
+          author: 'tester',
+          authorHandle: 'tester',
+          likeCount: 10,
+          retweetCount: 2,
+          replyCount: 1,
+          createdAt: '2026-05-14T00:00:00.000Z',
+          url: 'https://x.com/tester/status/x1',
+        },
+        needCategory: 'want',
+        matchedKeywords: ['欲しい'],
+        relevanceScore: 70,
+      }],
+      competitorSentiments: [],
+      fetchedAt: '2026-05-14T00:00:00.000Z',
+    });
+
+    const xSeedCandidate: IdeaCandidate = {
+      ...candidate,
+      coreProblem: 'SREの障害対応メモが散らばっていて、再発防止策を自動整理できない',
+      description: 'SRE チームの障害対応ログを集約し、再発防止策を自動抽出する。',
+      sources: {
+        rssKeywords: [],
+        demandSignals: 1,
+        sourceSeedId: 'x-demand-1',
+        evidenceUrls: [],
+      },
+    };
+    const client = createMockClient(JSON.stringify([xSeedCandidate]));
+    const agent = new EntrepreneurAgent(client);
+    const result = await agent.generateIdeas();
+    const urls = result.candidates[0].sources.evidenceUrls ?? [];
+
+    expect(urls).toEqual([
+      {
+        title: 'SREの障害対応メモが散らばっていて、再発防止策を自動整理するAI Opsツールが欲しい',
+        url: 'https://x.com/tester/status/x1',
+        type: 'x',
+      },
+    ]);
+  });
+
+  it('does not attach unrelated high-engagement X posts as evidence', async () => {
+    vi.mocked(fetchXContext).mockResolvedValueOnce({
+      trendingTopics: [{
+        topic: '参考画像と指示文こだわったらサムネイルが作れる。AI感を消すのが今後のセンターピン。',
+        tweetVolume: 5000,
+        url: 'https://x.com/i/status/unrelated-1',
+        relatedHashtags: [],
+      }],
+      demandSignals: [{
+        tweet: {
+          id: 'x2',
+          text: 'モニター欲しいけど、何を基準に選べばいいのか分からない。コスパ良いモデルを教えてほしい',
+          author: 'tester',
+          authorHandle: 'tester',
+          likeCount: 3000,
+          retweetCount: 900,
+          replyCount: 100,
+          createdAt: '2026-05-14T00:00:00.000Z',
+          url: 'https://x.com/tester/status/unrelated-2',
+        },
+        needCategory: 'want',
+        matchedKeywords: ['欲しい'],
+        relevanceScore: 100,
+      }],
+      competitorSentiments: [],
+      fetchedAt: '2026-05-14T00:00:00.000Z',
+    });
+
+    const misdeclaredCandidate: IdeaCandidate = {
+      ...candidate,
+      sources: {
+        rssKeywords: [],
+        demandSignals: 1,
+        sourceSeedId: 'x-demand-1',
+        evidenceUrls: [],
+      },
+    };
+    const client = createMockClient(JSON.stringify([misdeclaredCandidate]));
+    const agent = new EntrepreneurAgent(client);
+    const result = await agent.generateIdeas();
+    const urls = result.candidates[0].sources.evidenceUrls ?? [];
+
+    expect(urls).toEqual([]);
+  });
+
+  it('does not attach unrelated RSS articles as evidence', async () => {
+    vi.mocked(fetchRssContext).mockResolvedValueOnce({
+      trendingKeywords: [{ word: 'AI', count: 3 }],
+      relatedArticles: [
+        {
+          title: 'AI Ops incident memo automation',
+          link: 'https://example.com/relevant-ai-ops',
+          url: 'https://example.com/relevant-ai-ops',
+          published: '2026-05-14T00:00:00.000Z',
+          summary: 'SRE teams use AI Ops to organize incident logs and recurrence prevention notes.',
+          source: 'Test RSS',
+          keywords: ['SRE', 'incident', 'AI Ops'],
+        },
+        {
+          title: 'How to choose a budget monitor',
+          link: 'https://example.com/unrelated-monitor',
+          url: 'https://example.com/unrelated-monitor',
+          published: '2026-05-14T00:00:00.000Z',
+          summary: 'Display size, refresh rate, and desk setup advice for home offices.',
+          source: 'Test RSS',
+          keywords: ['monitor', 'display'],
+        },
+      ],
+    });
+
+    const candidateWithoutEvidence = {
+      ...candidate,
+      sources: {
+        rssKeywords: [],
+        demandSignals: 0,
+        evidenceUrls: [],
+      },
+    };
+    const client = createMockClient(JSON.stringify([candidateWithoutEvidence]));
+    const agent = new EntrepreneurAgent(client);
+    const result = await agent.generateIdeas();
+    const urls = result.candidates[0].sources.evidenceUrls ?? [];
+
+    expect(urls.some((source) => source.url === 'https://example.com/relevant-ai-ops')).toBe(true);
+    expect(urls.some((source) => source.url === 'https://example.com/unrelated-monitor')).toBe(false);
   });
 });

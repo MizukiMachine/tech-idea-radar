@@ -10,7 +10,11 @@ export function getClient(): LLMClient {
     }
     const model = process.env.LLM_MODEL;
     const baseURL = process.env.LLM_BASE_URL;
-    cachedClient = new LLMClient(apiKey, model, undefined, baseURL);
+    const maxTokens = process.env.LLM_MAX_TOKENS ? Number(process.env.LLM_MAX_TOKENS) : undefined;
+    if (maxTokens !== undefined && !Number.isFinite(maxTokens)) {
+      throw new Error('LLM_MAX_TOKENS environment variable must be numeric');
+    }
+    cachedClient = new LLMClient(apiKey, model, maxTokens, baseURL);
   }
   return cachedClient;
 }

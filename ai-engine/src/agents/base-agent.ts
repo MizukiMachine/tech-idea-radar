@@ -1,10 +1,8 @@
 import { LLMClient } from '../services/llm-client';
 import { ResponseParser } from '../services/response-parser';
-import { AgentStep } from '../config/constants';
 
 export abstract class BaseAgent<TInput, TOutput> {
   abstract readonly name: string;
-  readonly step?: AgentStep = undefined;
   abstract get systemPrompt(): string;
   abstract buildUserPrompt(input: TInput): string;
 

@@ -11,6 +11,9 @@
     text-align: left;
     font: inherit;
     min-height: 190px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
 }
 
 .idea-card:hover {
@@ -63,6 +66,7 @@
     margin: 0;
     line-height: 1.4;
     flex: 1;
+    overflow-wrap: anywhere;
 }
 
 .idea-card__heading {
@@ -77,6 +81,7 @@
     font-weight: 500;
     color: var(--text-tertiary);
     line-height: 1.4;
+    overflow-wrap: anywhere;
 }
 
 .idea-card__description {
@@ -89,6 +94,7 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
     padding-bottom: 12px;
+    overflow-wrap: anywhere;
 }
 
 .idea-card__meta {

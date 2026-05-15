@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock environment variables
@@ -6,6 +9,12 @@ const originalEnv = process.env;
 beforeEach(() => {
   vi.resetModules();
   process.env = { ...originalEnv };
+  delete process.env.X_DATA_SOURCE;
+  delete process.env.X_INCLUDE_USER_FIELDS;
+  delete process.env.X_API_CACHE_FILE;
+  delete process.env.X_API_CACHE_TTL_HOURS;
+  delete process.env.X_SEARCH_FIXTURE_MODE;
+  delete process.env.X_SEARCH_FIXTURE_FILE;
 });
 
 afterEach(() => {
@@ -121,6 +130,8 @@ describe('fetchXContext', () => {
     expect(demandQuery).toContain('欲しい');
     // Should contain English keywords
     expect(demandQuery).toContain('wish there was');
+    // Demand search is capped at the minimum page size to reduce Post Read cost.
+    expect(demandCall[1]).toBe(10);
   });
 
   it('limits competitor lookups to the first five names', async () => {
@@ -151,13 +162,13 @@ describe('XApiClient', () => {
       {
         id: 'cached-1',
         text: 'Cached tweet',
-        author: 'CacheUser',
-        authorHandle: 'cacheuser',
+        author: 'Unknown',
+        authorHandle: 'unknown',
         likeCount: 10,
         retweetCount: 5,
         replyCount: 1,
         createdAt: '2025-01-01T00:00:00Z',
-        url: 'https://x.com/cacheuser/status/cached-1',
+        url: 'https://x.com/i/status/cached-1',
       },
     ];
 
@@ -169,10 +180,8 @@ describe('XApiClient', () => {
             text: 'Cached tweet',
             created_at: '2025-01-01T00:00:00Z',
             public_metrics: { like_count: 10, retweet_count: 5, reply_count: 1 },
-            author_id: 'u1',
           },
         ],
-        includes: { users: [{ id: 'u1', name: 'CacheUser', username: 'cacheuser' }] },
       });
 
     const client = new FreshClient('test-token');
@@ -183,98 +192,106 @@ describe('XApiClient', () => {
     expect(result2).toEqual(mockResponse);
     // request should only be called once (second call uses cache)
     expect(requestSpy).toHaveBeenCalledTimes(1);
+    const params = requestSpy.mock.calls[0][1];
+    expect(params).toMatchObject({
+      max_results: '10',
+      'tweet.fields': 'created_at,public_metrics',
+    });
+    expect(params).not.toHaveProperty('expansions');
+    expect(params).not.toHaveProperty('user.fields');
   });
-});
 
-describe('buildUserPrompt with xContext', () => {
-  it('includes X (Twitter) section when xContext is provided', async () => {
-    const { MarketResearchAgent } = await import('../src/agents/market-research-agent');
-    const { LLMClient } = await import('../src/services/llm-client');
+  it('can opt into author expansion when explicitly enabled', async () => {
+    process.env.X_BEARER_TOKEN = 'test-token';
+    process.env.X_INCLUDE_USER_FIELDS = 'true';
+    const { XApiClient: FreshClient } = await import('../src/services/x-client');
 
-    const client = new LLMClient('test-key');
-    vi.spyOn(client, 'send').mockResolvedValue('{}');
+    const requestSpy = vi.spyOn(FreshClient.prototype, 'request').mockResolvedValue({ data: [] });
 
-    const agent = new MarketResearchAgent(client);
-    const prompt = agent.buildUserPrompt({
-      selfAnalysisHandoff: {
-        swot: { strengths: ['Tech'], weaknesses: [], opportunities: [], threats: [] },
-        recommendedAreas: ['AI'],
-        areasToAvoid: [],
-        uniqueStrengths: [],
-      },
-      targetMarkets: [{ name: 'Japan', description: 'JP market', priority: 1 }],
-      initialCompetitors: ['CompA'],
-      xContext: {
-        trendingTopics: [{ topic: 'AI trend', tweetVolume: 100, url: 'https://x.com', relatedHashtags: ['#AI'] }],
-        demandSignals: [{
-          tweet: {
-            id: '1', text: 'AIツールが欲しい', author: 'User', authorHandle: 'user',
-            likeCount: 50, retweetCount: 10, replyCount: 5,
-            createdAt: '2025-01-01T00:00:00Z', url: 'https://x.com/user/status/1',
+    const client = new FreshClient('test-token');
+    await client.searchRecentTweets('test query', 10);
+
+    expect(requestSpy).toHaveBeenCalledTimes(1);
+    expect(requestSpy.mock.calls[0][1]).toMatchObject({
+      'tweet.fields': 'created_at,public_metrics,author_id',
+      'user.fields': 'name,username',
+      expansions: 'author_id',
+    });
+  });
+
+  it('fetches usage snapshots and caches them briefly', async () => {
+    process.env.X_BEARER_TOKEN = 'test-token';
+    const { XApiClient: FreshClient, fetchXUsage } = await import('../src/services/x-client');
+
+    const requestSpy = vi.spyOn(FreshClient.prototype, 'request').mockResolvedValue({
+      data: [{ date: '2026-05-15', posts: 12 }],
+    });
+
+    const result1 = await fetchXUsage();
+    const result2 = await fetchXUsage();
+
+    expect(result1?.source).toBe('rest');
+    expect(result2).toEqual(result1);
+    expect(requestSpy).toHaveBeenCalledTimes(1);
+    expect(requestSpy).toHaveBeenCalledWith('/usage/tweets');
+  });
+
+  it('skips usage lookup in search fixture replay mode', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'x-search-fixture-'));
+    process.env.X_BEARER_TOKEN = 'test-token';
+    process.env.X_SEARCH_FIXTURE_MODE = 'replay';
+    process.env.X_SEARCH_FIXTURE_FILE = path.join(dir, 'fixture.json');
+
+    const { XApiClient: FreshClient, fetchXUsage } = await import('../src/services/x-client');
+    const requestSpy = vi.spyOn(FreshClient.prototype, 'request');
+
+    const result = await fetchXUsage();
+
+    expect(result).toBeNull();
+    expect(requestSpy).not.toHaveBeenCalled();
+
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it('records and replays search fixtures without live credentials', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'x-search-fixture-'));
+    const fixtureFile = path.join(dir, 'fixture.json');
+
+    process.env.X_BEARER_TOKEN = 'test-token';
+    process.env.X_SEARCH_FIXTURE_MODE = 'record';
+    process.env.X_SEARCH_FIXTURE_FILE = fixtureFile;
+
+    const { XApiClient: RecordClient } = await import('../src/services/x-client');
+    const requestSpy = vi.spyOn(RecordClient.prototype, 'request')
+      .mockResolvedValue({
+        data: [
+          {
+            id: 'fixture-1',
+            text: 'LINEのAIを永久的に消したい',
+            created_at: '2026-05-15T00:00:00Z',
+            public_metrics: { like_count: 12, retweet_count: 3, reply_count: 1 },
           },
-          needCategory: 'want',
-          matchedKeywords: ['欲しい'],
-          relevanceScore: 75,
-        }],
-        competitorSentiments: [],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      },
-    });
+        ],
+      });
 
-    expect(prompt).toContain('X (Twitter)');
-    expect(prompt).toContain('AI trend');
-    expect(prompt).toContain('欲しい');
-  });
+    const recorded = await new RecordClient('test-token').searchRecentTweets('fixture query', 10);
+    expect(requestSpy).toHaveBeenCalledTimes(1);
+    expect(fs.existsSync(fixtureFile)).toBe(true);
 
-  it('includes fallback message when xContext is empty', async () => {
-    const { MarketResearchAgent } = await import('../src/agents/market-research-agent');
-    const { LLMClient } = await import('../src/services/llm-client');
+    vi.restoreAllMocks();
+    vi.resetModules();
+    process.env = { ...originalEnv };
+    delete process.env.X_BEARER_TOKEN;
+    process.env.X_SEARCH_FIXTURE_MODE = 'replay';
+    process.env.X_SEARCH_FIXTURE_FILE = fixtureFile;
 
-    const client = new LLMClient('test-key');
-    vi.spyOn(client, 'send').mockResolvedValue('{}');
+    const { XApiClient: ReplayClient } = await import('../src/services/x-client');
+    const replaySpy = vi.spyOn(ReplayClient.prototype, 'request');
+    const replayed = await new ReplayClient().searchRecentTweets('fixture query', 10);
 
-    const agent = new MarketResearchAgent(client);
-    const prompt = agent.buildUserPrompt({
-      selfAnalysisHandoff: {
-        swot: { strengths: ['Tech'], weaknesses: [], opportunities: [], threats: [] },
-        recommendedAreas: ['AI'],
-        areasToAvoid: [],
-        uniqueStrengths: [],
-      },
-      targetMarkets: [{ name: 'Japan', description: 'JP market', priority: 1 }],
-      initialCompetitors: ['CompA'],
-    });
+    expect(replayed).toEqual(recorded);
+    expect(replaySpy).not.toHaveBeenCalled();
 
-    expect(prompt).toContain('X (Twitter)');
-    expect(prompt).toContain('LLMの知識に基づいて');
-  });
-
-  it('includes fallback message when xContext exists but has no usable data', async () => {
-    const { MarketResearchAgent } = await import('../src/agents/market-research-agent');
-    const { LLMClient } = await import('../src/services/llm-client');
-
-    const client = new LLMClient('test-key');
-    vi.spyOn(client, 'send').mockResolvedValue('{}');
-
-    const agent = new MarketResearchAgent(client);
-    const prompt = agent.buildUserPrompt({
-      selfAnalysisHandoff: {
-        swot: { strengths: ['Tech'], weaknesses: [], opportunities: [], threats: [] },
-        recommendedAreas: ['AI'],
-        areasToAvoid: [],
-        uniqueStrengths: [],
-      },
-      targetMarkets: [{ name: 'Japan', description: 'JP market', priority: 1 }],
-      initialCompetitors: ['CompA'],
-      xContext: {
-        trendingTopics: [],
-        demandSignals: [],
-        competitorSentiments: [],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      },
-    });
-
-    expect(prompt).toContain('X (Twitter)');
-    expect(prompt).toContain('LLMの知識に基づいて');
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 });

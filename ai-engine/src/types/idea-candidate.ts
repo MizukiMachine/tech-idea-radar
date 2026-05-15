@@ -14,6 +14,7 @@ export interface IdeaCandidate {
   sources: {
     rssKeywords: string[];
     demandSignals: number;
+    sourceSeedId?: string;
     evidenceUrls?: {
       title: string;
       url: string;

@@ -1,6 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import { getCachedIdeas, generateAndCacheIdeas, filterCachedIdeas } from '../services/idea-cache';
+import {
+  getCachedIdeas,
+  generateAndCacheIdeas,
+  filterCachedIdeas,
+  getRuntimeMeta,
+  getXUsageSnapshot,
+} from '../services/idea-cache';
 
 // --- Request schemas ---
 
@@ -24,6 +30,29 @@ function sseSend(res: Response, event: string, data: unknown, disconnected: bool
 // --- Routes ---
 
 const router = Router();
+
+// GET /api/ai/ideas/meta — runtime + cache metadata
+router.get('/ideas/meta', (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(getRuntimeMeta());
+});
+
+// GET /api/ai/x-usage — current X API usage snapshot
+router.get('/x-usage', async (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const usage = await getXUsageSnapshot();
+    if (!usage) {
+      res.status(503).json({ error: 'X usage is unavailable. Check X credentials or XMCP server settings.' });
+      return;
+    }
+    res.json(usage);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[API] GET /x-usage error: ${message}`);
+    res.status(500).json({ error: message });
+  }
+});
 
 // GET /api/ideas — cached ideas
 router.get('/ideas', async (_req: Request, res: Response) => {

@@ -2,12 +2,47 @@ import type { IdeaCandidate } from '../types/idea-candidate';
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
 
+export function getApiBase(): string {
+  return API_BASE || '(same-origin /api)';
+}
+
 export interface SourceSummary {
   rssItemCount: number;
   xSignalCount: number;
   usedLLMFallback: boolean;
   dataQuality?: 'external' | 'llm_fallback';
   warnings?: string[];
+}
+
+export interface IdeasMeta {
+  instanceId: string;
+  pid: number;
+  startedAt: string;
+  port: string | null;
+  env: {
+    hasZaiApiKey: boolean;
+    hasXBearerToken: boolean;
+    hasXMcpServerUrl?: boolean;
+    xDataSource?: string;
+    xIncludeUserFields?: boolean;
+    xCacheTtlHours?: number;
+    xCacheFileEnabled?: boolean;
+    xSearchFixtureMode?: string;
+    xSearchFixtureEnabled?: boolean;
+  };
+  xUsage?: {
+    source: string;
+    fetchedAt: string;
+    data: unknown;
+  } | null;
+  cache: {
+    status: 'empty' | 'cached';
+    expiresAt: string | null;
+    generatedAt: string | null;
+    candidateCount: number;
+    sourceSummary: SourceSummary | null;
+  };
+  generationInProgress: boolean;
 }
 
 // GET /api/ideas
@@ -19,6 +54,13 @@ export async function fetchIdeas(): Promise<{
 }> {
   const res = await fetch(`${API_BASE}/api/ai/ideas`);
   if (!res.ok) throw new Error(`fetchIdeas failed: ${res.status}`);
+  return res.json();
+}
+
+// GET /api/ideas/meta
+export async function fetchIdeasMeta(): Promise<IdeasMeta> {
+  const res = await fetch(`${API_BASE}/api/ai/ideas/meta`, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`fetchIdeasMeta failed: ${res.status}`);
   return res.json();
 }
 

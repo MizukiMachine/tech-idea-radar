@@ -1,6 +1,15 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { IdeaCandidate } from './types/idea-candidate';
-import { fetchIdeas, streamIdeas, refreshIdeas, filterIdeas, type SourceSummary } from './api/ai';
+import {
+  fetchIdeas,
+  fetchIdeasMeta,
+  streamIdeas,
+  refreshIdeas,
+  filterIdeas,
+  getApiBase,
+  type SourceSummary,
+  type IdeasMeta,
+} from './api/ai';
 import Sidebar from './components/Sidebar';
 import StatsBar from './components/StatsBar';
 import TabFilter from './components/TabFilter';
@@ -92,6 +101,23 @@ function userFacingError(message: string): string {
   return message;
 }
 
+function formatStamp(iso: string | null | undefined): string {
+  if (!iso) return '-';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return iso;
+  return date.toLocaleString('ja-JP');
+}
+
+function isIdeasMeta(value: unknown): value is IdeasMeta {
+  if (!value || typeof value !== 'object') return false;
+  const obj = value as Record<string, unknown>;
+  return typeof obj.instanceId === 'string'
+    && typeof obj.pid === 'number'
+    && typeof obj.startedAt === 'string'
+    && typeof obj.cache === 'object'
+    && obj.cache !== null;
+}
+
 function App(): JSX.Element {
   const [ideas, setIdeas] = useState<IdeaCandidate[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,6 +128,7 @@ function App(): JSX.Element {
   const [semanticFilteredIdeas, setSemanticFilteredIdeas] = useState<IdeaCandidate[] | null>(null);
   const [semanticFiltering, setSemanticFiltering] = useState(false);
   const [sourceSummary, setSourceSummary] = useState<SourceSummary | null>(null);
+  const [ideasMeta, setIdeasMeta] = useState<IdeasMeta | null>(null);
   const [activeTech, setActiveTech] = useState('すべて');
   const [activeInterests, setActiveInterests] = useState(['business', 'ai', 'education']);
   const [revenueMin, setRevenueMin] = useState<number | null>(null);
@@ -112,21 +139,36 @@ function App(): JSX.Element {
   const [selectedIdea, setSelectedIdea] = useState<IdeaCandidate | null>(null);
   const [modalIdea, setModalIdea] = useState<IdeaCandidate | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const refreshIdeasMeta = useCallback((retryUsage = false) => {
+    const update = () => {
+      void fetchIdeasMeta()
+        .then((meta) => { if (isIdeasMeta(meta)) setIdeasMeta(meta); })
+        .catch(() => undefined);
+    };
+    update();
+    if (retryUsage) window.setTimeout(update, 2000);
+  }, []);
 
   // Load ideas on mount
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
+      const metaPromise = fetchIdeasMeta().catch(() => null);
       try {
         const result = await fetchIdeas();
+        const meta = await metaPromise;
+        if (!cancelled && isIdeasMeta(meta)) setIdeasMeta(meta);
         if (!cancelled && result.candidates.length > 0) {
           setIdeas(result.candidates);
           setSourceSummary(result.sourceSummary);
           setLoading(false);
           return;
         }
-      } catch { /* cache miss, fall through to stream */ }
+      } catch {
+        const meta = await metaPromise;
+        if (!cancelled && isIdeasMeta(meta)) setIdeasMeta(meta);
+      }
 
       if (cancelled) return;
 
@@ -140,6 +182,7 @@ function App(): JSX.Element {
           setSourceSummary(summary.sourceSummary ?? null);
           setLoading(false);
           setProgressText(null);
+          refreshIdeasMeta(true);
         },
         onError: (msg) => {
           setError(userFacingError(msg));
@@ -154,7 +197,7 @@ function App(): JSX.Element {
       cancelled = true;
       abortRef.current?.abort();
     };
-  }, []);
+  }, [refreshIdeasMeta]);
 
   // Debounced search
   const handleSearch = useCallback((value: string) => {
@@ -205,6 +248,7 @@ function App(): JSX.Element {
         setSourceSummary(summary.sourceSummary ?? null);
         setLoading(false);
         setProgressText(null);
+        refreshIdeasMeta(true);
       },
       onError: (msg) => {
         setError(userFacingError(msg));
@@ -212,7 +256,7 @@ function App(): JSX.Element {
         setProgressText(null);
       },
     });
-  }, []);
+  }, [refreshIdeasMeta]);
 
   const sourceIdeas = semanticFilteredIdeas ?? ideas;
   const displayedIdeas = sortIdeas(
@@ -238,6 +282,10 @@ function App(): JSX.Element {
   const topRevenueIdea = sortIdeas(displayedIdeas, '収益性順')[0] ?? ideas[0];
   const topTrendIdea = sortIdeas(displayedIdeas, 'トレンドスコア順')[0] ?? ideas[0];
   const hasIdeas = ideas.length > 0;
+  const showXMissingWarning = hasIdeas
+    && (sourceSummary?.xSignalCount ?? 0) === 0
+    && ideasMeta?.env?.hasXBearerToken
+    && ideasMeta?.env?.xSearchFixtureMode !== 'replay';
   const showDashboard = loading || hasIdeas;
   const showSetupState = !loading && !hasIdeas;
   const handleIdeaSelect = useCallback((idea: IdeaCandidate) => {
@@ -290,6 +338,15 @@ function App(): JSX.Element {
             入力すると一覧を絞り込みます。AIで絞り込みは、文章の意図に近い候補を再選定します。
           </p>
         )}
+        <p className="hero__connection-hint">
+          API: {getApiBase()} / backend: {ideasMeta ? `${ideasMeta.instanceId} (pid:${ideasMeta.pid}, port:${ideasMeta.port ?? '-'})` : '取得中'}
+          {' / '}Xトークン: {ideasMeta?.env?.hasXBearerToken ? '設定済み' : '未設定'}
+          {' / '}X取得: {ideasMeta?.env?.xDataSource ?? 'rest'}・{ideasMeta?.env?.xIncludeUserFields ? '著者込み' : '投稿のみ'}
+          {' / '}Xキャッシュ: {ideasMeta?.env?.xCacheTtlHours ?? 6}h{ideasMeta?.env?.xCacheFileEnabled ? '+file' : ''}
+          {' / '}X fixture: {ideasMeta?.env?.xSearchFixtureEnabled ? ideasMeta.env.xSearchFixtureMode : 'off'}
+          {' / '}X使用量確認: {formatStamp(ideasMeta?.xUsage?.fetchedAt ?? null)}
+          {' / '}最終生成: {formatStamp(sourceSummary ? (ideasMeta?.cache?.generatedAt ?? null) : null)}
+        </p>
       </header>
 
       {/* Progress indicator */}
@@ -310,6 +367,16 @@ function App(): JSX.Element {
         <div className="data-warning-banner">
           <span className="data-warning-banner__icon">!</span>
           <p>{sourceSummary.warnings?.[0] ?? '外部データ未使用の生成結果です。'}</p>
+        </div>
+      )}
+
+      {showXMissingWarning && (
+        <div className="data-warning-banner">
+          <span className="data-warning-banner__icon">!</span>
+          <p>
+            Xトークンは設定済みですが、この生成結果はXシグナル0件です（接続先 backend: {ideasMeta?.instanceId}）。
+            「再生成」を押して最新データで作り直してください。
+          </p>
         </div>
       )}
 

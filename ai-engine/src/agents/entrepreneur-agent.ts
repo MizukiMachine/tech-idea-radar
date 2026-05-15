@@ -7,8 +7,20 @@ import type { IdeaGenerationInput, IdeaGenerationOutput } from '../types/idea-ge
 import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semantic-filter';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { RssArticle, RssContext } from '../services/mcp-client';
+import type { XContext } from '../types/x-context';
 
 const DEFAULT_KEYWORDS = ['AI', 'SaaS', 'developer', 'productivity', 'automation', 'エンジニア', '個人開発'];
+const MAX_EVIDENCE_URLS = 1;
+const MIN_RSS_EVIDENCE_SCORE = 4;
+const MIN_X_EVIDENCE_SCORE = 5;
+const MIN_DECLARED_X_SEED_SCORE = 2;
+const GENERIC_EVIDENCE_TERMS = new Set([
+  'ai', 'api', 'app', 'apps', 'dev', 'developer', 'developers', 'development',
+  'cli', 'saas', 'tool', 'tools', 'web', 'service', 'services', 'user', 'users',
+  'アプリ', 'エンジニア', 'サービス', 'ツール', 'ユーザー', '個人開発', '開発',
+  'スキル', '欲しい', '不便', '困ってる', '改善', '問題', '課題', '自動化',
+  '文章を', '章を書', 'を書く',
+]);
 
 function normalizeCandidates(raw: unknown): IdeaCandidate[] {
   // Already an array
@@ -52,57 +64,245 @@ function candidateText(candidate: IdeaCandidate): string {
 }
 
 function scoreArticleForCandidate(article: RssArticle, text: string): number {
-  const articleText = `${article.title} ${article.summary} ${(article.keywords ?? []).join(' ')}`.toLowerCase();
-  let score = 0;
+  const articleText = `${article.title} ${article.summary} ${(article.keywords ?? []).join(' ')}`;
+  let score = evidenceOverlapScore(articleText, text);
   for (const keyword of article.keywords ?? []) {
-    if (text.includes(keyword.toLowerCase())) score += 3;
+    const normalized = normalizeEvidenceText(keyword);
+    if (normalized && !GENERIC_EVIDENCE_TERMS.has(normalized) && text.includes(normalized)) score += 2;
   }
-  for (const token of text.match(/[A-Za-z][A-Za-z0-9+#.-]{2,}|[ぁ-んァ-ヶ一-龯ー]{2,}/g) ?? []) {
-    if (articleText.includes(token.toLowerCase())) score += 1;
+  return score >= MIN_RSS_EVIDENCE_SCORE ? score : 0;
+}
+
+interface XEvidence {
+  seedId: string;
+  title: string;
+  url: string;
+  keywords: string[];
+  weight: number;
+}
+
+type CandidateEvidenceUrl = NonNullable<IdeaCandidate['sources']['evidenceUrls']>[number];
+type ScoredEvidenceUrl = CandidateEvidenceUrl & { score: number };
+
+function buildXDemandEvidenceList(xContext: XContext): XEvidence[] {
+  const map = new Map<string, XEvidence>();
+
+  for (const [index, signal] of xContext.demandSignals.slice(0, 10).entries()) {
+    const url = signal.tweet.url;
+    if (!url) continue;
+    const current = map.get(url);
+    const next: XEvidence = {
+      seedId: `x-demand-${index + 1}`,
+      title: signal.tweet.text.slice(0, 120),
+      url,
+      keywords: [...signal.matchedKeywords, signal.needCategory],
+      weight: signal.relevanceScore + signal.tweet.likeCount + signal.tweet.retweetCount,
+    };
+    if (!current || next.weight > current.weight) map.set(url, next);
+  }
+
+  return [...map.values()];
+}
+
+function scoreXEvidenceForCandidate(
+  source: XEvidence,
+  text: string,
+  minScore = MIN_X_EVIDENCE_SCORE,
+): number {
+  const sourceText = `${source.title} ${source.keywords.join(' ')}`;
+  let score = evidenceOverlapScore(sourceText, text);
+  for (const keyword of source.keywords) {
+    const normalized = normalizeEvidenceText(keyword);
+    if (normalized && !GENERIC_EVIDENCE_TERMS.has(normalized) && text.includes(normalized)) score += 2;
+  }
+  if (score < minScore) return 0;
+  return score + Math.min(Math.log1p(source.weight), 6);
+}
+
+function scoreExistingEvidenceForCandidate(
+  source: CandidateEvidenceUrl,
+  text: string,
+  articleByUrl: Map<string, RssArticle>,
+  xEvidenceByUrl: Map<string, XEvidence>,
+): number {
+  if (source.type === 'rss') {
+    const article = articleByUrl.get(source.url);
+    return article ? scoreArticleForCandidate(article, text) : 0;
+  }
+  if (source.type === 'x') {
+    const evidence = xEvidenceByUrl.get(source.url);
+    return evidence ? scoreXEvidenceForCandidate(evidence, text) : 0;
+  }
+  return 0;
+}
+
+function normalizeEvidenceText(text: string): string {
+  return text
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}#+.\-\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function englishEvidenceTokens(text: string): Set<string> {
+  const tokens = new Set<string>();
+  for (const raw of normalizeEvidenceText(text).match(/[a-z][a-z0-9#+.-]{2,}/g) ?? []) {
+    if (GENERIC_EVIDENCE_TERMS.has(raw) || raw.length > 32) continue;
+    tokens.add(raw);
+    if (raw.endsWith('ing') && raw.length > 5) tokens.add(raw.slice(0, -3));
+    if (raw.endsWith('s') && raw.length > 4) tokens.add(raw.slice(0, -1));
+  }
+  return tokens;
+}
+
+function japaneseEvidenceNgrams(text: string): Set<string> {
+  const grams = new Set<string>();
+  const normalized = normalizeEvidenceText(text);
+  for (const run of normalized.match(/[ぁ-んァ-ヶ一-龯ー]{3,}/g) ?? []) {
+    if (GENERIC_EVIDENCE_TERMS.has(run) || run.length > 40) continue;
+    if (run.length === 3) {
+      if (isSignalJapaneseGram(run)) grams.add(run);
+      continue;
+    }
+    for (let i = 0; i <= run.length - 3; i += 1) {
+      const gram = run.slice(i, i + 3);
+      if (isSignalJapaneseGram(gram)) grams.add(gram);
+    }
+  }
+  return grams;
+}
+
+function isSignalJapaneseGram(gram: string): boolean {
+  if (GENERIC_EVIDENCE_TERMS.has(gram)) return false;
+  const signalChars = gram.match(/[ァ-ヶ一-龯ー]/g)?.length ?? 0;
+  return signalChars >= 2;
+}
+
+function evidenceOverlapScore(sourceText: string, candidate: string): number {
+  const sourceEnglish = englishEvidenceTokens(sourceText);
+  const candidateEnglish = englishEvidenceTokens(candidate);
+  const sourceJapanese = japaneseEvidenceNgrams(sourceText);
+  const candidateJapanese = japaneseEvidenceNgrams(candidate);
+  let score = 0;
+
+  for (const token of sourceEnglish) {
+    if (candidateEnglish.has(token)) score += 3;
+  }
+  for (const gram of sourceJapanese) {
+    if (candidateJapanese.has(gram)) score += 1;
   }
   return score;
 }
 
-function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssContext): IdeaCandidate[] {
+function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssContext, xContext: XContext): IdeaCandidate[] {
   const articles = rssContext.relatedArticles.filter((article) => article.link || article.url);
-  const allowedUrls = new Set(articles.map((article) => article.url ?? article.link));
-  if (articles.length === 0) {
+  const articleByUrl = new Map<string, RssArticle>();
+  for (const article of articles) {
+    const url = article.url ?? article.link;
+    if (url) articleByUrl.set(url, article);
+  }
+  const xEvidence = buildXDemandEvidenceList(xContext);
+  const xEvidenceByUrl = new Map(xEvidence.map((source) => [source.url, source]));
+  const xEvidenceBySeedId = new Map(xEvidence.map((source) => [source.seedId, source]));
+  const allowedUrls = new Set<string>(articleByUrl.keys());
+  for (const source of xEvidence) allowedUrls.add(source.url);
+
+  if (articles.length === 0 && xEvidence.length === 0) {
     return candidates.map((candidate) => ({
       ...candidate,
       sources: {
         ...candidate.sources,
-        evidenceUrls: (candidate.sources.evidenceUrls ?? []).filter((source) => allowedUrls.has(source.url)).slice(0, 3),
+        evidenceUrls: (candidate.sources.evidenceUrls ?? [])
+          .filter((source) => allowedUrls.has(source.url))
+          .slice(0, MAX_EVIDENCE_URLS),
       },
     }));
   }
 
   return candidates.map((candidate) => {
-    const existing = (candidate.sources.evidenceUrls ?? [])
-      .filter((source) => allowedUrls.has(source.url))
-      .slice(0, 3);
-
-    if (existing.length >= 3) {
-      return { ...candidate, sources: { ...candidate.sources, evidenceUrls: existing } };
+    const text = candidateText(candidate);
+    const declaredSeed = candidate.sources.sourceSeedId
+      ? xEvidenceBySeedId.get(candidate.sources.sourceSeedId)
+      : undefined;
+    if (declaredSeed) {
+      const score = scoreXEvidenceForCandidate(declaredSeed, text, MIN_DECLARED_X_SEED_SCORE);
+      if (score > 0) {
+        return {
+          ...candidate,
+          sources: {
+            ...candidate.sources,
+            evidenceUrls: [{
+              title: declaredSeed.title,
+              url: declaredSeed.url,
+              type: 'x',
+            }],
+          },
+        };
+      }
+      return {
+        ...candidate,
+        sources: {
+          ...candidate.sources,
+          evidenceUrls: [],
+        },
+      };
     }
 
+    const existing = (candidate.sources.evidenceUrls ?? [])
+      .filter((source) => allowedUrls.has(source.url))
+      .map((source): ScoredEvidenceUrl => ({
+        ...source,
+        title: source.type === 'x'
+          ? xEvidenceByUrl.get(source.url)?.title ?? source.title
+          : source.title,
+        score: scoreExistingEvidenceForCandidate(source, text, articleByUrl, xEvidenceByUrl),
+      }))
+      .filter((source) => source.score > 0);
+
     const used = new Set(existing.map((source) => source.url));
-    const text = candidateText(candidate);
-    const additions = articles
+    const rssAdditions = articles
       .map((article) => ({ article, score: scoreArticleForCandidate(article, text) }))
       .sort((a, b) => b.score - a.score)
       .filter(({ article }) => !used.has(article.url ?? article.link))
-      .slice(0, 3 - existing.length)
-      .map(({ article }) => ({
+      .map(({ article, score }) => ({
         title: article.title,
         url: article.url ?? article.link,
         type: 'rss' as const,
-      }));
+        score,
+      }))
+      .filter((source) => source.score > 0);
+
+    const preferredX = existing
+      .filter((source) => source.type === 'x')
+      .sort((a, b) => b.score - a.score);
+
+    if (preferredX.length > 0) {
+      const [{ title, url, type }] = preferredX;
+      return {
+        ...candidate,
+        sources: {
+          ...candidate.sources,
+          evidenceUrls: [{ title, url, type }],
+        },
+      };
+    }
+
+    const ranked = [...existing, ...rssAdditions]
+      .sort((a, b) => b.score - a.score)
+      .reduce<CandidateEvidenceUrl[]>((acc, { title, url, type }) => {
+        if (acc.some((source) => source.url === url)) return acc;
+        if (acc.length >= MAX_EVIDENCE_URLS) return acc;
+        acc.push({ title, url, type });
+        return acc;
+      }, []);
 
     return {
       ...candidate,
       sources: {
         ...candidate.sources,
-        evidenceUrls: [...existing, ...additions],
+        evidenceUrls: ranked,
       },
     };
   });
@@ -143,7 +343,7 @@ export class EntrepreneurAgent {
     const rawCandidates = await this.ideaGeneration.execute(input);
 
     // LLM may return various formats — normalize to IdeaCandidate[]
-    const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext);
+    const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext, xContext);
 
     const usedLLMFallback = rssContext.relatedArticles.length === 0 && xCount === 0;
     const warnings = usedLLMFallback

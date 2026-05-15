@@ -16,8 +16,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "fast-xml-parser": "^5.8.0",
-    "openai": "^6.37.0"
+    "fast-xml-parser": "^5.8.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",

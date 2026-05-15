@@ -1,7 +1,5 @@
-import dotenv from "dotenv";
+import "dotenv/config";
 import app from "./app";
-
-dotenv.config();
 
 const DEFAULT_PORT = 3001;
 const rawPort = process.env.PORT ?? DEFAULT_PORT;
