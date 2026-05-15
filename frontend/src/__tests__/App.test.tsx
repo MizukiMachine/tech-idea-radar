@@ -34,6 +34,11 @@ const meta = {
     xCacheFileEnabled: false,
     xSearchFixtureMode: "off",
     xSearchFixtureEnabled: false,
+    xEnrichmentEnabled: true,
+    publicReadonlyMode: false,
+    adminAuthEnabled: false,
+    persistentCacheEnabled: false,
+    cacheTtlHours: 1,
   },
   xUsage: null,
   cache: {

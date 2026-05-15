@@ -29,6 +29,11 @@ export interface IdeasMeta {
     xCacheFileEnabled?: boolean;
     xSearchFixtureMode?: string;
     xSearchFixtureEnabled?: boolean;
+    xEnrichmentEnabled?: boolean;
+    publicReadonlyMode?: boolean;
+    adminAuthEnabled?: boolean;
+    persistentCacheEnabled?: boolean;
+    cacheTtlHours?: number;
   };
   xUsage?: {
     source: string;

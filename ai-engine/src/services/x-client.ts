@@ -17,6 +17,9 @@ type XSearchFixtureMode = 'off' | 'record' | 'replay' | 'record-if-missing';
 const X_DATA_SOURCE: XDataSource = process.env.X_DATA_SOURCE === 'xmcp' ? 'xmcp' : 'rest';
 const X_MCP_SERVER_URL = process.env.X_MCP_SERVER_URL ?? 'http://127.0.0.1:8000/mcp';
 const X_INCLUDE_USER_FIELDS = isTruthy(process.env.X_INCLUDE_USER_FIELDS);
+const X_ENRICHMENT_ENABLED = process.env.X_ENRICHMENT_ENABLED === undefined
+  ? !isTruthy(process.env.PUBLIC_READONLY_MODE)
+  : isTruthy(process.env.X_ENRICHMENT_ENABLED);
 const X_API_CACHE_TTL_MS = parseHoursToMs(process.env.X_API_CACHE_TTL_HOURS, 6);
 const X_API_CACHE_FILE = process.env.X_API_CACHE_FILE?.trim() ?? '';
 const X_SEARCH_FIXTURE_MODE = parseSearchFixtureMode(process.env.X_SEARCH_FIXTURE_MODE);
@@ -59,6 +62,7 @@ export interface XUsageSnapshot {
 }
 
 export interface XRuntimeConfig {
+  enrichmentEnabled: boolean;
   dataSource: XDataSource;
   includeUserFields: boolean;
   cacheTtlHours: number;
@@ -521,12 +525,14 @@ function normalizeSearchResponse(value: unknown): SearchResponse {
 }
 
 function isLiveXConfigured(): boolean {
+  if (!X_ENRICHMENT_ENABLED) return false;
   return X_DATA_SOURCE === 'xmcp'
     ? Boolean(X_MCP_SERVER_URL.trim())
     : Boolean(X_BEARER_TOKEN);
 }
 
 function isXSearchConfigured(): boolean {
+  if (!X_ENRICHMENT_ENABLED) return false;
   return isLiveXConfigured() || canReplaySearchFixture();
 }
 
@@ -536,6 +542,7 @@ function createXClient(): XSearchClient {
 
 export function getXRuntimeConfig(): XRuntimeConfig {
   return {
+    enrichmentEnabled: X_ENRICHMENT_ENABLED,
     dataSource: X_DATA_SOURCE,
     includeUserFields: X_INCLUDE_USER_FIELDS,
     cacheTtlHours: X_API_CACHE_TTL_MS / 60 / 60 / 1000,
@@ -611,6 +618,11 @@ export async function fetchXContext(
     competitorSentiments: [],
     fetchedAt: new Date().toISOString(),
   };
+
+  if (!X_ENRICHMENT_ENABLED) {
+    console.warn('[X API] X enrichment disabled by X_ENRICHMENT_ENABLED');
+    return empty;
+  }
 
   if (!isXSearchConfigured()) {
     const missing = X_DATA_SOURCE === 'xmcp'
@@ -734,6 +746,11 @@ export async function fetchXUsage(): Promise<XUsageSnapshot | null> {
   const cached = getCachedXUsage();
   if (cached) return cached;
 
+  if (!X_ENRICHMENT_ENABLED) {
+    console.warn('[X API] X enrichment disabled — skipping X usage lookup');
+    return null;
+  }
+
   if (isFixtureReplayMode()) {
     console.warn('[X API] Search fixture replay mode enabled — skipping X usage lookup');
     return null;
@@ -761,6 +778,10 @@ export async function fetchXUsage(): Promise<XUsageSnapshot | null> {
   } finally {
     await client.disconnect?.();
   }
+}
+
+export function isXEnrichmentEnabled(): boolean {
+  return X_ENRICHMENT_ENABLED;
 }
 
 function extractHashtags(text: string): string[] {

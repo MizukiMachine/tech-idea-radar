@@ -4,7 +4,7 @@ import { IdeaGenerationAgent } from '../src/agents/idea-generation-agent';
 import { FilterAgent } from '../src/agents/filter-agent';
 import { EntrepreneurAgent } from '../src/agents/entrepreneur-agent';
 import { fetchRssContext } from '../src/services/mcp-client';
-import { fetchXContext } from '../src/services/x-client';
+import { fetchXContext, isXEnrichmentEnabled } from '../src/services/x-client';
 import type { IdeaCandidate } from '../src/types/idea-candidate';
 
 vi.mock('../src/services/mcp-client', () => ({
@@ -13,6 +13,7 @@ vi.mock('../src/services/mcp-client', () => ({
 
 vi.mock('../src/services/x-client', () => ({
   fetchXContext: vi.fn(),
+  isXEnrichmentEnabled: vi.fn(),
 }));
 
 const candidate: IdeaCandidate = {
@@ -50,6 +51,8 @@ function createMockClient(response: string): LLMClient {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(isXEnrichmentEnabled).mockReturnValue(true);
   vi.mocked(fetchRssContext).mockResolvedValue({
     trendingKeywords: [{ word: 'AI', count: 3 }],
     relatedArticles: [{
@@ -147,6 +150,21 @@ describe('EntrepreneurAgent', () => {
     ]);
     expect(result.sourceSummary.usedLLMFallback).toBe(false);
     expect(progress.length).toBeGreaterThan(0);
+  });
+
+  it('generates ideas from RSS only when X enrichment is disabled', async () => {
+    vi.mocked(isXEnrichmentEnabled).mockReturnValue(false);
+    const client = createMockClient(JSON.stringify([candidate]));
+    const agent = new EntrepreneurAgent(client);
+
+    const result = await agent.generateIdeas();
+
+    expect(fetchRssContext).toHaveBeenCalled();
+    expect(fetchXContext).not.toHaveBeenCalled();
+    expect(result.sourceSummary.xSignalCount).toBe(0);
+    expect(result.candidates[0].sources.evidenceUrls).toEqual([
+      { title: 'AI Ops article', url: 'https://example.com/ai-ops', type: 'rss' },
+    ]);
   });
 
   it('sorts empty filter queries by trend score without calling the LLM', async () => {

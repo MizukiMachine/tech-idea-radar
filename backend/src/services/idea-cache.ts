@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   EntrepreneurAgent,
   fetchXUsage,
@@ -14,6 +16,14 @@ import { CACHE_REFRESH_INTERVAL_MS } from 'ai-engine';
 
 const SERVER_STARTED_AT = new Date().toISOString();
 const INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
+const PERSISTENT_CACHE_FILE = process.env.IDEA_CACHE_FILE?.trim() ?? '';
+const PUBLIC_READONLY_MODE = isTruthy(process.env.PUBLIC_READONLY_MODE);
+const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN?.trim() ?? '';
+const PERSISTENT_CACHE_VERSION = 1;
+const CACHE_TTL_MS = parseHoursToMs(
+  process.env.IDEA_CACHE_TTL_HOURS,
+  PUBLIC_READONLY_MODE ? 24 * 60 * 60 * 1000 : CACHE_REFRESH_INTERVAL_MS,
+);
 
 let cache: {
   data: IdeaGenerationOutput;
@@ -26,15 +36,95 @@ let trendCache: {
   expiresAt: number;
 } | null = null;
 let trendScanLock: Promise<TrendScanOutput> | null = null;
+let persistentCacheLoaded = false;
+
+function isTruthy(value: string | undefined): boolean {
+  return ['1', 'true', 'yes', 'on'].includes((value ?? '').trim().toLowerCase());
+}
+
+function parseHoursToMs(value: string | undefined, fallbackMs: number): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return fallbackMs;
+  return parsed * 60 * 60 * 1000;
+}
+
+function loadPersistentCache(): void {
+  if (persistentCacheLoaded || !PERSISTENT_CACHE_FILE) return;
+  persistentCacheLoaded = true;
+
+  try {
+    if (!fs.existsSync(PERSISTENT_CACHE_FILE)) return;
+    const parsed = JSON.parse(fs.readFileSync(PERSISTENT_CACHE_FILE, 'utf8')) as {
+      version?: number;
+      ideas?: { data: IdeaGenerationOutput; expiresAt: number };
+      trends?: { data: TrendScanOutput; expiresAt: number };
+    };
+
+    if (parsed.version !== PERSISTENT_CACHE_VERSION) return;
+    if (parsed.ideas?.data && Number.isFinite(parsed.ideas.expiresAt)) cache = parsed.ideas;
+    if (parsed.trends?.data && Number.isFinite(parsed.trends.expiresAt)) trendCache = parsed.trends;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[Cache] Failed to load persistent cache: ${message}`);
+  }
+}
+
+function persistCache(): void {
+  if (!PERSISTENT_CACHE_FILE) return;
+
+  try {
+    fs.mkdirSync(path.dirname(PERSISTENT_CACHE_FILE), { recursive: true });
+    fs.writeFileSync(
+      PERSISTENT_CACHE_FILE,
+      JSON.stringify({
+        version: PERSISTENT_CACHE_VERSION,
+        updatedAt: new Date().toISOString(),
+        ideas: cache,
+        trends: trendCache,
+      }, null, 2),
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[Cache] Failed to persist cache: ${message}`);
+  }
+}
 
 export function getCachedIdeas(): IdeaGenerationOutput | null {
-  if (!cache || Date.now() > cache.expiresAt) return null;
+  loadPersistentCache();
+  if (!cache) return null;
+  if (Date.now() > cache.expiresAt) {
+    cache = null;
+    persistCache();
+    return null;
+  }
   return cache.data;
 }
 
 export function getCachedTrends(): TrendScanOutput | null {
-  if (!trendCache || Date.now() > trendCache.expiresAt) return null;
+  loadPersistentCache();
+  if (!trendCache) return null;
+  if (Date.now() > trendCache.expiresAt) {
+    trendCache = null;
+    persistCache();
+    return null;
+  }
   return trendCache.data;
+}
+
+export function isPublicReadonlyMode(): boolean {
+  return PUBLIC_READONLY_MODE;
+}
+
+export function isAdminAuthEnabled(): boolean {
+  return Boolean(ADMIN_API_TOKEN);
+}
+
+export function isPersistentCacheEnabled(): boolean {
+  return Boolean(PERSISTENT_CACHE_FILE);
+}
+
+export function getAdminApiToken(): string {
+  return ADMIN_API_TOKEN;
 }
 
 export function getRuntimeMeta(): {
@@ -52,6 +142,11 @@ export function getRuntimeMeta(): {
     xCacheFileEnabled: boolean;
     xSearchFixtureMode: string;
     xSearchFixtureEnabled: boolean;
+    xEnrichmentEnabled: boolean;
+    publicReadonlyMode: boolean;
+    adminAuthEnabled: boolean;
+    persistentCacheEnabled: boolean;
+    cacheTtlHours: number;
   };
   xUsage: XUsageSnapshot | null;
   cache: {
@@ -80,6 +175,11 @@ export function getRuntimeMeta(): {
       xCacheFileEnabled: xRuntime.cacheFileEnabled,
       xSearchFixtureMode: xRuntime.searchFixtureMode,
       xSearchFixtureEnabled: xRuntime.searchFixtureEnabled,
+      xEnrichmentEnabled: xRuntime.enrichmentEnabled,
+      publicReadonlyMode: PUBLIC_READONLY_MODE,
+      adminAuthEnabled: Boolean(ADMIN_API_TOKEN),
+      persistentCacheEnabled: Boolean(PERSISTENT_CACHE_FILE),
+      cacheTtlHours: CACHE_TTL_MS / 60 / 60 / 1000,
     },
     xUsage: getCachedXUsage(),
     cache: cached ? {
@@ -116,16 +216,19 @@ export async function generateAndCacheIdeas(
       const result = await agent.generateIdeas(onProgress, focusKeywords);
       cache = {
         data: result,
-        expiresAt: Date.now() + CACHE_REFRESH_INTERVAL_MS,
+        expiresAt: Date.now() + CACHE_TTL_MS,
       };
-      void fetchXUsage()
-        .then((usage) => {
-          if (usage) console.log(`[X API] Usage snapshot (${usage.source}): ${JSON.stringify(usage.data).slice(0, 1000)}`);
-        })
-        .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
-          console.warn(`[X API] Usage snapshot failed: ${message}`);
-        });
+      persistCache();
+      if (getXRuntimeConfig().enrichmentEnabled) {
+        void fetchXUsage()
+          .then((usage) => {
+            if (usage) console.log(`[X API] Usage snapshot (${usage.source}): ${JSON.stringify(usage.data).slice(0, 1000)}`);
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            console.warn(`[X API] Usage snapshot failed: ${message}`);
+          });
+      }
       return result;
     } finally {
       generationLock = null;
@@ -146,8 +249,9 @@ export async function scanAndCacheTrends(
       const result = await agent.scanTrends(onProgress);
       trendCache = {
         data: result,
-        expiresAt: Date.now() + CACHE_REFRESH_INTERVAL_MS,
+        expiresAt: Date.now() + CACHE_TTL_MS,
       };
+      persistCache();
       return result;
     } finally {
       trendScanLock = null;

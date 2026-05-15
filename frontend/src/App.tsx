@@ -94,6 +94,9 @@ function sortIdeas(ideas: IdeaCandidate[], sort: string): IdeaCandidate[] {
 function userFacingError(message: string): string {
   const normalized = message.toLowerCase();
   if (normalized.includes('failed to fetch') || normalized.includes('stream failed')) {
+    if (normalized.includes('401') || normalized.includes('403')) {
+      return '公開版ではキャッシュ済みのアイデアのみ表示しています。再生成は管理環境で実行します。';
+    }
     return 'バックエンドに接続できません。API サーバーを起動してから、もう一度生成してください。';
   }
   if (normalized.includes('zai_api_key')) {
@@ -156,6 +159,8 @@ function App(): JSX.Element {
     update();
     if (retryUsage) window.setTimeout(update, 2000);
   }, []);
+  const publicReadonlyMode = Boolean(ideasMeta?.env?.publicReadonlyMode);
+  const xEnrichmentEnabled = Boolean(ideasMeta?.env?.xEnrichmentEnabled);
 
   // Load trends and any cached ideas on mount. Idea generation is user-triggered.
   useEffect(() => {
@@ -235,6 +240,11 @@ function App(): JSX.Element {
 
   // Refresh
   const handleRefresh = useCallback((focusKeyword?: string) => {
+    if (publicReadonlyMode) {
+      setError('公開版ではキャッシュ済みのアイデアのみ表示しています。再生成は管理環境で実行します。');
+      return;
+    }
+
     setLoading(true);
     setIdeas([]);
     setError(null);
@@ -259,9 +269,14 @@ function App(): JSX.Element {
         setProgressText(null);
       },
     }, focusKeyword);
-  }, [refreshIdeasMeta]);
+  }, [publicReadonlyMode, refreshIdeasMeta]);
 
   const handleTrendRefresh = useCallback(async () => {
+    if (publicReadonlyMode) {
+      setTrendError('公開版ではキャッシュ済みのトレンドのみ表示しています。再取得は管理環境で実行します。');
+      return;
+    }
+
     setTrendsLoading(true);
     setTrendError(null);
     try {
@@ -273,12 +288,12 @@ function App(): JSX.Element {
     } finally {
       setTrendsLoading(false);
     }
-  }, []);
+  }, [publicReadonlyMode]);
 
   const handleOpenIdeas = useCallback(() => {
     setActiveView('ideas');
-    if (ideas.length === 0 && !loading) handleRefresh();
-  }, [handleRefresh, ideas.length, loading]);
+    if (ideas.length === 0 && !loading && !publicReadonlyMode) handleRefresh();
+  }, [handleRefresh, ideas.length, loading, publicReadonlyMode]);
 
   const handleUseSignal = useCallback((query: string) => {
     const normalized = query.trim();
@@ -290,11 +305,11 @@ function App(): JSX.Element {
     if (ideas.length > 0) {
       setSearchQuery(normalized);
       void handleSemanticSearch(normalized);
-    } else if (!loading) {
+    } else if (!loading && !publicReadonlyMode) {
       setSearchQuery('');
       handleRefresh(normalized);
     }
-  }, [handleRefresh, handleSemanticSearch, ideas.length, loading]);
+  }, [handleRefresh, handleSemanticSearch, ideas.length, loading, publicReadonlyMode]);
 
   const sourceIdeas = semanticFilteredIdeas ?? ideas;
   const displayedIdeas = sortIdeas(
@@ -322,6 +337,7 @@ function App(): JSX.Element {
   const hasIdeas = ideas.length > 0;
   const showXMissingWarning = hasIdeas
     && (sourceSummary?.xSignalCount ?? 0) === 0
+    && xEnrichmentEnabled
     && ideasMeta?.env?.hasXBearerToken
     && ideasMeta?.env?.xSearchFixtureMode !== 'replay';
   const showDashboard = loading || hasIdeas;
@@ -339,12 +355,13 @@ function App(): JSX.Element {
             <div>
               <span className="app-header__eyebrow">AI Build Radar</span>
               <h1>作るものが決まっていないエンジニアへ</h1>
-              <p>今日のAIトレンドと需要投稿から、個人開発で作れるプロダクト案を提案します。</p>
+              <p>今日の技術ニュースとAI開発トレンドから、個人開発で作れるプロダクト案を提案します。</p>
             </div>
           </div>
           <div className="app-header__status">
             <span>API {getApiBase()}</span>
-            <span>X {ideasMeta?.env?.hasXBearerToken ? 'connected' : 'not set'}</span>
+            <span>{publicReadonlyMode ? '公開キャッシュ' : '開発モード'}</span>
+            <span>データ {xEnrichmentEnabled ? 'RSS + X' : 'RSS'}</span>
             <span>最終生成 {formatStamp(sourceSummary ? (ideasMeta?.cache?.generatedAt ?? null) : null)}</span>
           </div>
         </div>
@@ -390,14 +407,16 @@ function App(): JSX.Element {
             >
               {semanticFiltering ? '検索中...' : 'AIで絞り込み'}
             </button>
-            <button
-              type="button"
-              className="idea-command-bar__primary"
-              onClick={() => handleRefresh()}
-              disabled={loading}
-            >
-              {loading ? '生成中...' : hasIdeas ? '再生成' : '生成する'}
-            </button>
+            {!publicReadonlyMode && (
+              <button
+                type="button"
+                className="idea-command-bar__primary"
+                onClick={() => handleRefresh()}
+                disabled={loading}
+              >
+                {loading ? '生成中...' : hasIdeas ? '再生成' : '生成する'}
+              </button>
+            )}
           </div>
         )}
       </header>
@@ -409,6 +428,7 @@ function App(): JSX.Element {
             loading={trendsLoading}
             error={trendError}
             onRefresh={() => void handleTrendRefresh()}
+            refreshDisabled={publicReadonlyMode}
             onOpenIdeas={handleOpenIdeas}
             onUseSignal={handleUseSignal}
           />
@@ -456,13 +476,17 @@ function App(): JSX.Element {
             {showSetupState && (
               <section className="setup-state">
                 <div className="setup-state__icon">BR</div>
-                <h2>トレンドから作るものを生成します</h2>
+                <h2>{publicReadonlyMode ? '公開データを準備中です' : 'トレンドから作るものを生成します'}</h2>
                 <p>
-                  RSS と X の市場シグナルを材料に、個人開発で検証しやすいプロダクト案を出します。
+                  {publicReadonlyMode
+                    ? '現在表示できるキャッシュ済みアイデアがありません。管理環境で生成されると、ここに候補が表示されます。'
+                    : '技術ニュースとRSSシグナルを材料に、個人開発で検証しやすいプロダクト案を出します。'}
                 </p>
-                <button type="button" className="setup-state__button" onClick={() => handleRefresh()}>
-                  アイデアを生成
-                </button>
+                {!publicReadonlyMode && (
+                  <button type="button" className="setup-state__button" onClick={() => handleRefresh()}>
+                    アイデアを生成
+                  </button>
+                )}
               </section>
             )}
 

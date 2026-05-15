@@ -7,8 +7,12 @@ import {
   filterCachedIdeas,
   getRuntimeMeta,
   getXUsageSnapshot,
+  getAdminApiToken,
+  isAdminAuthEnabled,
+  isPublicReadonlyMode,
   scanAndCacheTrends,
 } from '../services/idea-cache';
+import type { TrendScanOutput } from 'ai-engine';
 
 // --- Request schemas ---
 
@@ -23,6 +27,52 @@ const RefreshIdeasInputSchema = z.object({
 
 function formatZodError(error: z.ZodError): string {
   return error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join('; ');
+}
+
+function emptyTrendScan(): TrendScanOutput {
+  return {
+    rssContext: {
+      trendingKeywords: [],
+      relatedArticles: [],
+    },
+    xContext: {
+      trendingTopics: [],
+      demandSignals: [],
+      competitorSentiments: [],
+      fetchedAt: new Date().toISOString(),
+    },
+    focusKeywords: [],
+    generatedAt: '',
+    sourceSummary: {
+      rssItemCount: 0,
+      xSignalCount: 0,
+      usedLLMFallback: false,
+      dataQuality: 'external',
+    },
+  };
+}
+
+function extractBearerToken(req: Request): string {
+  const header = req.get('authorization') ?? '';
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  return match?.[1]?.trim() ?? req.get('x-admin-token')?.trim() ?? '';
+}
+
+function isAdminRequest(req: Request): boolean {
+  const token = getAdminApiToken();
+  if (!token) return !isPublicReadonlyMode();
+  return extractBearerToken(req) === token;
+}
+
+function requireAdmin(req: Request, res: Response): boolean {
+  if (isAdminRequest(req)) return true;
+  const authEnabled = isAdminAuthEnabled();
+  res.status(authEnabled ? 401 : 403).json({
+    error: authEnabled
+      ? 'Admin token required.'
+      : 'This deployment is read-only. Configure ADMIN_API_TOKEN to enable refresh operations.',
+  });
+  return false;
 }
 
 // --- SSE helper ---
@@ -86,13 +136,18 @@ router.get('/ideas', async (_req: Request, res: Response) => {
   }
 });
 
-// GET /api/trends — cached or freshly scanned RSS/X trend context
+// GET /api/trends — cached trend context, or a fresh scan outside read-only mode
 router.get('/trends', async (_req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const cached = getCachedTrends();
     if (cached) {
       res.json({ status: 'cached', ...cached });
+      return;
+    }
+
+    if (isPublicReadonlyMode()) {
+      res.json({ status: 'empty', ...emptyTrendScan() });
       return;
     }
 
@@ -108,6 +163,8 @@ router.get('/trends', async (_req: Request, res: Response) => {
 // POST /api/trends/refresh — force trend context refresh
 router.post('/trends/refresh', async (_req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');
+  if (!requireAdmin(_req, res)) return;
+
   try {
     const result = await scanAndCacheTrends();
     res.json({ status: 'fresh', ...result });
@@ -120,6 +177,9 @@ router.post('/trends/refresh', async (_req: Request, res: Response) => {
 
 // GET /api/ideas/stream — SSE stream for idea generation
 router.get('/ideas/stream', async (_req: Request, res: Response) => {
+  const cached = getCachedIdeas();
+  if (!cached && !requireAdmin(_req, res)) return;
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -131,7 +191,6 @@ router.get('/ideas/stream', async (_req: Request, res: Response) => {
   res.on('close', () => { disconnected = true; });
 
   try {
-    const cached = getCachedIdeas();
     if (cached) {
       // Send cached ideas as rapid-fire events
       for (const idea of cached.candidates) {
@@ -199,6 +258,8 @@ router.post('/ideas/filter', async (req: Request, res: Response) => {
 
 // POST /api/ideas/refresh — force cache refresh (SSE)
 router.post('/ideas/refresh', async (_req: Request, res: Response) => {
+  if (!requireAdmin(_req, res)) return;
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');

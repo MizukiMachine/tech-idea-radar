@@ -16,6 +16,7 @@ export {
   fetchXUsage,
   getCachedXUsage,
   getXRuntimeConfig,
+  isXEnrichmentEnabled,
 } from './services/x-client';
 export type { XRuntimeConfig, XUsageSnapshot } from './services/x-client';
 

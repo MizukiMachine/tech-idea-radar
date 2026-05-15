@@ -3,7 +3,7 @@ import { ResponseParser } from '../services/response-parser';
 import { IdeaGenerationAgent } from './idea-generation-agent';
 import { FilterAgent } from './filter-agent';
 import { fetchRssContext } from '../services/mcp-client';
-import { fetchXContext } from '../services/x-client';
+import { fetchXContext, isXEnrichmentEnabled } from '../services/x-client';
 import type { IdeaGenerationInput, IdeaGenerationOutput, TrendScanOutput } from '../types/idea-generation';
 import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semantic-filter';
 import type { IdeaCandidate } from '../types/idea-candidate';
@@ -23,6 +23,15 @@ const GENERIC_EVIDENCE_TERMS = new Set([
   'スキル', '欲しい', '不便', '困ってる', '改善', '問題', '課題', '自動化',
   '文章を', '章を書', 'を書く',
 ]);
+
+function emptyXContext(): XContext {
+  return {
+    trendingTopics: [],
+    demandSignals: [],
+    competitorSentiments: [],
+    fetchedAt: new Date().toISOString(),
+  };
+}
 
 interface RssArticleTranslation {
   title: string;
@@ -390,18 +399,20 @@ export class EntrepreneurAgent {
   ): Promise<TrendScanOutput> {
     const keywords = [...new Set(focusKeywords.map((keyword) => keyword.trim()).filter(Boolean))];
     const effectiveKeywords = keywords.length > 0 ? keywords : DEFAULT_KEYWORDS;
-    onProgress?.('[Enrichment] RSS + X データ取得中...');
+    const xEnabled = isXEnrichmentEnabled();
+    onProgress?.(xEnabled ? '[Enrichment] RSS + X データ取得中...' : '[Enrichment] RSS データ取得中...');
     const [rssContext, xContext] = await Promise.all([
       fetchRssContext(effectiveKeywords.slice(0, 3)),
-      fetchXContext(effectiveKeywords, []),
+      xEnabled ? fetchXContext(effectiveKeywords, []) : Promise.resolve(emptyXContext()),
     ]);
     const rssCount = rssContext.trendingKeywords.length + rssContext.relatedArticles.length;
     const xCount = xContext.trendingTopics.length + xContext.demandSignals.length + xContext.competitorSentiments.length;
     console.log(`[IdeaGeneration] Enrichment: RSS: ${rssCount} items, X: ${xCount} signals`);
 
     const usedLLMFallback = rssContext.relatedArticles.length === 0 && xCount === 0;
+    const externalLabel = xEnabled ? 'RSS/X' : 'RSS';
     const warnings = usedLLMFallback
-      ? ['外部RSS/Xデータを取得できなかったため、LLMの一般知識フォールバックで生成しました。']
+      ? [`外部${externalLabel}データを取得できなかったため、LLMの一般知識フォールバックで生成しました。`]
       : [];
 
     return {
@@ -434,7 +445,10 @@ export class EntrepreneurAgent {
 
     const trendScan = await this.scanTrendContext(onProgress, inputFocusKeywords);
     const { rssContext, xContext, focusKeywords } = trendScan;
-    onProgress?.(`[Enrichment] RSS: ${trendScan.sourceSummary.rssItemCount}件, X: ${trendScan.sourceSummary.xSignalCount}件\n\nアイデア生成中...`);
+    const sourceCountText = isXEnrichmentEnabled()
+      ? `RSS: ${trendScan.sourceSummary.rssItemCount}件, X: ${trendScan.sourceSummary.xSignalCount}件`
+      : `RSS: ${trendScan.sourceSummary.rssItemCount}件`;
+    onProgress?.(`[Enrichment] ${sourceCountText}\n\nアイデア生成中...`);
 
     const input: IdeaGenerationInput = {
       rssContext,

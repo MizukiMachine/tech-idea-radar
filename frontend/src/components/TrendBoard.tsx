@@ -31,6 +31,7 @@ interface TrendBoardProps {
   loading: boolean;
   error: string | null;
   onRefresh: () => void;
+  refreshDisabled?: boolean;
   onOpenIdeas: () => void;
   onUseSignal: (query: string) => void;
 }
@@ -40,6 +41,7 @@ export default function TrendBoard({
   loading,
   error,
   onRefresh,
+  refreshDisabled = false,
   onOpenIdeas,
   onUseSignal,
 }: TrendBoardProps): JSX.Element {
@@ -57,8 +59,8 @@ export default function TrendBoard({
           <h2 className="trend-board__title">今日のAI開発シグナル</h2>
         </div>
         <div className="trend-board__actions">
-          <button type="button" className="trend-board__secondary-btn" onClick={onRefresh} disabled={loading}>
-            {loading ? '取得中...' : '再取得'}
+          <button type="button" className="trend-board__secondary-btn" onClick={onRefresh} disabled={loading || refreshDisabled}>
+            {loading ? '取得中...' : refreshDisabled ? '公開キャッシュ' : '再取得'}
           </button>
           <button type="button" className="trend-board__primary-btn" onClick={onOpenIdeas}>
             アイデアを見る
