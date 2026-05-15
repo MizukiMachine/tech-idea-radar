@@ -170,11 +170,10 @@ function App(): JSX.Element {
     if (retryUsage) window.setTimeout(update, 2000);
   }, []);
   const publicReadonlyMode = Boolean(ideasMeta?.env?.publicReadonlyMode);
-  const xEnrichmentEnabled = Boolean(ideasMeta?.env?.xEnrichmentEnabled);
   const generatedAt = ideasMeta?.cache?.generatedAt ?? null;
   const headerStatusItems = [
     ideasMeta ? (publicReadonlyMode ? '閲覧用キャッシュ' : '編集・生成モード') : 'データ確認中',
-    `データ元 ${xEnrichmentEnabled ? 'RSS + X' : 'RSS'}`,
+    'データ元 RSS',
     `最終更新 ${formatStamp(generatedAt)}`,
   ];
 
@@ -340,12 +339,6 @@ function App(): JSX.Element {
   const topRevenueIdea = sortIdeas(displayedIdeas, '収益性順')[0] ?? ideas[0];
   const topTrendIdea = sortIdeas(displayedIdeas, 'トレンドスコア順')[0] ?? ideas[0];
   const hasIdeas = ideas.length > 0;
-  const showXMissingWarning = hasIdeas
-    && !publicReadonlyMode
-    && (sourceSummary?.xSignalCount ?? 0) === 0
-    && xEnrichmentEnabled
-    && ideasMeta?.env?.hasXBearerToken
-    && ideasMeta?.env?.xSearchFixtureMode !== 'replay';
   const showDashboard = loading || hasIdeas;
   const showSetupState = !loading && !hasIdeas;
   const showIdeaCommandBar = activeView === 'ideas' && (hasIdeas || !publicReadonlyMode);
@@ -469,16 +462,6 @@ function App(): JSX.Element {
               <div className="data-warning-banner">
                 <span className="data-warning-banner__icon">!</span>
                 <p>{sourceSummary.warnings?.[0] ?? '外部データ未使用の生成結果です。'}</p>
-              </div>
-            )}
-
-            {showXMissingWarning && (
-              <div className="data-warning-banner">
-                <span className="data-warning-banner__icon">!</span>
-                <p>
-                  Xトークンは設定済みですが、この生成結果はXシグナル0件です（backend: {ideasMeta?.instanceId}）。
-                  再生成すると最新データで作り直します。
-                </p>
               </div>
             )}
 

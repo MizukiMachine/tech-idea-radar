@@ -3,19 +3,15 @@ import { ResponseParser } from '../services/response-parser';
 import { IdeaGenerationAgent } from './idea-generation-agent';
 import { FilterAgent } from './filter-agent';
 import { fetchRssContext } from '../services/mcp-client';
-import { fetchXContext, isXEnrichmentEnabled } from '../services/x-client';
 import type { IdeaGenerationInput, IdeaGenerationOutput, TrendScanOutput } from '../types/idea-generation';
 import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semantic-filter';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { RssArticle, RssContext } from '../services/mcp-client';
-import type { XContext } from '../types/x-context';
 
 const DEFAULT_KEYWORDS = ['AI', 'SaaS', 'developer', 'productivity', 'automation', 'エンジニア', '個人開発'];
 const MAX_EVIDENCE_URLS = 1;
 const MAX_TRANSLATED_RSS_ARTICLES = 18;
 const MIN_RSS_EVIDENCE_SCORE = 4;
-const MIN_X_EVIDENCE_SCORE = 5;
-const MIN_DECLARED_X_SEED_SCORE = 2;
 const GENERIC_EVIDENCE_TERMS = new Set([
   'ai', 'api', 'app', 'apps', 'dev', 'developer', 'developers', 'development',
   'cli', 'saas', 'tool', 'tools', 'web', 'service', 'services', 'user', 'users',
@@ -23,15 +19,6 @@ const GENERIC_EVIDENCE_TERMS = new Set([
   'スキル', '欲しい', '不便', '困ってる', '改善', '問題', '課題', '自動化',
   '文章を', '章を書', 'を書く',
 ]);
-
-function emptyXContext(): XContext {
-  return {
-    trendingTopics: [],
-    demandSignals: [],
-    competitorSentiments: [],
-    fetchedAt: new Date().toISOString(),
-  };
-}
 
 interface RssArticleTranslation {
   title: string;
@@ -121,65 +108,17 @@ function scoreArticleForCandidate(article: RssArticle, text: string): number {
   return score >= MIN_RSS_EVIDENCE_SCORE ? score : 0;
 }
 
-interface XEvidence {
-  seedId: string;
-  title: string;
-  url: string;
-  keywords: string[];
-  weight: number;
-}
-
 type CandidateEvidenceUrl = NonNullable<IdeaCandidate['sources']['evidenceUrls']>[number];
 type ScoredEvidenceUrl = CandidateEvidenceUrl & { score: number };
-
-function buildXDemandEvidenceList(xContext: XContext): XEvidence[] {
-  const map = new Map<string, XEvidence>();
-
-  for (const [index, signal] of xContext.demandSignals.slice(0, 10).entries()) {
-    const url = signal.tweet.url;
-    if (!url) continue;
-    const current = map.get(url);
-    const next: XEvidence = {
-      seedId: `x-demand-${index + 1}`,
-      title: signal.tweet.text.slice(0, 120),
-      url,
-      keywords: [...signal.matchedKeywords, signal.needCategory],
-      weight: signal.relevanceScore + signal.tweet.likeCount + signal.tweet.retweetCount,
-    };
-    if (!current || next.weight > current.weight) map.set(url, next);
-  }
-
-  return [...map.values()];
-}
-
-function scoreXEvidenceForCandidate(
-  source: XEvidence,
-  text: string,
-  minScore = MIN_X_EVIDENCE_SCORE,
-): number {
-  const sourceText = `${source.title} ${source.keywords.join(' ')}`;
-  let score = evidenceOverlapScore(sourceText, text);
-  for (const keyword of source.keywords) {
-    const normalized = normalizeEvidenceText(keyword);
-    if (normalized && !GENERIC_EVIDENCE_TERMS.has(normalized) && text.includes(normalized)) score += 2;
-  }
-  if (score < minScore) return 0;
-  return score + Math.min(Math.log1p(source.weight), 6);
-}
 
 function scoreExistingEvidenceForCandidate(
   source: CandidateEvidenceUrl,
   text: string,
   articleByUrl: Map<string, RssArticle>,
-  xEvidenceByUrl: Map<string, XEvidence>,
 ): number {
   if (source.type === 'rss') {
     const article = articleByUrl.get(source.url);
     return article ? scoreArticleForCandidate(article, text) : 0;
-  }
-  if (source.type === 'x') {
-    const evidence = xEvidenceByUrl.get(source.url);
-    return evidence ? scoreXEvidenceForCandidate(evidence, text) : 0;
   }
   return 0;
 }
@@ -244,24 +183,20 @@ function evidenceOverlapScore(sourceText: string, candidate: string): number {
   return score;
 }
 
-function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssContext, xContext: XContext): IdeaCandidate[] {
+function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssContext): IdeaCandidate[] {
   const articles = rssContext.relatedArticles.filter((article) => article.link || article.url);
   const articleByUrl = new Map<string, RssArticle>();
   for (const article of articles) {
     const url = article.url ?? article.link;
     if (url) articleByUrl.set(url, article);
   }
-  const xEvidence = buildXDemandEvidenceList(xContext);
-  const xEvidenceByUrl = new Map(xEvidence.map((source) => [source.url, source]));
-  const xEvidenceBySeedId = new Map(xEvidence.map((source) => [source.seedId, source]));
   const allowedUrls = new Set<string>(articleByUrl.keys());
-  for (const source of xEvidence) allowedUrls.add(source.url);
 
-  if (articles.length === 0 && xEvidence.length === 0) {
+  if (articles.length === 0) {
     return candidates.map((candidate) => ({
       ...candidate,
       sources: {
-        ...candidate.sources,
+        rssKeywords: candidate.sources.rssKeywords,
         evidenceUrls: (candidate.sources.evidenceUrls ?? [])
           .filter((source) => allowedUrls.has(source.url))
           .slice(0, MAX_EVIDENCE_URLS),
@@ -271,41 +206,11 @@ function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssConte
 
   return candidates.map((candidate) => {
     const text = candidateText(candidate);
-    const declaredSeed = candidate.sources.sourceSeedId
-      ? xEvidenceBySeedId.get(candidate.sources.sourceSeedId)
-      : undefined;
-    if (declaredSeed) {
-      const score = scoreXEvidenceForCandidate(declaredSeed, text, MIN_DECLARED_X_SEED_SCORE);
-      if (score > 0) {
-        return {
-          ...candidate,
-          sources: {
-            ...candidate.sources,
-            evidenceUrls: [{
-              title: declaredSeed.title,
-              url: declaredSeed.url,
-              type: 'x',
-            }],
-          },
-        };
-      }
-      return {
-        ...candidate,
-        sources: {
-          ...candidate.sources,
-          evidenceUrls: [],
-        },
-      };
-    }
-
     const existing = (candidate.sources.evidenceUrls ?? [])
       .filter((source) => allowedUrls.has(source.url))
       .map((source): ScoredEvidenceUrl => ({
         ...source,
-        title: source.type === 'x'
-          ? xEvidenceByUrl.get(source.url)?.title ?? source.title
-          : source.title,
-        score: scoreExistingEvidenceForCandidate(source, text, articleByUrl, xEvidenceByUrl),
+        score: scoreExistingEvidenceForCandidate(source, text, articleByUrl),
       }))
       .filter((source) => source.score > 0);
 
@@ -322,21 +227,6 @@ function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssConte
       }))
       .filter((source) => source.score > 0);
 
-    const preferredX = existing
-      .filter((source) => source.type === 'x')
-      .sort((a, b) => b.score - a.score);
-
-    if (preferredX.length > 0) {
-      const [{ title, url, type }] = preferredX;
-      return {
-        ...candidate,
-        sources: {
-          ...candidate.sources,
-          evidenceUrls: [{ title, url, type }],
-        },
-      };
-    }
-
     const ranked = [...existing, ...rssAdditions]
       .sort((a, b) => b.score - a.score)
       .reduce<CandidateEvidenceUrl[]>((acc, { title, url, type }) => {
@@ -349,7 +239,7 @@ function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssConte
     return {
       ...candidate,
       sources: {
-        ...candidate.sources,
+        rssKeywords: candidate.sources.rssKeywords,
         evidenceUrls: ranked,
       },
     };
@@ -399,30 +289,22 @@ export class EntrepreneurAgent {
   ): Promise<TrendScanOutput> {
     const keywords = [...new Set(focusKeywords.map((keyword) => keyword.trim()).filter(Boolean))];
     const effectiveKeywords = keywords.length > 0 ? keywords : DEFAULT_KEYWORDS;
-    const xEnabled = isXEnrichmentEnabled();
-    onProgress?.(xEnabled ? '[Enrichment] RSS + X データ取得中...' : '[Enrichment] RSS データ取得中...');
-    const [rssContext, xContext] = await Promise.all([
-      fetchRssContext(effectiveKeywords.slice(0, 3)),
-      xEnabled ? fetchXContext(effectiveKeywords, []) : Promise.resolve(emptyXContext()),
-    ]);
+    onProgress?.('[Enrichment] RSS データ取得中...');
+    const rssContext = await fetchRssContext(effectiveKeywords.slice(0, 3));
     const rssCount = rssContext.trendingKeywords.length + rssContext.relatedArticles.length;
-    const xCount = xContext.trendingTopics.length + xContext.demandSignals.length + xContext.competitorSentiments.length;
-    console.log(`[IdeaGeneration] Enrichment: RSS: ${rssCount} items, X: ${xCount} signals`);
+    console.log(`[IdeaGeneration] Enrichment: RSS: ${rssCount} items`);
 
-    const usedLLMFallback = rssContext.relatedArticles.length === 0 && xCount === 0;
-    const externalLabel = xEnabled ? 'RSS/X' : 'RSS';
+    const usedLLMFallback = rssContext.relatedArticles.length === 0;
     const warnings = usedLLMFallback
-      ? [`外部${externalLabel}データを取得できなかったため、LLMの一般知識フォールバックで生成しました。`]
+      ? ['外部RSSデータを取得できなかったため、LLMの一般知識フォールバックで生成しました。']
       : [];
 
     return {
       rssContext,
-      xContext,
       focusKeywords: effectiveKeywords,
       generatedAt: new Date().toISOString(),
       sourceSummary: {
         rssItemCount: rssCount,
-        xSignalCount: xCount,
         usedLLMFallback,
         dataQuality: usedLLMFallback ? 'llm_fallback' : 'external',
         warnings,
@@ -444,15 +326,12 @@ export class EntrepreneurAgent {
     console.log('[IdeaGeneration] Starting idea generation pipeline');
 
     const trendScan = await this.scanTrendContext(onProgress, inputFocusKeywords);
-    const { rssContext, xContext, focusKeywords } = trendScan;
-    const sourceCountText = isXEnrichmentEnabled()
-      ? `RSS: ${trendScan.sourceSummary.rssItemCount}件, X: ${trendScan.sourceSummary.xSignalCount}件`
-      : `RSS: ${trendScan.sourceSummary.rssItemCount}件`;
+    const { rssContext, focusKeywords } = trendScan;
+    const sourceCountText = `RSS: ${trendScan.sourceSummary.rssItemCount}件`;
     onProgress?.(`[Enrichment] ${sourceCountText}\n\nアイデア生成中...`);
 
     const input: IdeaGenerationInput = {
       rssContext,
-      xContext,
       focusKeywords,
     };
 
@@ -460,7 +339,7 @@ export class EntrepreneurAgent {
     const rawCandidates = await this.ideaGeneration.execute(input);
 
     // LLM may return various formats — normalize to IdeaCandidate[]
-    const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext, xContext);
+    const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext);
 
     const totalTime = Date.now() - startTime;
     console.log(`[IdeaGeneration] Generated ${candidates.length} ideas in ${totalTime}ms (fallback: ${trendScan.sourceSummary.usedLLMFallback})`);

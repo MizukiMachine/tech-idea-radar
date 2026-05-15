@@ -81,7 +81,6 @@ export default function IdeaDetailModal({ idea, onClose }: IdeaDetailModalProps)
                                 <p>この生成結果には参照URLは含まれていません。</p>
                                 <div className="idea-modal__tags">
                                     {idea.sources.rssKeywords.map((keyword) => <span key={keyword}>{keyword}</span>)}
-                                    <span>需要シグナル {idea.sources.demandSignals}</span>
                                 </div>
                             </div>
                         )}

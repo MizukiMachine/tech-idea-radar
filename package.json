@@ -15,8 +15,6 @@
     "format": "prettier --write .",
     "backend:dev": "npm run dev --workspace backend",
     "backend:dev:3010": "PORT=3010 npm run dev --workspace backend",
-    "backend:dev:x-record": "X_SEARCH_FIXTURE_MODE=record-if-missing X_SEARCH_FIXTURE_FILE=.tmp/x-search-fixture.json PORT=3010 npm run dev --workspace backend",
-    "backend:dev:x-replay": "X_SEARCH_FIXTURE_MODE=replay X_SEARCH_FIXTURE_FILE=.tmp/x-search-fixture.json PORT=3010 npm run dev --workspace backend",
     "backend:build": "npm run build --workspace backend",
     "backend:test": "npm run test --workspace backend",
     "backend:lint": "npm run lint --workspace backend",

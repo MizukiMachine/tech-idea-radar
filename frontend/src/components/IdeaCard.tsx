@@ -16,18 +16,6 @@ function getIconForIdea(id: string, index: number) {
     };
 }
 
-function trendBars(score: number): JSX.Element {
-    const bars = 4;
-    const filled = Math.ceil((score / 100) * bars);
-    return (
-        <div className="idea-card__trend-bars">
-            {Array.from({ length: bars }, (_, i) => (
-                <span key={i} className={`idea-card__trend-bar ${i < filled ? 'idea-card__trend-bar--filled' : ''}`} />
-            ))}
-        </div>
-    );
-}
-
 interface IdeaCardProps {
     idea: IdeaCandidate;
     index: number;
@@ -39,33 +27,23 @@ interface IdeaCardProps {
 export default function IdeaCard({ idea, index, viewMode = 'grid', selected = false, onSelect }: IdeaCardProps): JSX.Element {
     const { icon, color } = getIconForIdea(idea.id, index);
 
-    // Build category label from tags/productType
-    const categoryLabel = idea.tags.slice(0, 2).join('・') || idea.productType;
-
     return (
         <button
             type="button"
             className={`idea-card idea-card--${viewMode} ${selected ? 'idea-card--selected' : ''}`}
             onClick={() => onSelect?.(idea)}
+            aria-label={`${idea.title} の詳細を開く`}
         >
             <div className="idea-card__header">
                 <div className="idea-card__icon" style={{ backgroundColor: `${color}15`, color }}>
                     {icon}
                 </div>
-                <div className="idea-card__heading">
-                    <h3 className="idea-card__title">{idea.title}</h3>
-                    <span className="idea-card__tagline">{idea.tagline}</span>
-                </div>
+                <h3 className="idea-card__title">{idea.title}</h3>
             </div>
-            <p className="idea-card__description">{idea.description}</p>
-            <div className="idea-card__meta">
-                <span>市場 {idea.trendScore}</span>
-                <span>{idea.estimatedMvpTime}</span>
-                <span>{idea.revenuePotential}</span>
-            </div>
-            <div className="idea-card__footer">
-                <span className="idea-card__category">{categoryLabel}</span>
-                {trendBars(idea.trendScore)}
+            <p className="idea-card__tagline">{idea.tagline}</p>
+            <div className="idea-card__footer" aria-label={`トレンドスコア ${idea.trendScore}`}>
+                <span className="idea-card__score-label">Score</span>
+                <span className="idea-card__score-value">{idea.trendScore}</span>
             </div>
         </button>
     );

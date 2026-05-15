@@ -2,15 +2,16 @@
 .idea-card {
     background: #fff;
     border: 1px solid #e8ecf1;
-    border-radius: 14px;
-    padding: 20px;
+    border-radius: 8px;
+    padding: 18px;
     transition: box-shadow 0.25s, transform 0.2s;
     display: flex;
     flex-direction: column;
+    gap: 10px;
     cursor: pointer;
     text-align: left;
     font: inherit;
-    min-height: 190px;
+    min-height: 132px;
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
@@ -23,155 +24,93 @@
 
 .idea-card--selected {
     border-color: var(--border-active);
-    box-shadow: var(--shadow-glow);
+    box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.12);
 }
 
 .idea-card--list {
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(220px, 1.1fr) minmax(260px, 1.4fr) auto;
-    align-items: center;
-    gap: 18px;
+    grid-template-columns: minmax(220px, 0.9fr) minmax(280px, 1.5fr) auto;
+    align-items: start;
+    gap: 20px;
 }
 
 .idea-card__header {
     display: flex;
     align-items: flex-start;
     gap: 12px;
-    margin-bottom: 10px;
-}
-
-.idea-card--list .idea-card__header,
-.idea-card--list .idea-card__description {
-    margin-bottom: 0;
+    min-width: 0;
 }
 
 .idea-card__icon {
-    width: 36px;
-    height: 36px;
-    min-width: 36px;
-    border-radius: 10px;
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 800;
     letter-spacing: 0;
 }
 
 .idea-card__title {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 700;
     color: #1a1f36;
     margin: 0;
-    line-height: 1.4;
-    flex: 1;
+    line-height: 1.45;
     overflow-wrap: anywhere;
 }
 
-.idea-card__heading {
-    flex: 1;
-    min-width: 0;
-}
-
-.idea-card__tagline {
-    display: block;
-    margin-top: 4px;
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--text-tertiary);
-    line-height: 1.4;
-    overflow-wrap: anywhere;
-}
-
-.idea-card__description {
-    font-size: 12px;
-    color: #64748b;
-    margin: 0 0 auto;
-    line-height: 1.6;
+.idea-card--grid .idea-card__title {
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
-    padding-bottom: 12px;
+}
+
+.idea-card__tagline {
+    font-size: 13px;
+    color: #64748b;
+    margin: 0;
+    line-height: 1.6;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
     overflow-wrap: anywhere;
 }
 
-.idea-card__meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin: 12px 0;
-}
-
-.idea-card__meta span {
-    font-size: 11px;
-    color: var(--text-secondary);
-    background: var(--bg-input);
-    border-radius: 999px;
-    padding: 3px 8px;
-    font-weight: 600;
-}
-
-.idea-card--list .idea-card__meta {
-    margin: 0;
-    justify-content: flex-end;
+.idea-card--list .idea-card__tagline {
+    -webkit-line-clamp: 2;
 }
 
 .idea-card__footer {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding-top: 10px;
-    border-top: 1px solid #f1f5f9;
+    align-items: baseline;
+    gap: 4px;
+    margin-top: auto;
+    color: #4a6cf7;
 }
 
 .idea-card--list .idea-card__footer {
-    border-top: none;
-    padding-top: 0;
-    justify-content: flex-end;
-    gap: 12px;
+    margin-top: 2px;
+    justify-self: end;
 }
 
-.idea-card__category {
-    font-size: 11px;
-    color: #4a6cf7;
-    font-weight: 500;
-    padding: 3px 10px;
-    border-radius: 4px;
-    background: rgba(74, 108, 247, 0.08);
+.idea-card__score-label {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
 }
 
-.idea-card__trend-bars {
-    display: flex;
-    gap: 3px;
-    align-items: flex-end;
-}
-
-.idea-card__trend-bar {
-    width: 4px;
-    border-radius: 1px;
-    background: #e2e8f0;
-}
-
-.idea-card__trend-bar:nth-child(1) {
-    height: 8px;
-}
-
-.idea-card__trend-bar:nth-child(2) {
-    height: 12px;
-}
-
-.idea-card__trend-bar:nth-child(3) {
-    height: 16px;
-}
-
-.idea-card__trend-bar:nth-child(4) {
-    height: 20px;
-}
-
-.idea-card__trend-bar--filled {
-    background: #4a6cf7;
+.idea-card__score-value {
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1;
 }
 
 @media (max-width: 900px) {

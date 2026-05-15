@@ -17,7 +17,7 @@ const idea = {
   revenuePotential: "high",
   estimatedMvpTime: "2週間",
   differentiation: "運用トレンドを根拠に提案する",
-  sources: { rssKeywords: ["AI"], demandSignals: 1, evidenceUrls: [] },
+  sources: { rssKeywords: ["AI"], evidenceUrls: [] },
   generatedAt,
 };
 const meta = {
@@ -27,14 +27,6 @@ const meta = {
   port: "3010",
   env: {
     hasZaiApiKey: true,
-    hasXBearerToken: true,
-    xDataSource: "rest",
-    xIncludeUserFields: false,
-    xCacheTtlHours: 6,
-    xCacheFileEnabled: false,
-    xSearchFixtureMode: "off",
-    xSearchFixtureEnabled: false,
-    xEnrichmentEnabled: true,
     publicReadonlyMode: false,
     adminAuthEnabled: false,
     persistentCacheEnabled: false,
@@ -42,13 +34,12 @@ const meta = {
     warmupOnStart: true,
     backgroundRefreshIntervalHours: 0,
   },
-  xUsage: null,
   cache: {
     status: "cached",
     expiresAt: generatedAt,
     generatedAt,
     candidateCount: 1,
-    sourceSummary: { rssItemCount: 3, xSignalCount: 2, usedLLMFallback: false },
+    sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
   },
   generationInProgress: false,
   trendScanInProgress: false,
@@ -71,35 +62,9 @@ const trends = {
       keywords: ["AI", "agent"],
     }],
   },
-  xContext: {
-    trendingTopics: [{
-      topic: "AI workflow tools are trending among indie developers",
-      tweetVolume: 42,
-      url: "https://x.com/example/status/1",
-      relatedHashtags: ["AI"],
-    }],
-    demandSignals: [{
-      tweet: {
-        id: "tweet-1",
-        text: "AIツールの比較がめんどくさい。誰か作って",
-        author: "Example",
-        authorHandle: "example",
-        likeCount: 10,
-        retweetCount: 2,
-        replyCount: 1,
-        createdAt: generatedAt,
-        url: "https://x.com/example/status/2",
-      },
-      needCategory: "wish",
-      matchedKeywords: ["誰か作って"],
-      relevanceScore: 80,
-    }],
-    competitorSentiments: [],
-    fetchedAt: generatedAt,
-  },
   focusKeywords: ["AI"],
   generatedAt,
-  sourceSummary: { rssItemCount: 3, xSignalCount: 2, usedLLMFallback: false },
+  sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
 };
 
 beforeEach(() => {
@@ -110,7 +75,7 @@ beforeEach(() => {
       status: "cached",
       candidates: [idea],
       generatedAt,
-      sourceSummary: { rssItemCount: 3, xSignalCount: 2, usedLLMFallback: false },
+      sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
     };
     if (url.includes("/api/ai/trends")) body = trends;
     if (url.includes("/api/ai/ideas/meta")) body = meta;
@@ -136,8 +101,6 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
     await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
     expect(screen.getByText("RSSフィード")).toBeTruthy();
-    expect(screen.queryByText("X需要シグナル")).toBeNull();
-    expect(screen.queryByText("Xトレンド")).toBeNull();
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     expect(screen.queryByText("AI agent tools are moving into product workflows")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "記事の要約" }));
@@ -172,7 +135,7 @@ describe("App", () => {
         status: "cached",
         candidates: [idea],
         generatedAt,
-        sourceSummary: { rssItemCount: 3, xSignalCount: 2, usedLLMFallback: false },
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
       };
       if (url.includes("/api/ai/trends")) body = trends;
       if (url.includes("/api/ai/ideas/meta")) body = publicMeta;

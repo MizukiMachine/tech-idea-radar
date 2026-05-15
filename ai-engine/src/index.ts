@@ -9,19 +9,8 @@ export { PromptBuilder } from './services/prompt-builder';
 export { ResponseParser } from './services/response-parser';
 export { validateObject } from './services/output-validator';
 export { McpClient, fetchRssContext } from './services/mcp-client';
-export {
-  XApiClient,
-  XMcpXClient,
-  fetchXContext,
-  fetchXUsage,
-  getCachedXUsage,
-  getXRuntimeConfig,
-  isXEnrichmentEnabled,
-} from './services/x-client';
-export type { XRuntimeConfig, XUsageSnapshot } from './services/x-client';
 
 // Types
-export * from './types/x-context';
 export * from './types/idea-candidate';
 export * from './types/idea-generation';
 export * from './types/semantic-filter';

@@ -8,7 +8,6 @@ export function getApiBase(): string {
 
 export interface SourceSummary {
   rssItemCount: number;
-  xSignalCount: number;
   usedLLMFallback: boolean;
   dataQuality?: 'external' | 'llm_fallback';
   warnings?: string[];
@@ -21,15 +20,6 @@ export interface IdeasMeta {
   port: string | null;
   env: {
     hasZaiApiKey: boolean;
-    hasXBearerToken: boolean;
-    hasXMcpServerUrl?: boolean;
-    xDataSource?: string;
-    xIncludeUserFields?: boolean;
-    xCacheTtlHours?: number;
-    xCacheFileEnabled?: boolean;
-    xSearchFixtureMode?: string;
-    xSearchFixtureEnabled?: boolean;
-    xEnrichmentEnabled?: boolean;
     publicReadonlyMode?: boolean;
     adminAuthEnabled?: boolean;
     persistentCacheEnabled?: boolean;
@@ -37,11 +27,6 @@ export interface IdeasMeta {
     warmupOnStart?: boolean;
     backgroundRefreshIntervalHours?: number;
   };
-  xUsage?: {
-    source: string;
-    fetchedAt: string;
-    data: unknown;
-  } | null;
   cache: {
     status: 'empty' | 'cached' | 'stale';
     expiresAt: string | null;
@@ -73,51 +58,11 @@ export interface RssArticle {
   keywords?: string[];
 }
 
-export interface XTweet {
-  id: string;
-  text: string;
-  author: string;
-  authorHandle: string;
-  likeCount: number;
-  retweetCount: number;
-  replyCount: number;
-  createdAt: string;
-  url: string;
-}
-
-export interface XTrendingTopic {
-  topic: string;
-  tweetVolume: number;
-  url: string;
-  relatedHashtags: string[];
-}
-
-export interface XDemandSignal {
-  tweet: XTweet;
-  needCategory: 'want' | 'frustration' | 'problem' | 'wish';
-  matchedKeywords: string[];
-  relevanceScore: number;
-}
-
-export interface XCompetitorSentiment {
-  competitorName: string;
-  tweets: XTweet[];
-  sentimentSummary: string;
-  keyComplaints: string[];
-  keyPraises: string[];
-}
-
 export interface TrendScan {
   status: string;
   rssContext: {
     trendingKeywords: RssTrendItem[];
     relatedArticles: RssArticle[];
-  };
-  xContext: {
-    trendingTopics: XTrendingTopic[];
-    demandSignals: XDemandSignal[];
-    competitorSentiments: XCompetitorSentiment[];
-    fetchedAt: string;
   };
   focusKeywords: string[];
   generatedAt: string;

@@ -2,14 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   EntrepreneurAgent,
-  fetchXUsage,
-  getCachedXUsage,
-  getXRuntimeConfig,
   type IdeaGenerationOutput,
   type SemanticFilterInput,
   type SemanticFilterOutput,
   type TrendScanOutput,
-  type XUsageSnapshot,
 } from 'ai-engine';
 import { getClient } from './ai-engine';
 import { CACHE_REFRESH_INTERVAL_MS } from 'ai-engine';
@@ -149,15 +145,6 @@ export function getRuntimeMeta(): {
   port: string | null;
   env: {
     hasZaiApiKey: boolean;
-    hasXBearerToken: boolean;
-    hasXMcpServerUrl: boolean;
-    xDataSource: string;
-    xIncludeUserFields: boolean;
-    xCacheTtlHours: number;
-    xCacheFileEnabled: boolean;
-    xSearchFixtureMode: string;
-    xSearchFixtureEnabled: boolean;
-    xEnrichmentEnabled: boolean;
     publicReadonlyMode: boolean;
     adminAuthEnabled: boolean;
     persistentCacheEnabled: boolean;
@@ -165,7 +152,6 @@ export function getRuntimeMeta(): {
     warmupOnStart: boolean;
     backgroundRefreshIntervalHours: number;
   };
-  xUsage: XUsageSnapshot | null;
   cache: {
     status: CacheStatus;
     expiresAt: string | null;
@@ -178,7 +164,6 @@ export function getRuntimeMeta(): {
   backgroundRefreshInProgress: boolean;
 } {
   const cached = getCachedIdeas();
-  const xRuntime = getXRuntimeConfig();
   const ideaStatus = getIdeaCacheStatus();
   return {
     instanceId: INSTANCE_ID,
@@ -187,15 +172,6 @@ export function getRuntimeMeta(): {
     port: process.env.PORT ?? null,
     env: {
       hasZaiApiKey: Boolean(process.env.ZAI_API_KEY),
-      hasXBearerToken: xRuntime.hasXBearerToken,
-      hasXMcpServerUrl: xRuntime.hasXMcpServerUrl,
-      xDataSource: xRuntime.dataSource,
-      xIncludeUserFields: xRuntime.includeUserFields,
-      xCacheTtlHours: xRuntime.cacheTtlHours,
-      xCacheFileEnabled: xRuntime.cacheFileEnabled,
-      xSearchFixtureMode: xRuntime.searchFixtureMode,
-      xSearchFixtureEnabled: xRuntime.searchFixtureEnabled,
-      xEnrichmentEnabled: xRuntime.enrichmentEnabled,
       publicReadonlyMode: PUBLIC_READONLY_MODE,
       adminAuthEnabled: Boolean(ADMIN_API_TOKEN),
       persistentCacheEnabled: Boolean(PERSISTENT_CACHE_FILE),
@@ -203,7 +179,6 @@ export function getRuntimeMeta(): {
       warmupOnStart: WARMUP_ON_START,
       backgroundRefreshIntervalHours: BACKGROUND_REFRESH_INTERVAL_MS / 60 / 60 / 1000,
     },
-    xUsage: getCachedXUsage(),
     cache: cached ? {
       status: ideaStatus,
       expiresAt: cache ? new Date(cache.expiresAt).toISOString() : null,
@@ -223,10 +198,6 @@ export function getRuntimeMeta(): {
   };
 }
 
-export async function getXUsageSnapshot(): Promise<XUsageSnapshot | null> {
-  return fetchXUsage();
-}
-
 export async function generateAndCacheIdeas(
   onProgress?: (text: string) => void,
   focusKeywords?: string[],
@@ -243,16 +214,6 @@ export async function generateAndCacheIdeas(
         expiresAt: Date.now() + CACHE_TTL_MS,
       };
       persistCache();
-      if (getXRuntimeConfig().enrichmentEnabled) {
-        void fetchXUsage()
-          .then((usage) => {
-            if (usage) console.log(`[X API] Usage snapshot (${usage.source}): ${JSON.stringify(usage.data).slice(0, 1000)}`);
-          })
-          .catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : String(error);
-            console.warn(`[X API] Usage snapshot failed: ${message}`);
-          });
-      }
       return result;
     } finally {
       generationLock = null;

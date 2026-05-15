@@ -13,12 +13,10 @@ export interface IdeaCandidate {
   differentiation: string;
   sources: {
     rssKeywords: string[];
-    demandSignals: number;
-    sourceSeedId?: string;
     evidenceUrls?: {
       title: string;
       url: string;
-      type: 'rss' | 'x' | 'web' | 'other';
+      type: 'rss' | 'web' | 'other';
     }[];
   };
   generatedAt: string;

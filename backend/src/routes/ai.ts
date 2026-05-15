@@ -6,7 +6,6 @@ import {
   generateAndCacheIdeas,
   filterCachedIdeas,
   getRuntimeMeta,
-  getXUsageSnapshot,
   getAdminApiToken,
   getIdeaCacheStatus,
   getTrendCacheStatus,
@@ -37,17 +36,10 @@ function emptyTrendScan(): TrendScanOutput {
       trendingKeywords: [],
       relatedArticles: [],
     },
-    xContext: {
-      trendingTopics: [],
-      demandSignals: [],
-      competitorSentiments: [],
-      fetchedAt: new Date().toISOString(),
-    },
     focusKeywords: [],
     generatedAt: '',
     sourceSummary: {
       rssItemCount: 0,
-      xSignalCount: 0,
       usedLLMFallback: false,
       dataQuality: 'external',
     },
@@ -95,23 +87,6 @@ router.get('/ideas/meta', (_req: Request, res: Response) => {
   res.json(getRuntimeMeta());
 });
 
-// GET /api/ai/x-usage — current X API usage snapshot
-router.get('/x-usage', async (_req: Request, res: Response) => {
-  res.setHeader('Cache-Control', 'no-store');
-  try {
-    const usage = await getXUsageSnapshot();
-    if (!usage) {
-      res.status(503).json({ error: 'X usage is unavailable. Check X credentials or XMCP server settings.' });
-      return;
-    }
-    res.json(usage);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`[API] GET /x-usage error: ${message}`);
-    res.status(500).json({ error: message });
-  }
-});
-
 // GET /api/ideas — cached ideas
 router.get('/ideas', async (_req: Request, res: Response) => {
   try {
@@ -127,7 +102,6 @@ router.get('/ideas', async (_req: Request, res: Response) => {
       generatedAt: '',
       sourceSummary: {
         rssItemCount: 0,
-        xSignalCount: 0,
         usedLLMFallback: false,
       },
     });
