@@ -5,6 +5,7 @@ import { IDEA_GENERATION_SYSTEM_PROMPT, IDEA_GENERATION_USER_TEMPLATE } from '..
 import type { IdeaGenerationInput, UsedRssSource } from '../types/idea-generation';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import { BaseAgent } from './base-agent';
+import { RssSourceUnavailableError } from '../errors';
 
 const MAX_PREVIOUS_IDEAS_IN_PROMPT = 40;
 const MAX_USED_SOURCES_IN_PROMPT = 60;
@@ -56,7 +57,7 @@ export class IdeaGenerationAgent extends BaseAgent<IdeaGenerationInput, IdeaCand
   buildUserPrompt(input: IdeaGenerationInput): string {
     const rssContext = input.rssContext
       ? JSON.stringify(input.rssContext, null, 2)
-      : '（RSSデータなし — 一般知識から生成してください）';
+      : '（RSSデータなし — 生成禁止）';
 
     const focusKeywords = input.focusKeywords?.length
       ? input.focusKeywords.join(', ')
@@ -71,5 +72,22 @@ export class IdeaGenerationAgent extends BaseAgent<IdeaGenerationInput, IdeaCand
       recently_used_sources: summarizeRecentlyUsedSources(input.recentlyUsedSources),
       requested_idea_count: String(requestedIdeaCount),
     });
+  }
+
+  async execute(input: IdeaGenerationInput, onProgress?: (text: string) => void): Promise<IdeaCandidate[]> {
+    const articleCount = input.rssContext?.relatedArticles.length ?? 0;
+    if (articleCount === 0) {
+      throw new RssSourceUnavailableError(
+        'RSS記事が取得できないため、LLMによるアイデア生成を停止しました。',
+        {
+          operation: 'idea_generation',
+          focusKeywords: input.focusKeywords,
+          rssArticleCount: articleCount,
+          trendingKeywordCount: input.rssContext?.trendingKeywords.length ?? 0,
+        },
+      );
+    }
+
+    return super.execute(input, onProgress);
   }
 }

@@ -4,6 +4,7 @@ import { IdeaGenerationAgent } from './idea-generation-agent';
 import { FilterAgent } from './filter-agent';
 import { fetchRssContext } from '../services/mcp-client';
 import { DEFAULT_IDEA_COUNT } from '../config/constants';
+import { RssSourceUnavailableError } from '../errors';
 import type { IdeaGenerationInput, IdeaGenerationOutput, TrendScanOutput, UsedRssSource } from '../types/idea-generation';
 import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semantic-filter';
 import type { IdeaCandidate } from '../types/idea-candidate';
@@ -66,6 +67,12 @@ function filterUsedRssArticles(rssContext: RssContext, usedSources: UsedRssSourc
     },
     skippedCount: rssContext.relatedArticles.length - relatedArticles.length,
   };
+}
+
+function sourceNames(rssContext: RssContext): string[] {
+  const articleSources = rssContext.relatedArticles.map((article) => article.source).filter(Boolean);
+  const failedSources = rssContext.sourceErrors?.map((error) => error.source).filter(Boolean) ?? [];
+  return [...new Set([...articleSources, ...failedSources])];
 }
 
 function applySourceUsageHistory(
@@ -369,10 +376,19 @@ export class EntrepreneurAgent {
     const rssCount = rssContext.trendingKeywords.length + rssContext.relatedArticles.length;
     console.log(`[IdeaGeneration] Enrichment: RSS: ${rssCount} items`);
 
-    const usedLLMFallback = rssContext.relatedArticles.length === 0;
-    const warnings = usedLLMFallback
-      ? ['外部RSSデータを取得できなかったため、LLMの一般知識フォールバックで生成しました。']
-      : [];
+    if (rssContext.relatedArticles.length === 0) {
+      throw new RssSourceUnavailableError(
+        'RSS記事を取得できなかったため、トレンドスキャンとアイデア生成を停止しました。',
+        {
+          operation: 'trend_scan',
+          focusKeywords: effectiveKeywords,
+          rssArticleCount: rssContext.relatedArticles.length,
+          trendingKeywordCount: rssContext.trendingKeywords.length,
+          sourceNames: sourceNames(rssContext),
+          sourceErrors: rssContext.sourceErrors,
+        },
+      );
+    }
 
     return {
       rssContext,
@@ -380,9 +396,8 @@ export class EntrepreneurAgent {
       generatedAt: new Date().toISOString(),
       sourceSummary: {
         rssItemCount: rssCount,
-        usedLLMFallback,
-        dataQuality: usedLLMFallback ? 'llm_fallback' : 'external',
-        warnings,
+        usedLLMFallback: false,
+        dataQuality: 'external',
       },
     };
   }
@@ -406,6 +421,20 @@ export class EntrepreneurAgent {
     const startTime = Date.now();
     const effectiveTrendScan = applySourceUsageHistory(trendScan, recentlyUsedSources);
     const { rssContext, focusKeywords } = effectiveTrendScan;
+    if (rssContext.relatedArticles.length === 0) {
+      throw new RssSourceUnavailableError(
+        '利用可能なRSS記事がないため、LLMによるアイデア生成を停止しました。',
+        {
+          operation: 'idea_generation',
+          focusKeywords,
+          rssArticleCount: rssContext.relatedArticles.length,
+          trendingKeywordCount: rssContext.trendingKeywords.length,
+          skippedPreviouslyUsedRssCount: effectiveTrendScan.sourceSummary.skippedPreviouslyUsedRssCount,
+          sourceNames: sourceNames(rssContext),
+          sourceErrors: rssContext.sourceErrors,
+        },
+      );
+    }
     const sourceCountText = `RSS: ${effectiveTrendScan.sourceSummary.rssItemCount}件`;
     const previousCountText = previousIdeas.length > 0 ? `既存: ${previousIdeas.length}件` : '既存: 0件';
     const usedSourceText = recentlyUsedSources.length > 0 ? `使用済みRSS: ${recentlyUsedSources.length}件` : '使用済みRSS: 0件';
@@ -426,7 +455,7 @@ export class EntrepreneurAgent {
     const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext);
 
     const totalTime = Date.now() - startTime;
-    console.log(`[IdeaGeneration] Generated ${candidates.length} ideas in ${totalTime}ms (fallback: ${effectiveTrendScan.sourceSummary.usedLLMFallback})`);
+    console.log(`[IdeaGeneration] Generated ${candidates.length} ideas in ${totalTime}ms`);
 
     return {
       candidates,

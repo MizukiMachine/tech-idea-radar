@@ -71,9 +71,15 @@ export interface RssArticle {
   keywords?: string[];
 }
 
+export interface RssSourceError {
+  source: string;
+  message: string;
+}
+
 export interface RssContext {
   trendingKeywords: RssTrendItem[];
   relatedArticles: RssArticle[];
+  sourceErrors?: RssSourceError[];
 }
 
 const MCP_RSS_SCOUT_PATH = process.env.MCP_RSS_SCOUT_PATH ?? '';
@@ -95,6 +101,7 @@ interface PublicRssCache {
 }
 
 type ParsedXml = Record<string, unknown>;
+type FeedFetchResult = { articles: RssArticle[]; error?: RssSourceError };
 
 const PUBLIC_RSS_FEEDS: PublicFeed[] = [
   { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
@@ -234,7 +241,7 @@ function parseFeed(xml: string, source: string, seedKeywords: string[]): RssArti
     .filter((article) => article.title && article.link);
 }
 
-async function fetchFeed(feed: PublicFeed, keywords: string[]): Promise<RssArticle[]> {
+async function fetchFeed(feed: PublicFeed, keywords: string[]): Promise<FeedFetchResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PUBLIC_RSS_TIMEOUT);
 
@@ -245,11 +252,11 @@ async function fetchFeed(feed: PublicFeed, keywords: string[]): Promise<RssArtic
     });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     const xml = await response.text();
-    return parseFeed(xml, feed.name, keywords);
+    return { articles: parseFeed(xml, feed.name, keywords) };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.warn(`[RSS] Public feed failed (${feed.name}): ${msg}`);
-    return [];
+    return { articles: [], error: { source: feed.name, message: msg } };
   } finally {
     clearTimeout(timer);
   }
@@ -333,14 +340,24 @@ async function fetchPublicRssContext(keywords: string[]): Promise<RssContext> {
     return publicRssCache.data;
   }
 
-  const articles = (await Promise.all(
+  const results = await Promise.all(
     PUBLIC_RSS_FEEDS.map((feed) => fetchFeed(feed, keywords)),
-  )).flat();
+  );
 
+  const articles = results.flatMap((result) => result.articles);
+  const sourceErrors = results
+    .map((result) => result.error)
+    .filter((error): error is RssSourceError => Boolean(error));
   const relatedArticles = rankArticles(articles, keywords);
   const trendingKeywords = buildTrendingKeywords(relatedArticles, keywords);
-  const data = { trendingKeywords, relatedArticles };
-  publicRssCache = { data, expiresAt: Date.now() + PUBLIC_RSS_CACHE_TTL };
+  const data = {
+    trendingKeywords,
+    relatedArticles,
+    ...(sourceErrors.length > 0 ? { sourceErrors } : {}),
+  };
+  if (relatedArticles.length > 0) {
+    publicRssCache = { data, expiresAt: Date.now() + PUBLIC_RSS_CACHE_TTL };
+  }
 
   console.log(`[RSS] Public RSS fallback: ${relatedArticles.length} articles, ${trendingKeywords.length} keywords`);
   return data;
@@ -381,11 +398,11 @@ export async function fetchRssContext(keywords: string[]): Promise<RssContext> {
       }
     }
 
-    if (trendingKeywords.length > 0 || relatedArticles.length > 0) {
+    if (relatedArticles.length > 0) {
       return { trendingKeywords, relatedArticles };
     }
 
-    console.warn('[MCP] RSS returned no data — using public RSS fallback');
+    console.warn('[MCP] RSS returned no articles — using public RSS fallback');
     return fetchPublicRssContext(keywords);
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

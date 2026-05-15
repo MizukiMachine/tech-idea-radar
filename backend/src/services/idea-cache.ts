@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   DEFAULT_IDEA_COUNT,
   EntrepreneurAgent,
+  isRssSourceUnavailableError,
   type IdeaGenerationOutput,
   type SemanticFilterInput,
   type SemanticFilterOutput,
@@ -17,6 +18,7 @@ import {
   sourceUsageForPrompt,
   type SourceUsageRecord,
 } from './source-usage';
+import { notifyAdminOfRssFailure } from './admin-notifier';
 
 const SERVER_STARTED_AT = new Date().toISOString();
 const INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
@@ -130,6 +132,24 @@ function isExpired(entry: { expiresAt: number } | null): boolean {
 function cacheStatus(entry: { expiresAt: number } | null): CacheStatus {
   if (!entry) return 'empty';
   return isExpired(entry) ? 'stale' : 'cached';
+}
+
+async function notifyRssSourceFailure(error: unknown, fallbackOperation: string): Promise<void> {
+  if (!isRssSourceUnavailableError(error)) return;
+
+  try {
+    await notifyAdminOfRssFailure({
+      operation: error.details.operation ?? fallbackOperation,
+      errorMessage: error.message,
+      occurredAt: new Date().toISOString(),
+      details: error.details,
+      ideaCacheGeneratedAt: cache?.data.generatedAt ?? null,
+      trendCacheGeneratedAt: trendCache?.data.generatedAt ?? null,
+    });
+  } catch (notifyError) {
+    const message = notifyError instanceof Error ? notifyError.message : String(notifyError);
+    console.warn(`[AdminNotifier] Failed to send RSS failure email: ${message}`);
+  }
 }
 
 export function getCachedIdeas(): IdeaGenerationOutput | null {
@@ -302,6 +322,9 @@ export async function generateAndCacheIdeas(
       };
       persistCache();
       return output;
+    } catch (error) {
+      await notifyRssSourceFailure(error, 'idea_generation');
+      throw error;
     } finally {
       generationLock = null;
     }
@@ -325,6 +348,9 @@ export async function scanAndCacheTrends(
       };
       persistCache();
       return result;
+    } catch (error) {
+      await notifyRssSourceFailure(error, 'trend_scan');
+      throw error;
     } finally {
       trendScanLock = null;
     }

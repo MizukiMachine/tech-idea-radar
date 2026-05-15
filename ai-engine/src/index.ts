@@ -9,6 +9,8 @@ export { PromptBuilder } from './services/prompt-builder';
 export { ResponseParser } from './services/response-parser';
 export { validateObject } from './services/output-validator';
 export { McpClient, fetchRssContext } from './services/mcp-client';
+export { RssSourceUnavailableError, isRssSourceUnavailableError } from './errors';
+export type { RssSourceUnavailableDetails } from './errors';
 
 // Types
 export * from './types/idea-candidate';

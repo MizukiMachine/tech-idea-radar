@@ -6,10 +6,21 @@ export function getApiBase(): string {
   return API_BASE || '(same-origin /api)';
 }
 
+async function throwApiError(res: Response, label: string): Promise<never> {
+  let message = `${label} failed: ${res.status}`;
+  try {
+    const body = await res.json() as { error?: string };
+    if (body.error) message = body.error;
+  } catch {
+    // Keep the status-based message when the response is not JSON.
+  }
+  throw new Error(message);
+}
+
 export interface SourceSummary {
   rssItemCount: number;
   usedLLMFallback: boolean;
-  dataQuality?: 'external' | 'llm_fallback';
+  dataQuality?: 'external';
   warnings?: string[];
   generatedIdeaCount?: number;
   newIdeaCount?: number;
@@ -88,21 +99,21 @@ export async function fetchIdeas(): Promise<{
   sourceSummary: SourceSummary;
 }> {
   const res = await fetch(`${API_BASE}/api/ai/ideas`);
-  if (!res.ok) throw new Error(`fetchIdeas failed: ${res.status}`);
+  if (!res.ok) await throwApiError(res, 'fetchIdeas');
   return res.json();
 }
 
 // GET /api/ideas/meta
 export async function fetchIdeasMeta(): Promise<IdeasMeta> {
   const res = await fetch(`${API_BASE}/api/ai/ideas/meta`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`fetchIdeasMeta failed: ${res.status}`);
+  if (!res.ok) await throwApiError(res, 'fetchIdeasMeta');
   return res.json();
 }
 
 // GET /api/trends
 export async function fetchTrends(): Promise<TrendScan> {
   const res = await fetch(`${API_BASE}/api/ai/trends`, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`fetchTrends failed: ${res.status}`);
+  if (!res.ok) await throwApiError(res, 'fetchTrends');
   return res.json();
 }
 
@@ -112,7 +123,7 @@ export async function refreshTrends(): Promise<TrendScan> {
     method: 'POST',
     cache: 'no-store',
   });
-  if (!res.ok) throw new Error(`refreshTrends failed: ${res.status}`);
+  if (!res.ok) await throwApiError(res, 'refreshTrends');
   return res.json();
 }
 
@@ -197,7 +208,7 @@ export async function filterIdeas(query: string, topK?: number): Promise<{
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, topK }),
   });
-  if (!res.ok) throw new Error(`filterIdeas failed: ${res.status}`);
+  if (!res.ok) await throwApiError(res, 'filterIdeas');
   return res.json();
 }
 

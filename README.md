@@ -19,6 +19,7 @@
 - 直近のアイデアとかなり似ている案は、できるだけ出さないようにしています。
 - 生成後にも似た内容のアイデアを確認し、近すぎるものは一覧に追加しません。
 - すでにアイデアの根拠として使ったRSS記事は、次回以降の材料から外します。
+- RSS記事が取得できない場合、LLMの一般知識だけでは生成せず、既存キャッシュを維持して管理者へメール通知します。
 - 保存できるアイデア数には上限があり、上限を超えると古いものから押し出されます。
 - 古いアイデアの点数を時間で下げる処理はありません。表示順は主にスコアや画面上の並び替えで決まります。
 - RSS記事もアイデアも、公開運用ではキャッシュとして保存して使います。
@@ -36,3 +37,10 @@
 - `IDEA_WARMUP_ON_START=true`: サーバー起動時にキャッシュが空/期限切れならバックグラウンド生成
 - `IDEA_BACKGROUND_REFRESH_HOURS=12`: 指定した時間ごとに、表示中のキャッシュを残したままバックグラウンド再生成（未設定/0なら定期更新なし）
 - `CORS_ORIGIN=https://your-site.example.com`: APIを別ドメインで公開する場合、ブラウザからの許可元をカンマ区切りで指定
+- `SMTP_HOST=smtp.example.com`: RSS取得失敗時の管理者メール通知に使うSMTPホスト
+- `SMTP_PORT=587`: SMTPポート。465の場合は通常 `SMTP_SECURE=true`
+- `SMTP_SECURE=false`: SMTP接続でTLSを最初から使うか
+- `SMTP_USER=...` / `SMTP_PASS=...`: SMTP認証情報
+- `ADMIN_ALERT_EMAIL_FROM=alerts@example.com`: 通知メールのFrom。未指定なら `SMTP_USER` またはローカル既定値
+- `ADMIN_ALERT_EMAIL_TO=admin@example.com`: RSS取得失敗通知の送信先
+- `ADMIN_ALERT_COOLDOWN_MINUTES=60`: 同種のRSS失敗通知を抑制する時間

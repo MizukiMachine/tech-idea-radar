@@ -115,6 +115,13 @@ function matchesSearchQuery(text: string, query: string): boolean {
 
 function userFacingError(message: string): string {
   const normalized = message.toLowerCase();
+  if (
+    message.includes('RSS記事')
+    || normalized.includes('rss_source_unavailable')
+    || (normalized.includes('rss') && normalized.includes('unavailable'))
+  ) {
+    return 'RSS記事を取得できなかったため、生成を停止しました。管理者に通知しています。既存のキャッシュがある場合はそのまま表示します。';
+  }
   if (normalized.includes('failed to fetch') || normalized.includes('stream failed')) {
     if (normalized.includes('401') || normalized.includes('403')) {
       return '公開版ではキャッシュ済みのアイデアのみ表示しています。再生成は管理環境で実行します。';
@@ -277,18 +284,27 @@ function App(): JSX.Element {
       return;
     }
 
+    const previousIdeas = ideas;
+    const previousSourceSummary = sourceSummary;
+    let receivedAnyIdea = false;
     setLoading(true);
-    setIdeas([]);
     setError(null);
     setSemanticFilteredIdeas(null);
     setSemanticFilterText(null);
-    setSourceSummary(null);
     setProgressText('トレンドデータを取得しています...');
     abortRef.current?.abort();
 
     abortRef.current = refreshIdeas({
       onProgress: (text) => setProgressText(text),
-      onIdeaGenerated: (idea) => setIdeas((prev) => [...prev, idea]),
+      onIdeaGenerated: (idea) => {
+        setIdeas((prev) => {
+          if (!receivedAnyIdea) {
+            receivedAnyIdea = true;
+            return [idea];
+          }
+          return [...prev, idea];
+        });
+      },
       onComplete: (summary) => {
         setSourceSummary(summary.sourceSummary ?? null);
         setLoading(false);
@@ -296,12 +312,16 @@ function App(): JSX.Element {
         refreshIdeasMeta(true);
       },
       onError: (msg) => {
+        if (!receivedAnyIdea) {
+          setIdeas(previousIdeas);
+          setSourceSummary(previousSourceSummary);
+        }
         setError(userFacingError(msg));
         setLoading(false);
         setProgressText(null);
       },
     }, focusKeyword);
-  }, [publicReadonlyMode, refreshIdeasMeta]);
+  }, [ideas, publicReadonlyMode, refreshIdeasMeta, sourceSummary]);
 
   const handleTrendRefresh = useCallback(async () => {
     if (publicReadonlyMode) {

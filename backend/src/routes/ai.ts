@@ -13,7 +13,7 @@ import {
   isPublicReadonlyMode,
   scanAndCacheTrends,
 } from '../services/idea-cache';
-import type { TrendScanOutput } from 'ai-engine';
+import { isRssSourceUnavailableError, type TrendScanOutput } from 'ai-engine';
 
 // --- Request schemas ---
 
@@ -41,7 +41,6 @@ function emptyTrendScan(): TrendScanOutput {
     sourceSummary: {
       rssItemCount: 0,
       usedLLMFallback: false,
-      dataQuality: 'external',
     },
   };
 }
@@ -132,7 +131,10 @@ router.get('/trends', async (_req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[API] GET /trends error: ${message}`);
-    res.status(500).json({ error: message });
+    res.status(isRssSourceUnavailableError(error) ? 503 : 500).json({
+      error: message,
+      code: isRssSourceUnavailableError(error) ? 'RSS_SOURCE_UNAVAILABLE' : 'INTERNAL_ERROR',
+    });
   }
 });
 
@@ -147,7 +149,10 @@ router.post('/trends/refresh', async (_req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[API] POST /trends/refresh error: ${message}`);
-    res.status(500).json({ error: message });
+    res.status(isRssSourceUnavailableError(error) ? 503 : 500).json({
+      error: message,
+      code: isRssSourceUnavailableError(error) ? 'RSS_SOURCE_UNAVAILABLE' : 'INTERNAL_ERROR',
+    });
   }
 });
 
@@ -195,7 +200,10 @@ router.get('/ideas/stream', async (_req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[API] GET /ideas/stream error: ${message}`);
-    sseSend(res, 'error', { error: message }, disconnected);
+    sseSend(res, 'error', {
+      error: message,
+      code: isRssSourceUnavailableError(error) ? 'RSS_SOURCE_UNAVAILABLE' : 'INTERNAL_ERROR',
+    }, disconnected);
   }
 
   if (!disconnected) res.end();
@@ -272,7 +280,10 @@ router.post('/ideas/refresh', async (_req: Request, res: Response) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
     console.error(`[API] POST /ideas/refresh error: ${message}`);
-    sseSend(res, 'error', { error: message }, disconnected);
+    sseSend(res, 'error', {
+      error: message,
+      code: isRssSourceUnavailableError(error) ? 'RSS_SOURCE_UNAVAILABLE' : 'INTERNAL_ERROR',
+    }, disconnected);
   }
 
   if (!disconnected) res.end();

@@ -66,7 +66,18 @@ describe('IdeaGenerationAgent', () => {
     const agent = new IdeaGenerationAgent(client);
 
     const result = await agent.execute({
-      rssContext: { trendingKeywords: [{ word: 'AI', count: 2 }], relatedArticles: [] },
+      rssContext: {
+        trendingKeywords: [{ word: 'AI', count: 2 }],
+        relatedArticles: [{
+          title: 'AI Ops article',
+          link: 'https://example.com/ai-ops',
+          url: 'https://example.com/ai-ops',
+          published: '2026-05-14T00:00:00.000Z',
+          summary: 'AI Ops for SRE teams',
+          source: 'Test RSS',
+          keywords: ['AI', 'SRE'],
+        }],
+      },
       focusKeywords: ['AI', 'SaaS'],
       previousIdeas: [candidate],
       requestedIdeaCount: 5,
@@ -91,6 +102,17 @@ describe('IdeaGenerationAgent', () => {
     expect(agent.systemPrompt).toContain('developmentScale');
     expect(prompt).toContain('障害対応の知見が散らばる');
     expect(prompt).toContain('https://example.com/used-rss');
+  });
+
+  it('refuses to call the LLM when RSS articles are unavailable', async () => {
+    const client = createMockClient(JSON.stringify([candidate]));
+    const agent = new IdeaGenerationAgent(client);
+
+    await expect(agent.execute({
+      rssContext: { trendingKeywords: [{ word: 'AI', count: 2 }], relatedArticles: [] },
+      focusKeywords: ['AI'],
+    })).rejects.toMatchObject({ name: 'RssSourceUnavailableError' });
+    expect(client.send).not.toHaveBeenCalled();
   });
 });
 
@@ -140,21 +162,18 @@ describe('EntrepreneurAgent', () => {
     expect(prompt).toContain('既存アイデアと実質的に同じものは除外');
   });
 
-  it('filters previously used RSS articles from idea evidence', async () => {
+  it('stops generation when every available RSS article was previously used', async () => {
     const client = createMockClient(JSON.stringify([candidate]));
     const agent = new EntrepreneurAgent(client);
 
-    const result = await agent.generateIdeas(undefined, ['AI'], [], 3, [{
+    await expect(agent.generateIdeas(undefined, ['AI'], [], 3, [{
       title: 'AI Ops article',
       url: 'https://example.com/ai-ops',
       lastUsedAt: '2026-05-14T00:00:00.000Z',
       count: 1,
-    }]);
+    }])).rejects.toMatchObject({ name: 'RssSourceUnavailableError' });
 
-    const prompt = vi.mocked(client.send).mock.calls[0]?.[1] ?? '';
-    expect(prompt).toContain('使用済みRSS記事');
-    expect(result.sourceSummary.skippedPreviouslyUsedRssCount).toBe(1);
-    expect(result.candidates[0].sources.evidenceUrls).toEqual([]);
+    expect(client.send).not.toHaveBeenCalled();
   });
 
   it('sorts empty filter queries by trend score without calling the LLM', async () => {

@@ -23,7 +23,7 @@ export interface IdeaGenerationOutput {
   sourceSummary: {
     rssItemCount: number;
     usedLLMFallback: boolean;
-    dataQuality?: 'external' | 'llm_fallback';
+    dataQuality?: 'external';
     warnings?: string[];
     generatedIdeaCount?: number;
     newIdeaCount?: number;
