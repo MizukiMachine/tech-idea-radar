@@ -18,10 +18,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DEPLOY_DIR="${DEPLOY_DIR:-/var/www/builder-agent-chain}"
-DATA_DIR="/var/lib/builder-agent-chain"
+DATA_DIR="${DATA_DIR:-/var/lib/builder-agent-chain}"
 PM2_APP_NAME="builder-agent-chain"
 HEALTH_CHECK_URL="http://127.0.0.1:3001/health"
 HEALTH_CHECK_TIMEOUT=60
+
+if [[ "$DEPLOY_DIR" == "/" ]]; then
+    echo "ERROR: DEPLOY_DIR must not be /"
+    exit 1
+fi
 
 echo "=== Builder Agent Chain Deploy ==="
 echo "Project: $PROJECT_DIR"
@@ -31,7 +36,7 @@ echo ""
 # --- Build ---
 echo "[1/6] Installing dependencies..."
 cd "$PROJECT_DIR"
-npm ci --production=false
+npm install --include=dev
 
 echo "[2/6] Building workspaces..."
 npm run backend:build
@@ -39,7 +44,8 @@ npm run frontend:build
 
 # --- Deploy ---
 echo "[3/6] Deploying files..."
-mkdir -p "$DEPLOY_DIR"/{frontend,backend/dist,logs}
+rm -rf "$DEPLOY_DIR/frontend" "$DEPLOY_DIR/backend/dist" "$DEPLOY_DIR/ai-engine/dist"
+mkdir -p "$DEPLOY_DIR"/{frontend,backend/dist,backend/logs,ai-engine/dist}
 mkdir -p "$DATA_DIR"
 
 # Frontend static files
@@ -48,12 +54,14 @@ cp -r "$PROJECT_DIR/frontend/dist/." "$DEPLOY_DIR/frontend/"
 # Backend
 cp -r "$PROJECT_DIR/backend/dist/." "$DEPLOY_DIR/backend/dist/"
 cp "$PROJECT_DIR/backend/package.json" "$DEPLOY_DIR/backend/"
+cp -r "$PROJECT_DIR/ai-engine/dist/." "$DEPLOY_DIR/ai-engine/dist/"
+cp "$PROJECT_DIR/ai-engine/package.json" "$DEPLOY_DIR/ai-engine/"
 cp "$PROJECT_DIR/ecosystem.config.cjs" "$DEPLOY_DIR/"
 
 # Install production deps for backend
 echo "[4/6] Installing production dependencies..."
 cd "$DEPLOY_DIR/backend"
-npm ci --production --ignore-scripts 2>/dev/null || npm install --production --ignore-scripts
+npm install --omit=dev --ignore-scripts
 
 # --- PM2 logrotate setup ---
 echo "[5/6] Setting up PM2 logrotate..."
@@ -78,7 +86,7 @@ pm2 save
 
 # --- Health check ---
 echo ""
-echo "Waiting for backend to become healthy (timeout: ${HEALTH_CHECK}s)..."
+echo "Waiting for backend to become healthy (timeout: ${HEALTH_CHECK_TIMEOUT}s)..."
 elapsed=0
 while [ "$elapsed" -lt "$HEALTH_CHECK_TIMEOUT" ]; do
     if curl -sf "$HEALTH_CHECK_URL" > /dev/null 2>&1; then

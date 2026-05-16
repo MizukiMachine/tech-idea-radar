@@ -25,7 +25,7 @@ describe("GET /health", () => {
     expect(body).toEqual(
       expect.objectContaining({
         status: "ok",
-        service: "backend",
+        service: "builder-agent-chain-backend",
       }),
     );
   });

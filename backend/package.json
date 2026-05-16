@@ -13,6 +13,7 @@
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" --max-warnings=0"
   },
   "dependencies": {
+    "ai-engine": "file:../ai-engine",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^8.5.2",

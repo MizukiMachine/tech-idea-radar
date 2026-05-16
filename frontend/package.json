@@ -6,10 +6,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build --configLoader runner",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --max-warnings=0",
-    "test": "vitest"
+    "test": "vitest --configLoader runner"
   },
   "dependencies": {
     "react": "^18.3.1",

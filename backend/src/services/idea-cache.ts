@@ -44,6 +44,7 @@ let trendCache: {
 } | null = null;
 let trendScanLock: Promise<TrendScanOutput> | null = null;
 let persistentCacheLoaded = false;
+let persistentCacheMtimeMs = 0;
 let backgroundRefreshLock: Promise<void> | null = null;
 let batchScheduleTimer: NodeJS.Timeout | null = null;
 
@@ -128,22 +129,42 @@ function scheduleNextBatch(): void {
 
 // --- Persistent cache ---
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object');
+}
+
+function isPersistentBatchEntry(value: unknown): value is BatchEntry {
+  if (!isRecord(value) || typeof value.batchTime !== 'string' || !isRecord(value.data)) return false;
+  return Array.isArray(value.data.candidates)
+    && typeof value.data.generatedAt === 'string'
+    && isRecord(value.data.sourceSummary);
+}
+
+function isPersistentTrendCache(value: unknown): value is { data: TrendScanOutput; expiresAt: number } {
+  if (!isRecord(value)) return false;
+  return isRecord(value.data)
+    && typeof value.expiresAt === 'number'
+    && Number.isFinite(value.expiresAt);
+}
+
 function loadPersistentCache(): void {
-  if (persistentCacheLoaded || !PERSISTENT_CACHE_FILE) return;
-  persistentCacheLoaded = true;
+  if (!PERSISTENT_CACHE_FILE) return;
 
   try {
-    if (!fs.existsSync(PERSISTENT_CACHE_FILE)) return;
+    const stat = fs.statSync(PERSISTENT_CACHE_FILE);
+    if (persistentCacheLoaded && stat.mtimeMs <= persistentCacheMtimeMs) return;
+
     const raw = JSON.parse(fs.readFileSync(PERSISTENT_CACHE_FILE, 'utf8')) as Record<string, unknown>;
     const version = typeof raw.version === 'number' ? raw.version : 0;
+    let nextBatches: BatchEntry[] = [];
+    let nextTrendCache: typeof trendCache = null;
 
     if (version === PERSISTENT_CACHE_VERSION) {
       // v2: batch-based cache
-      if (Array.isArray(raw.batches)) {
-        batches = (raw.batches as BatchEntry[]).slice(0, MAX_BATCHES);
-      }
-      const trends = raw.trends as { data: TrendScanOutput; expiresAt: number } | undefined;
-      if (trends?.data && Number.isFinite(trends.expiresAt)) trendCache = trends;
+      nextBatches = Array.isArray(raw.batches)
+        ? raw.batches.filter(isPersistentBatchEntry).slice(0, MAX_BATCHES)
+        : [];
+      nextTrendCache = isPersistentTrendCache(raw.trends) ? raw.trends : null;
     } else if (version === 1) {
       // v1 migration: convert single cache to a single batch entry
       const v1 = raw as {
@@ -151,7 +172,7 @@ function loadPersistentCache(): void {
         ideas?: { data: IdeaGenerationOutput; expiresAt: number };
         trends?: { data: TrendScanOutput; expiresAt: number };
       };
-      if (v1.trends?.data && Number.isFinite(v1.trends.expiresAt)) trendCache = v1.trends;
+      if (isPersistentTrendCache(v1.trends)) nextTrendCache = v1.trends;
       if (v1.ideas?.data?.candidates?.length) {
         const batchTime = getCurrentBatchTimeJST(new Date(v1.ideas.data.generatedAt));
         const migrated: IdeaGenerationOutput = {
@@ -159,10 +180,15 @@ function loadPersistentCache(): void {
           batchTime,
           candidates: v1.ideas.data.candidates.map((c) => ({ ...c, batchTime })),
         };
-        batches = [{ batchTime, data: migrated }];
+        nextBatches = [{ batchTime, data: migrated }];
       }
     }
+    batches = nextBatches;
+    trendCache = nextTrendCache;
+    persistentCacheLoaded = true;
+    persistentCacheMtimeMs = stat.mtimeMs;
   } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return;
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[Cache] Failed to load persistent cache: ${message}`);
   }
@@ -184,6 +210,8 @@ function persistCache(): void {
       }, null, 2),
     );
     fs.renameSync(tmpFile, PERSISTENT_CACHE_FILE);
+    persistentCacheLoaded = true;
+    persistentCacheMtimeMs = fs.statSync(PERSISTENT_CACHE_FILE).mtimeMs;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[Cache] Failed to persist cache: ${message}`);
@@ -197,6 +225,25 @@ function cacheStatus(entry: { expiresAt: number } | null): CacheStatus {
 
 function isExpired(entry: { expiresAt: number } | null): boolean {
   return Boolean(entry && Date.now() > entry.expiresAt);
+}
+
+function isBackgroundCacheOwner(): boolean {
+  const instanceId = process.env.NODE_APP_INSTANCE;
+  return instanceId === undefined || instanceId === '0';
+}
+
+async function waitWithTimeout(job: Promise<void>, timeoutMs: number, message: string): Promise<void> {
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      job,
+      new Promise<void>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 async function notifyRssSourceFailure(error: unknown, fallbackOperation: string): Promise<void> {
@@ -213,7 +260,7 @@ async function notifyRssSourceFailure(error: unknown, fallbackOperation: string)
     });
   } catch (notifyError) {
     const message = notifyError instanceof Error ? notifyError.message : String(notifyError);
-    console.warn(`[AdminNotifier] Failed to send RSS failure email: ${message}`);
+    console.warn(`[AdminNotifier] Failed to send RSS failure alert: ${message}`);
   }
 }
 
@@ -259,14 +306,31 @@ export function isGenerationInProgress(): boolean {
   return Boolean(generationLock);
 }
 
+export function isCacheActivityInProgress(): boolean {
+  return Boolean(generationLock || trendScanLock || backgroundRefreshLock);
+}
+
 export async function waitForGeneration(timeoutMs: number): Promise<void> {
   if (!generationLock) return;
-  await Promise.race([
-    generationLock.then(() => {}),
-    new Promise<void>((_, reject) =>
-      setTimeout(() => reject(new Error('Generation wait timed out')), timeoutMs),
-    ),
-  ]);
+  await waitWithTimeout(
+    generationLock.then(() => undefined, () => undefined),
+    timeoutMs,
+    'Generation wait timed out',
+  );
+}
+
+export async function waitForCacheActivity(timeoutMs: number): Promise<void> {
+  const active: Promise<unknown>[] = [];
+  if (backgroundRefreshLock) active.push(backgroundRefreshLock);
+  if (trendScanLock) active.push(trendScanLock);
+  if (generationLock) active.push(generationLock);
+  if (active.length === 0) return;
+
+  await waitWithTimeout(
+    Promise.allSettled(active).then(() => undefined),
+    timeoutMs,
+    'Cache activity wait timed out',
+  );
 }
 
 export function isAdminAuthEnabled(): boolean {
@@ -483,18 +547,16 @@ export function refreshCachesInBackground(reason: string, force = false): Promis
 export function startBackgroundCacheRefresh(): void {
   loadPersistentCache();
 
+  if (!isBackgroundCacheOwner()) {
+    console.log(`[Cache] Background refresh skipped on worker ${process.env.NODE_APP_INSTANCE} (worker 0 only)`);
+    return;
+  }
+
   if (WARMUP_ON_START) {
     void refreshCachesInBackground('startup');
   }
 
   if (batchScheduleTimer) return;
-
-  // In cluster mode, only worker 0 runs the scheduler to avoid duplicate batches
-  const instanceId = process.env.NODE_APP_INSTANCE;
-  if (instanceId !== undefined && instanceId !== '0') {
-    console.log(`[Cache] Batch scheduler skipped on worker ${instanceId} (worker 0 only)`);
-    return;
-  }
 
   scheduleNextBatch();
   console.log(`[Cache] Batch scheduler started (JST: ${[...BATCH_SCHEDULE_HOURS_JST].join(', ')}時)`);

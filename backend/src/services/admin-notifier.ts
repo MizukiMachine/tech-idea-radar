@@ -23,7 +23,6 @@ interface EmailConfig {
 }
 
 const DEFAULT_ALERT_COOLDOWN_MINUTES = 60;
-const WEBHOOK_URL = process.env.ADMIN_ALERT_WEBHOOK_URL?.trim() ?? '';
 const lastAlertSentAt = new Map<string, number>();
 let missingConfigLogged = false;
 let missingWebhookLogged = false;
@@ -65,6 +64,10 @@ function getCooldownMs(): number {
     process.env.ADMIN_ALERT_COOLDOWN_MINUTES,
     DEFAULT_ALERT_COOLDOWN_MINUTES,
   ) * 60 * 1000;
+}
+
+function getWebhookUrl(): string {
+  return process.env.ADMIN_ALERT_WEBHOOK_URL?.trim() ?? '';
 }
 
 function formatList(values: string[] | undefined): string {
@@ -122,24 +125,28 @@ function markAlertSent(alert: RssFailureAlert): void {
 export async function notifyAdminOfRssFailure(alert: RssFailureAlert): Promise<void> {
   if (isAlertSuppressed(alert)) return;
 
-  // Send email notification
   const config = getEmailConfig();
   if (config) {
-    const transporter = nodemailer.createTransport({
-      host: config.host,
-      port: config.port,
-      secure: config.secure,
-      auth: config.user && config.pass
-        ? { user: config.user, pass: config.pass }
-        : undefined,
-    });
+    try {
+      const transporter = nodemailer.createTransport({
+        host: config.host,
+        port: config.port,
+        secure: config.secure,
+        auth: config.user && config.pass
+          ? { user: config.user, pass: config.pass }
+          : undefined,
+      });
 
-    await transporter.sendMail({
-      from: config.from,
-      to: config.to,
-      subject: `[Builder Agent Chain] RSS取得失敗: ${alert.operation}`,
-      text: buildAlertText(alert),
-    });
+      await transporter.sendMail({
+        from: config.from,
+        to: config.to,
+        subject: `[Builder Agent Chain] RSS取得失敗: ${alert.operation}`,
+        text: buildAlertText(alert),
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[AdminNotifier] Email notification failed: ${message}`);
+    }
   } else if (!missingConfigLogged) {
     console.warn('[AdminNotifier] Email alerts are not configured. Set SMTP_HOST and ADMIN_ALERT_EMAIL_TO.');
     missingConfigLogged = true;
@@ -151,9 +158,9 @@ export async function notifyAdminOfRssFailure(alert: RssFailureAlert): Promise<v
   markAlertSent(alert);
 }
 
-function buildWebhookPayload(alert: RssFailureAlert): Record<string, unknown> {
+function buildWebhookPayload(alert: RssFailureAlert, webhookUrl: string): Record<string, unknown> {
   const details = alert.details ?? {};
-  const isDiscord = WEBHOOK_URL.includes('discord.com');
+  const isDiscord = webhookUrl.includes('discord.com');
 
   const text = [
     `**[Builder Agent Chain] RSS取得失敗: ${alert.operation}**`,
@@ -181,7 +188,8 @@ function buildWebhookPayload(alert: RssFailureAlert): Record<string, unknown> {
 }
 
 async function sendWebhookNotification(alert: RssFailureAlert): Promise<void> {
-  if (!WEBHOOK_URL) {
+  const webhookUrl = getWebhookUrl();
+  if (!webhookUrl) {
     if (!missingWebhookLogged) {
       console.log('[AdminNotifier] Webhook alerts not configured. Set ADMIN_ALERT_WEBHOOK_URL for Slack/Discord notifications.');
       missingWebhookLogged = true;
@@ -190,8 +198,11 @@ async function sendWebhookNotification(alert: RssFailureAlert): Promise<void> {
   }
 
   try {
-    const payload = JSON.stringify(buildWebhookPayload(alert));
-    const url = new URL(WEBHOOK_URL);
+    const payload = JSON.stringify(buildWebhookPayload(alert, webhookUrl));
+    const url = new URL(webhookUrl);
+    if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+      throw new Error(`Unsupported webhook protocol: ${url.protocol}`);
+    }
     const client = url.protocol === 'https:' ? https : http;
 
     await new Promise<void>((resolve, reject) => {

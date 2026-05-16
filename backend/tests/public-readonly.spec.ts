@@ -1,4 +1,3 @@
-import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const originalPublicReadonlyMode = process.env.PUBLIC_READONLY_MODE;
@@ -12,6 +11,32 @@ function restoreEnv() {
   else process.env.ADMIN_API_TOKEN = originalAdminApiToken;
 }
 
+async function postIdeasFilter(body: unknown = { query: "AI" }): Promise<{ status: number; body: unknown }> {
+  const { default: router } = await import("../src/routes/ai");
+  const route = router.stack.find((layer) => layer.route?.path === "/ideas/filter");
+  const handler = route?.route?.stack[0]?.handle;
+  let statusCode = 200;
+  let responseBody: unknown;
+
+  const req = {
+    body,
+    get: () => undefined,
+  };
+  const res = {
+    status(code: number) {
+      statusCode = code;
+      return this;
+    },
+    json(payload: unknown) {
+      responseBody = payload;
+      return this;
+    },
+  };
+
+  await handler?.(req as never, res as never, (() => undefined) as never);
+  return { status: statusCode, body: responseBody };
+}
+
 describe("public read-only API boundaries", () => {
   afterEach(() => {
     restoreEnv();
@@ -23,10 +48,7 @@ describe("public read-only API boundaries", () => {
     process.env.PUBLIC_READONLY_MODE = "true";
     delete process.env.ADMIN_API_TOKEN;
 
-    const { default: app } = await import("../src/app");
-    const response = await request(app)
-      .post("/api/ai/ideas/filter")
-      .send({ query: "AI" });
+    const response = await postIdeasFilter();
 
     expect(response.status).toBe(403);
   });
@@ -36,10 +58,7 @@ describe("public read-only API boundaries", () => {
     process.env.PUBLIC_READONLY_MODE = "true";
     process.env.ADMIN_API_TOKEN = "secret";
 
-    const { default: app } = await import("../src/app");
-    const response = await request(app)
-      .post("/api/ai/ideas/filter")
-      .send({ query: "AI" });
+    const response = await postIdeasFilter();
 
     expect(response.status).toBe(401);
   });
