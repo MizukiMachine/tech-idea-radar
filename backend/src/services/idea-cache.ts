@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   DEFAULT_IDEA_COUNT,
+  MAX_BATCHES,
+  BATCH_SCHEDULE_HOURS_JST,
   EntrepreneurAgent,
   isRssSourceUnavailableError,
   type IdeaGenerationOutput,
@@ -10,14 +12,7 @@ import {
   type TrendScanOutput,
 } from 'ai-engine';
 import { getClient } from './ai-engine';
-import { CACHE_REFRESH_INTERVAL_MS } from 'ai-engine';
-import { mergeIdeaHistory } from './idea-history';
-import {
-  buildSourceUsageHistory,
-  mergeSourceUsageHistory,
-  sourceUsageForPrompt,
-  type SourceUsageRecord,
-} from './source-usage';
+import { dedupeWithinBatch } from './idea-history';
 import { notifyAdminOfRssFailure } from './admin-notifier';
 
 const SERVER_STARTED_AT = new Date().toISOString();
@@ -25,25 +20,22 @@ const INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
 const PERSISTENT_CACHE_FILE = process.env.IDEA_CACHE_FILE?.trim() ?? '';
 const PUBLIC_READONLY_MODE = isTruthy(process.env.PUBLIC_READONLY_MODE);
 const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN?.trim() ?? '';
-const PERSISTENT_CACHE_VERSION = 1;
-const CACHE_TTL_MS = parseHoursToMs(
-  process.env.IDEA_CACHE_TTL_HOURS,
-  PUBLIC_READONLY_MODE ? 24 * 60 * 60 * 1000 : CACHE_REFRESH_INTERVAL_MS,
-);
+const PERSISTENT_CACHE_VERSION = 2;
 const WARMUP_ON_START = process.env.IDEA_WARMUP_ON_START === undefined
   ? true
   : isTruthy(process.env.IDEA_WARMUP_ON_START);
-const BACKGROUND_REFRESH_INTERVAL_MS = parseHoursToMs(process.env.IDEA_BACKGROUND_REFRESH_HOURS, CACHE_REFRESH_INTERVAL_MS);
 const IDEA_GENERATION_BATCH_SIZE = parsePositiveInt(process.env.IDEA_GENERATION_BATCH_SIZE, DEFAULT_IDEA_COUNT);
-const IDEA_MAX_STORED_CANDIDATES = parsePositiveInt(process.env.IDEA_MAX_STORED_CANDIDATES, 60);
-const IDEA_SOURCE_HISTORY_LIMIT = parsePositiveInt(process.env.IDEA_SOURCE_HISTORY_LIMIT, 240);
+
+// --- Batch data structure ---
+
+interface BatchEntry {
+  batchTime: string;
+  data: IdeaGenerationOutput;
+}
+
+let batches: BatchEntry[] = [];
 
 type CacheStatus = 'empty' | 'cached' | 'stale';
-
-let cache: {
-  data: IdeaGenerationOutput;
-  expiresAt: number;
-} | null = null;
 
 let generationLock: Promise<IdeaGenerationOutput> | null = null;
 let trendCache: {
@@ -51,19 +43,14 @@ let trendCache: {
   expiresAt: number;
 } | null = null;
 let trendScanLock: Promise<TrendScanOutput> | null = null;
-let sourceUsageHistory: SourceUsageRecord[] = [];
 let persistentCacheLoaded = false;
 let backgroundRefreshLock: Promise<void> | null = null;
-let backgroundRefreshTimer: NodeJS.Timeout | null = null;
+let batchScheduleTimer: NodeJS.Timeout | null = null;
+
+// --- Utility functions ---
 
 function isTruthy(value: string | undefined): boolean {
   return ['1', 'true', 'yes', 'on'].includes((value ?? '').trim().toLowerCase());
-}
-
-function parseHoursToMs(value: string | undefined, fallbackMs: number): number {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed <= 0) return fallbackMs;
-  return parsed * 60 * 60 * 1000;
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
@@ -72,31 +59,108 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+// --- JST schedule helpers ---
+
+function toJST(date: Date): Date {
+  // Convert UTC to JST (UTC+9)
+  return new Date(date.getTime() + 9 * 60 * 60 * 1000);
+}
+
+function getNextScheduledBatchTime(now: Date): Date {
+  const jst = toJST(now);
+  const jstHour = jst.getUTCHours();
+  const scheduleHours = [...BATCH_SCHEDULE_HOURS_JST];
+
+  // Find the next scheduled hour in JST
+  let targetHour = scheduleHours.find((h) => h > jstHour);
+  const targetDate = new Date(jst);
+
+  if (targetHour === undefined) {
+    // No more slots today — use first slot tomorrow
+    targetHour = scheduleHours[0];
+    targetDate.setUTCDate(targetDate.getUTCDate() + 1);
+  }
+
+  targetDate.setUTCHours(targetHour, 0, 0, 0);
+
+  // Convert back from JST to UTC
+  return new Date(targetDate.getTime() - 9 * 60 * 60 * 1000);
+}
+
+function getCurrentBatchTimeJST(now: Date): string {
+  const jst = toJST(now);
+  const jstHour = jst.getUTCHours();
+  const scheduleHours = [...BATCH_SCHEDULE_HOURS_JST];
+
+  // Find the current or most recent slot
+  let currentHour = 0;
+  for (const h of scheduleHours) {
+    if (h <= jstHour) currentHour = h;
+    else break;
+  }
+
+  const batchDate = new Date(jst);
+  batchDate.setUTCHours(currentHour, 0, 0, 0);
+
+  // Format as ISO with +09:00 offset
+  const year = batchDate.getUTCFullYear();
+  const month = String(batchDate.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(batchDate.getUTCDate()).padStart(2, '0');
+  const hour = String(batchDate.getUTCHours()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hour}:00:00+09:00`;
+}
+
+function scheduleNextBatch(): void {
+  const now = new Date();
+  const next = getNextScheduledBatchTime(now);
+  const delay = Math.max(next.getTime() - now.getTime(), 1000);
+
+  batchScheduleTimer = setTimeout(() => {
+    void refreshCachesInBackground('scheduled-batch', true)
+      .finally(() => {
+        scheduleNextBatch();
+      });
+  }, delay);
+  batchScheduleTimer.unref?.();
+
+  console.log(`[Cache] Next batch scheduled at ${next.toISOString()} (in ${Math.round(delay / 60000)}min)`);
+}
+
+// --- Persistent cache ---
+
 function loadPersistentCache(): void {
   if (persistentCacheLoaded || !PERSISTENT_CACHE_FILE) return;
   persistentCacheLoaded = true;
 
   try {
     if (!fs.existsSync(PERSISTENT_CACHE_FILE)) return;
-    const parsed = JSON.parse(fs.readFileSync(PERSISTENT_CACHE_FILE, 'utf8')) as {
-      version?: number;
-      ideas?: { data: IdeaGenerationOutput; expiresAt: number };
-      trends?: { data: TrendScanOutput; expiresAt: number };
-      sourceUsageHistory?: SourceUsageRecord[];
-    };
+    const raw = JSON.parse(fs.readFileSync(PERSISTENT_CACHE_FILE, 'utf8')) as Record<string, unknown>;
+    const version = typeof raw.version === 'number' ? raw.version : 0;
 
-    if (parsed.version !== PERSISTENT_CACHE_VERSION) return;
-    if (parsed.ideas?.data && Number.isFinite(parsed.ideas.expiresAt)) cache = parsed.ideas;
-    if (parsed.trends?.data && Number.isFinite(parsed.trends.expiresAt)) trendCache = parsed.trends;
-    if (Array.isArray(parsed.sourceUsageHistory)) {
-      sourceUsageHistory = parsed.sourceUsageHistory.slice(0, IDEA_SOURCE_HISTORY_LIMIT);
-    }
-    if (sourceUsageHistory.length === 0 && cache?.data.candidates.length) {
-      sourceUsageHistory = buildSourceUsageHistory(
-        cache.data.candidates,
-        cache.data.generatedAt,
-        IDEA_SOURCE_HISTORY_LIMIT,
-      );
+    if (version === PERSISTENT_CACHE_VERSION) {
+      // v2: batch-based cache
+      if (Array.isArray(raw.batches)) {
+        batches = (raw.batches as BatchEntry[]).slice(0, MAX_BATCHES);
+      }
+      const trends = raw.trends as { data: TrendScanOutput; expiresAt: number } | undefined;
+      if (trends?.data && Number.isFinite(trends.expiresAt)) trendCache = trends;
+    } else if (version === 1) {
+      // v1 migration: convert single cache to a single batch entry
+      const v1 = raw as {
+        version?: number;
+        ideas?: { data: IdeaGenerationOutput; expiresAt: number };
+        trends?: { data: TrendScanOutput; expiresAt: number };
+      };
+      if (v1.trends?.data && Number.isFinite(v1.trends.expiresAt)) trendCache = v1.trends;
+      if (v1.ideas?.data?.candidates?.length) {
+        const batchTime = getCurrentBatchTimeJST(new Date(v1.ideas.data.generatedAt));
+        const migrated: IdeaGenerationOutput = {
+          ...v1.ideas.data,
+          batchTime,
+          candidates: v1.ideas.data.candidates.map((c) => ({ ...c, batchTime })),
+        };
+        batches = [{ batchTime, data: migrated }];
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -114,9 +178,8 @@ function persistCache(): void {
       JSON.stringify({
         version: PERSISTENT_CACHE_VERSION,
         updatedAt: new Date().toISOString(),
-        ideas: cache,
+        batches,
         trends: trendCache,
-        sourceUsageHistory,
       }, null, 2),
     );
   } catch (error) {
@@ -125,13 +188,13 @@ function persistCache(): void {
   }
 }
 
-function isExpired(entry: { expiresAt: number } | null): boolean {
-  return Boolean(entry && Date.now() > entry.expiresAt);
-}
-
 function cacheStatus(entry: { expiresAt: number } | null): CacheStatus {
   if (!entry) return 'empty';
-  return isExpired(entry) ? 'stale' : 'cached';
+  return Date.now() > entry.expiresAt ? 'stale' : 'cached';
+}
+
+function isExpired(entry: { expiresAt: number } | null): boolean {
+  return Boolean(entry && Date.now() > entry.expiresAt);
 }
 
 async function notifyRssSourceFailure(error: unknown, fallbackOperation: string): Promise<void> {
@@ -143,7 +206,7 @@ async function notifyRssSourceFailure(error: unknown, fallbackOperation: string)
       errorMessage: error.message,
       occurredAt: new Date().toISOString(),
       details: error.details,
-      ideaCacheGeneratedAt: cache?.data.generatedAt ?? null,
+      ideaCacheGeneratedAt: batches[0]?.data.generatedAt ?? null,
       trendCacheGeneratedAt: trendCache?.data.generatedAt ?? null,
     });
   } catch (notifyError) {
@@ -152,9 +215,22 @@ async function notifyRssSourceFailure(error: unknown, fallbackOperation: string)
   }
 }
 
+// --- Public getters ---
+
 export function getCachedIdeas(): IdeaGenerationOutput | null {
   loadPersistentCache();
-  return cache?.data ?? null;
+  if (batches.length === 0) return null;
+
+  // Flatten all batches into a single output
+  const allCandidates = batches.flatMap((b) => b.data.candidates);
+  const latestGeneratedAt = batches[0].data.generatedAt;
+  const latestSourceSummary = batches[0].data.sourceSummary;
+
+  return {
+    candidates: allCandidates,
+    generatedAt: latestGeneratedAt,
+    sourceSummary: latestSourceSummary,
+  };
 }
 
 export function getCachedTrends(): TrendScanOutput | null {
@@ -164,7 +240,8 @@ export function getCachedTrends(): TrendScanOutput | null {
 
 export function getIdeaCacheStatus(): CacheStatus {
   loadPersistentCache();
-  return cacheStatus(cache);
+  if (batches.length === 0) return 'empty';
+  return 'cached';
 }
 
 export function getTrendCacheStatus(): CacheStatus {
@@ -198,19 +275,16 @@ export function getRuntimeMeta(): {
     publicReadonlyMode: boolean;
     adminAuthEnabled: boolean;
     persistentCacheEnabled: boolean;
-    cacheTtlHours: number;
     warmupOnStart: boolean;
-    backgroundRefreshIntervalHours: number;
     ideaGenerationBatchSize: number;
-    ideaMaxStoredCandidates: number;
-    ideaSourceHistoryLimit: number;
+    batchScheduleHours: readonly number[];
+    maxBatches: number;
   };
   cache: {
     status: CacheStatus;
-    expiresAt: string | null;
     generatedAt: string | null;
     candidateCount: number;
-    sourceUsageCount: number;
+    batchCount: number;
     sourceSummary: IdeaGenerationOutput['sourceSummary'] | null;
   };
   generationInProgress: boolean;
@@ -229,26 +303,22 @@ export function getRuntimeMeta(): {
       publicReadonlyMode: PUBLIC_READONLY_MODE,
       adminAuthEnabled: Boolean(ADMIN_API_TOKEN),
       persistentCacheEnabled: Boolean(PERSISTENT_CACHE_FILE),
-      cacheTtlHours: CACHE_TTL_MS / 60 / 60 / 1000,
       warmupOnStart: WARMUP_ON_START,
-      backgroundRefreshIntervalHours: BACKGROUND_REFRESH_INTERVAL_MS / 60 / 60 / 1000,
       ideaGenerationBatchSize: IDEA_GENERATION_BATCH_SIZE,
-      ideaMaxStoredCandidates: IDEA_MAX_STORED_CANDIDATES,
-      ideaSourceHistoryLimit: IDEA_SOURCE_HISTORY_LIMIT,
+      batchScheduleHours: BATCH_SCHEDULE_HOURS_JST,
+      maxBatches: MAX_BATCHES,
     },
     cache: cached ? {
       status: ideaStatus,
-      expiresAt: cache ? new Date(cache.expiresAt).toISOString() : null,
       generatedAt: cached.generatedAt,
       candidateCount: cached.candidates.length,
-      sourceUsageCount: sourceUsageHistory.length,
+      batchCount: batches.length,
       sourceSummary: cached.sourceSummary,
     } : {
       status: 'empty',
-      expiresAt: null,
       generatedAt: null,
       candidateCount: 0,
-      sourceUsageCount: sourceUsageHistory.length,
+      batchCount: 0,
       sourceSummary: null,
     },
     generationInProgress: Boolean(generationLock),
@@ -256,6 +326,25 @@ export function getRuntimeMeta(): {
     backgroundRefreshInProgress: Boolean(backgroundRefreshLock),
   };
 }
+
+// --- Batch metadata for API ---
+
+export interface BatchInfoApi {
+  batchTime: string;
+  generatedAt: string;
+  ideaCount: number;
+}
+
+export function getBatchInfos(): BatchInfoApi[] {
+  loadPersistentCache();
+  return batches.map((b) => ({
+    batchTime: b.batchTime,
+    generatedAt: b.data.generatedAt,
+    ideaCount: b.data.candidates.length,
+  }));
+}
+
+// --- Generation ---
 
 export async function generateAndCacheIdeas(
   onProgress?: (text: string) => void,
@@ -268,60 +357,42 @@ export async function generateAndCacheIdeas(
   generationLock = (async () => {
     try {
       loadPersistentCache();
-      const existingCandidates = cache?.data.candidates ?? [];
-      if (sourceUsageHistory.length === 0 && existingCandidates.length > 0) {
-        sourceUsageHistory = buildSourceUsageHistory(
-          existingCandidates,
-          cache?.data.generatedAt ?? new Date().toISOString(),
-          IDEA_SOURCE_HISTORY_LIMIT,
-        );
-      }
-      const recentlyUsedSources = sourceUsageForPrompt(sourceUsageHistory);
+      const batchTime = getCurrentBatchTimeJST(new Date());
       const agent = new EntrepreneurAgent(getClient());
       const result = trendScanOverride && !focusKeywords
         ? await agent.generateIdeasFromTrendScan(
           trendScanOverride,
           onProgress,
-          existingCandidates,
           IDEA_GENERATION_BATCH_SIZE,
-          recentlyUsedSources,
+          batchTime,
         )
         : await agent.generateIdeas(
           onProgress,
           focusKeywords,
-          existingCandidates,
           IDEA_GENERATION_BATCH_SIZE,
-          recentlyUsedSources,
+          batchTime,
         );
-      const merged = mergeIdeaHistory(existingCandidates, result.candidates, {
-        maxCandidates: IDEA_MAX_STORED_CANDIDATES,
-      });
-      const output: IdeaGenerationOutput = {
+
+      // Dedupe within this batch only
+      const deduped = dedupeWithinBatch(result.candidates);
+
+      const batchOutput: IdeaGenerationOutput = {
         ...result,
-        candidates: merged.candidates,
+        candidates: deduped,
+        batchTime,
         sourceSummary: {
           ...result.sourceSummary,
-          generatedIdeaCount: result.candidates.length,
-          newIdeaCount: merged.addedCandidates.length,
-          duplicateIdeaCount: merged.duplicateCandidates.length,
-          totalIdeaCount: merged.candidates.length,
-          maxStoredIdeaCount: IDEA_MAX_STORED_CANDIDATES,
-          usedSourceUrlCount: sourceUsageHistory.length,
         },
       };
-      sourceUsageHistory = mergeSourceUsageHistory(
-        sourceUsageHistory,
-        merged.addedCandidates,
-        output.generatedAt,
-        IDEA_SOURCE_HISTORY_LIMIT,
-      );
-      output.sourceSummary.usedSourceUrlCount = sourceUsageHistory.length;
-      cache = {
-        data: output,
-        expiresAt: Date.now() + CACHE_TTL_MS,
-      };
+
+      // Replace same-slot batch or prepend, trim to MAX_BATCHES
+      batches = [
+        { batchTime, data: batchOutput },
+        ...batches.filter((b) => b.batchTime !== batchTime),
+      ].slice(0, MAX_BATCHES);
+
       persistCache();
-      return output;
+      return batchOutput;
     } catch (error) {
       await notifyRssSourceFailure(error, 'idea_generation');
       throw error;
@@ -344,7 +415,7 @@ export async function scanAndCacheTrends(
       const result = await agent.scanTrends(onProgress);
       trendCache = {
         data: result,
-        expiresAt: Date.now() + CACHE_TTL_MS,
+        expiresAt: Date.now() + 4 * 60 * 60 * 1000,
       };
       persistCache();
       return result;
@@ -364,7 +435,7 @@ export function refreshCachesInBackground(reason: string, force = false): Promis
 
   loadPersistentCache();
   const shouldRefreshTrends = force || !trendCache || isExpired(trendCache);
-  const shouldRefreshIdeas = force || !cache || isExpired(cache);
+  const shouldRefreshIdeas = force || batches.length === 0;
 
   if (!shouldRefreshTrends && !shouldRefreshIdeas) {
     console.log(`[Cache] Background refresh skipped (${reason}): cache is fresh`);
@@ -400,13 +471,10 @@ export function startBackgroundCacheRefresh(): void {
     void refreshCachesInBackground('startup');
   }
 
-  if (BACKGROUND_REFRESH_INTERVAL_MS <= 0 || backgroundRefreshTimer) return;
+  if (batchScheduleTimer) return;
 
-  backgroundRefreshTimer = setInterval(() => {
-    void refreshCachesInBackground('scheduled', true);
-  }, BACKGROUND_REFRESH_INTERVAL_MS);
-  backgroundRefreshTimer.unref?.();
-  console.log(`[Cache] Scheduled background refresh every ${BACKGROUND_REFRESH_INTERVAL_MS / 60 / 60 / 1000} hours`);
+  scheduleNextBatch();
+  console.log(`[Cache] Batch scheduler started (JST: ${[...BATCH_SCHEDULE_HOURS_JST].join(', ')}時)`);
 }
 
 export async function filterCachedIdeas(input: SemanticFilterInput): Promise<SemanticFilterOutput> {
@@ -415,9 +483,9 @@ export async function filterCachedIdeas(input: SemanticFilterInput): Promise<Sem
 }
 
 export function flushPersistentCache(): void {
-  if (backgroundRefreshTimer) {
-    clearInterval(backgroundRefreshTimer);
-    backgroundRefreshTimer = null;
+  if (batchScheduleTimer) {
+    clearTimeout(batchScheduleTimer);
+    batchScheduleTimer = null;
   }
   persistCache();
 }

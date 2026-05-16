@@ -12,18 +12,7 @@ const STOP_TERMS = new Set([
   '自動化', '管理', '支援', '向け',
 ]);
 
-export interface IdeaHistoryMergeOptions {
-  maxCandidates: number;
-  similarityThreshold?: number;
-}
-
-export interface IdeaHistoryMergeResult {
-  candidates: IdeaCandidate[];
-  addedCandidates: IdeaCandidate[];
-  duplicateCandidates: IdeaCandidate[];
-}
-
-function normalizeText(text: string): string {
+export function normalizeText(text: string): string {
   return text
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .toLowerCase()
@@ -43,7 +32,7 @@ function addJapaneseNgrams(tokens: Set<string>, run: string): void {
   }
 }
 
-function tokenize(text: string): Set<string> {
+export function tokenize(text: string): Set<string> {
   const tokens = new Set<string>();
   const normalized = normalizeText(text);
 
@@ -101,13 +90,6 @@ function normalizedTitle(idea: IdeaCandidate): string {
   return normalizeText(idea.title).replace(/\s/g, '');
 }
 
-export function ideaSimilarity(a: IdeaCandidate, b: IdeaCandidate): number {
-  const titleScore = overlapCoefficient(tokenize(titleText(a)), tokenize(titleText(b)));
-  const coreScore = jaccardSimilarity(tokenize(coreText(a)), tokenize(coreText(b)));
-  const fullScore = jaccardSimilarity(tokenize(fullText(a)), tokenize(fullText(b)));
-  return Math.max(titleScore, coreScore, fullScore);
-}
-
 export function areIdeasSimilar(
   a: IdeaCandidate,
   b: IdeaCandidate,
@@ -127,30 +109,16 @@ export function areIdeasSimilar(
   return jaccardSimilarity(tokenize(fullText(a)), tokenize(fullText(b))) >= threshold;
 }
 
-export function mergeIdeaHistory(
-  existingCandidates: IdeaCandidate[],
-  incomingCandidates: IdeaCandidate[],
-  options: IdeaHistoryMergeOptions,
-): IdeaHistoryMergeResult {
-  const similarityThreshold = options.similarityThreshold ?? DEFAULT_SIMILARITY_THRESHOLD;
-  const addedCandidates: IdeaCandidate[] = [];
-  const duplicateCandidates: IdeaCandidate[] = [];
-  const accepted = [...existingCandidates];
-
-  for (const candidate of incomingCandidates) {
-    const duplicate = accepted.some((existing) => areIdeasSimilar(existing, candidate, similarityThreshold));
-    if (duplicate) {
-      duplicateCandidates.push(candidate);
-      continue;
+export function dedupeWithinBatch(
+  candidates: IdeaCandidate[],
+  threshold = DEFAULT_SIMILARITY_THRESHOLD,
+): IdeaCandidate[] {
+  const accepted: IdeaCandidate[] = [];
+  for (const candidate of candidates) {
+    const duplicate = accepted.some((existing) => areIdeasSimilar(existing, candidate, threshold));
+    if (!duplicate) {
+      accepted.push(candidate);
     }
-
-    addedCandidates.push(candidate);
-    accepted.push(candidate);
   }
-
-  return {
-    candidates: [...addedCandidates, ...existingCandidates].slice(0, options.maxCandidates),
-    addedCandidates,
-    duplicateCandidates,
-  };
+  return accepted;
 }

@@ -17,4 +17,5 @@ export interface IdeaCandidate {
     }[];
   };
   generatedAt: string;
+  batchTime?: string;
 }

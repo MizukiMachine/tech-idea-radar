@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { formatBatchLabel, type BatchInfo } from '../api/ai';
 import './Sidebar.css';
 
 const CATEGORY_FILTERS = [
@@ -24,11 +25,17 @@ const INTEREST_FIELDS = [
 interface SidebarProps {
     onCategoryFilter?: (category: string) => void;
     onInterestChange?: (interests: string[]) => void;
+    batches?: BatchInfo[];
+    activeBatch?: string | null;
+    onBatchFilter?: (batchTime: string | null) => void;
 }
 
 export default function Sidebar({
     onCategoryFilter,
     onInterestChange,
+    batches = [],
+    activeBatch = null,
+    onBatchFilter,
 }: SidebarProps): JSX.Element {
     const [activeCategory, setActiveCategory] = useState('すべて');
     const [interests, setInterests] = useState<Record<string, boolean>>(
@@ -115,6 +122,37 @@ export default function Sidebar({
                     ))}
                 </div>
             </div>
+
+            {/* バッチ */}
+            {batches.length > 1 && (
+                <div className="sidebar__section">
+                    <div className="sidebar__section-header">
+                        <span className="sidebar__section-title">生成バッチ</span>
+                        <button type="button" className="sidebar__reset-btn" onClick={() => onBatchFilter?.(null)}>
+                            リセット
+                        </button>
+                    </div>
+                    <div className="sidebar__tags">
+                        <button
+                            type="button"
+                            className={`sidebar__tag ${activeBatch === null ? 'sidebar__tag--active' : ''}`}
+                            onClick={() => onBatchFilter?.(null)}
+                        >
+                            すべて
+                        </button>
+                        {batches.map((batch) => (
+                            <button
+                                key={batch.batchTime}
+                                type="button"
+                                className={`sidebar__tag ${activeBatch === batch.batchTime ? 'sidebar__tag--active' : ''}`}
+                                onClick={() => onBatchFilter?.(batch.batchTime)}
+                            >
+                                {formatBatchLabel(batch.batchTime)} ({batch.ideaCount})
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            )}
         </aside>
     );
 }
