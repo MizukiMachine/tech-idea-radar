@@ -1,0 +1,46 @@
+# ============================================
+# Builder Agent Chain - Docker Compose
+# ============================================
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f backend
+#
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: builder-agent-chain-backend
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "127.0.0.1:3001:3001"
+    volumes:
+      - cache-data:/var/lib/builder-agent-chain
+    environment:
+      - IDEA_CACHE_FILE=/var/lib/builder-agent-chain/idea-cache.json
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  nginx:
+    image: nginx:alpine
+    container_name: builder-agent-chain-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # - "443:443"
+    volumes:
+      - ./deploy/nginx.conf.template:/etc/nginx/conf.d/default.conf:ro
+      # - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  cache-data:
+    driver: local
