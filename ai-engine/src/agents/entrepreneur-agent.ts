@@ -5,7 +5,7 @@ import { FilterAgent } from './filter-agent';
 import { fetchRssContext } from '../services/mcp-client';
 import { DEFAULT_IDEA_COUNT } from '../config/constants';
 import { RssSourceUnavailableError } from '../errors';
-import type { IdeaGenerationInput, IdeaGenerationOutput, TrendScanOutput, UsedRssSource } from '../types/idea-generation';
+import type { IdeaGenerationInput, IdeaGenerationOutput, TrendScanOutput } from '../types/idea-generation';
 import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semantic-filter';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { RssArticle, RssContext } from '../services/mcp-client';
@@ -22,84 +22,14 @@ const GENERIC_EVIDENCE_TERMS = new Set([
   '文章を', '章を書', 'を書く',
 ]);
 
-function normalizeSourceUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    parsed.hash = '';
-    for (const key of [...parsed.searchParams.keys()]) {
-      if (key.toLowerCase().startsWith('utm_') || ['fbclid', 'gclid'].includes(key.toLowerCase())) {
-        parsed.searchParams.delete(key);
-      }
-    }
-    return parsed.toString();
-  } catch {
-    return url.trim();
-  }
-}
-
 function articleUrl(article: RssArticle): string {
   return article.url ?? article.link;
-}
-
-function filterUsedRssArticles(rssContext: RssContext, usedSources: UsedRssSource[]): {
-  rssContext: RssContext;
-  skippedCount: number;
-} {
-  if (usedSources.length === 0) {
-    return { rssContext, skippedCount: 0 };
-  }
-
-  const usedUrls = new Set(
-    usedSources
-      .map((source) => normalizeSourceUrl(source.url))
-      .filter(Boolean),
-  );
-
-  const relatedArticles = rssContext.relatedArticles.filter((article) => {
-    const url = articleUrl(article);
-    return !url || !usedUrls.has(normalizeSourceUrl(url));
-  });
-
-  return {
-    rssContext: {
-      ...rssContext,
-      relatedArticles,
-    },
-    skippedCount: rssContext.relatedArticles.length - relatedArticles.length,
-  };
 }
 
 function sourceNames(rssContext: RssContext): string[] {
   const articleSources = rssContext.relatedArticles.map((article) => article.source).filter(Boolean);
   const failedSources = rssContext.sourceErrors?.map((error) => error.source).filter(Boolean) ?? [];
   return [...new Set([...articleSources, ...failedSources])];
-}
-
-function applySourceUsageHistory(
-  trendScan: TrendScanOutput,
-  usedSources: UsedRssSource[],
-): TrendScanOutput {
-  const filtered = filterUsedRssArticles(trendScan.rssContext, usedSources);
-  if (filtered.skippedCount === 0 && usedSources.length === 0) return trendScan;
-
-  const warnings = [
-    ...(trendScan.sourceSummary.warnings ?? []),
-    ...(filtered.skippedCount > 0
-      ? [`過去に根拠として使ったRSS記事 ${filtered.skippedCount}件を今回の生成材料から除外しました。`]
-      : []),
-  ];
-
-  return {
-    ...trendScan,
-    rssContext: filtered.rssContext,
-    sourceSummary: {
-      ...trendScan.sourceSummary,
-      rssItemCount: filtered.rssContext.trendingKeywords.length + filtered.rssContext.relatedArticles.length,
-      warnings,
-      usedSourceUrlCount: usedSources.length,
-      skippedPreviouslyUsedRssCount: filtered.skippedCount,
-    },
-  };
 }
 
 interface RssArticleTranslation {
@@ -414,13 +344,11 @@ export class EntrepreneurAgent {
   async generateIdeasFromTrendScan(
     trendScan: TrendScanOutput,
     onProgress?: (text: string) => void,
-    previousIdeas: IdeaCandidate[] = [],
     requestedIdeaCount = DEFAULT_IDEA_COUNT,
-    recentlyUsedSources: UsedRssSource[] = [],
+    batchTime?: string,
   ): Promise<IdeaGenerationOutput> {
     const startTime = Date.now();
-    const effectiveTrendScan = applySourceUsageHistory(trendScan, recentlyUsedSources);
-    const { rssContext, focusKeywords } = effectiveTrendScan;
+    const { rssContext, focusKeywords } = trendScan;
     if (rssContext.relatedArticles.length === 0) {
       throw new RssSourceUnavailableError(
         '利用可能なRSS記事がないため、LLMによるアイデア生成を停止しました。',
@@ -429,30 +357,30 @@ export class EntrepreneurAgent {
           focusKeywords,
           rssArticleCount: rssContext.relatedArticles.length,
           trendingKeywordCount: rssContext.trendingKeywords.length,
-          skippedPreviouslyUsedRssCount: effectiveTrendScan.sourceSummary.skippedPreviouslyUsedRssCount,
           sourceNames: sourceNames(rssContext),
           sourceErrors: rssContext.sourceErrors,
         },
       );
     }
-    const sourceCountText = `RSS: ${effectiveTrendScan.sourceSummary.rssItemCount}件`;
-    const previousCountText = previousIdeas.length > 0 ? `既存: ${previousIdeas.length}件` : '既存: 0件';
-    const usedSourceText = recentlyUsedSources.length > 0 ? `使用済みRSS: ${recentlyUsedSources.length}件` : '使用済みRSS: 0件';
-    onProgress?.(`[Enrichment] ${sourceCountText} / ${previousCountText} / ${usedSourceText}\n\n新しいアイデアを生成中...`);
+    const sourceCountText = `RSS: ${trendScan.sourceSummary.rssItemCount}件`;
+    onProgress?.(`[Enrichment] ${sourceCountText}\n\n新しいアイデアを生成中...`);
 
     const input: IdeaGenerationInput = {
       rssContext,
       focusKeywords,
-      previousIdeas,
       requestedIdeaCount,
-      recentlyUsedSources,
     };
 
     onProgress?.('アイデア候補を生成中...');
     const rawCandidates = await this.ideaGeneration.execute(input);
 
     // LLM may return various formats — normalize to IdeaCandidate[]
-    const candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext);
+    let candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext);
+
+    // Apply batchTime to each candidate
+    if (batchTime) {
+      candidates = candidates.map((c) => ({ ...c, batchTime }));
+    }
 
     const totalTime = Date.now() - startTime;
     console.log(`[IdeaGeneration] Generated ${candidates.length} ideas in ${totalTime}ms`);
@@ -460,16 +388,16 @@ export class EntrepreneurAgent {
     return {
       candidates,
       generatedAt: new Date().toISOString(),
-      sourceSummary: effectiveTrendScan.sourceSummary,
+      batchTime,
+      sourceSummary: trendScan.sourceSummary,
     };
   }
 
   async generateIdeas(
     onProgress?: (text: string) => void,
     inputFocusKeywords?: string[],
-    previousIdeas: IdeaCandidate[] = [],
     requestedIdeaCount = DEFAULT_IDEA_COUNT,
-    recentlyUsedSources: UsedRssSource[] = [],
+    batchTime?: string,
   ): Promise<IdeaGenerationOutput> {
     const startTime = Date.now();
     console.log('[IdeaGeneration] Starting idea generation pipeline');
@@ -478,9 +406,8 @@ export class EntrepreneurAgent {
     const result = await this.generateIdeasFromTrendScan(
       trendScan,
       onProgress,
-      previousIdeas,
       requestedIdeaCount,
-      recentlyUsedSources,
+      batchTime,
     );
     console.log(`[IdeaGeneration] Pipeline completed in ${Date.now() - startTime}ms`);
     return result;
