@@ -15,14 +15,10 @@ const candidate: IdeaCandidate = {
   title: 'AI Ops Memo',
   tagline: '障害対応メモを自動整理',
   description: 'SRE チーム向けに障害対応ログを分類し、再発防止策を提案する。',
-  trendScore: 88,
   tags: ['AI', 'SaaS', 'dev-tools'],
   productType: 'B2B SaaS',
   targetUsers: '小規模な SRE チーム',
   coreProblem: '障害対応の知見が散らばる',
-  revenuePotential: 'high',
-  developmentScale: 2,
-  developmentScaleReason: '既存のログ連携と要約UIを組み合わせれば小さく検証できる',
   differentiation: 'RSS 由来の運用トレンドを根拠に提案する',
   sources: {
     rssKeywords: ['AI', 'SRE'],
@@ -99,7 +95,6 @@ describe('IdeaGenerationAgent', () => {
     expect(prompt).toContain('### 既存アイデア');
     expect(prompt).toContain('### 使用済みRSS記事');
     expect(prompt).toContain('最大 5 件');
-    expect(agent.systemPrompt).toContain('developmentScale');
     expect(prompt).toContain('障害対応の知見が散らばる');
     expect(prompt).toContain('https://example.com/used-rss');
   });
@@ -176,14 +171,14 @@ describe('EntrepreneurAgent', () => {
     expect(client.send).not.toHaveBeenCalled();
   });
 
-  it('sorts empty filter queries by trend score without calling the LLM', async () => {
-    const lowScore = { ...candidate, id: 'idea-2', trendScore: 20 };
+  it('returns candidates unchanged for empty filter queries without calling the LLM', async () => {
+    const second = { ...candidate, id: 'idea-2' };
     const client = createMockClient('unused');
     const agent = new EntrepreneurAgent(client);
 
-    const result = await agent.filterIdeas({ query: ' ', candidates: [lowScore, candidate] });
+    const result = await agent.filterIdeas({ query: ' ', candidates: [second, candidate] });
 
-    expect(result.filteredCandidates.map((idea) => idea.id)).toEqual(['idea-1', 'idea-2']);
+    expect(result.filteredCandidates.map((idea) => idea.id)).toEqual(['idea-2', 'idea-1']);
     expect(client.send).not.toHaveBeenCalled();
   });
 

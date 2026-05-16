@@ -9,14 +9,10 @@ const idea = {
   title: "AI Ops Memo",
   tagline: "障害対応メモを自動整理",
   description: "SRE チーム向けに障害対応ログを分類します。",
-  trendScore: 82,
   tags: ["AI", "SaaS"],
   productType: "B2B SaaS",
   targetUsers: "小規模な SRE チーム",
   coreProblem: "障害対応の知見が散らばる",
-  revenuePotential: "high",
-  developmentScale: 2,
-  developmentScaleReason: "既存のログ連携と要約UIを組み合わせれば小さく検証できる",
   differentiation: "運用トレンドを根拠に提案する",
   sources: { rssKeywords: ["AI"], evidenceUrls: [] },
   generatedAt,
@@ -94,9 +90,6 @@ describe("App", () => {
     expect(screen.getByText("AI Build Radar")).toBeTruthy();
     await waitFor(() => expect(screen.getByText("フィルター")).toBeTruthy());
     expect(screen.getByText("ジャンル・テーマ")).toBeTruthy();
-    expect(screen.getAllByText("開発規模").length).toBeGreaterThan(0);
-    expect(screen.getByText("★まで")).toBeTruthy();
-    expect(screen.getByText("高以上")).toBeTruthy();
     expect(screen.queryByText("言語")).toBeNull();
     expect(screen.queryByText("短期開発向け")).toBeNull();
     expect(screen.getByPlaceholderText("キーワードで絞り込み（例: AI ツール、SaaS、副業）")).toBeTruthy();
@@ -121,9 +114,7 @@ describe("App", () => {
 
   it("renders right panel cards on the ideas view", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText(/高収益ポテンシャル/)).toBeTruthy());
-    expect(screen.getByText(/急上昇トレンド/)).toBeTruthy();
-    expect(screen.getByText("選択中のアイデア")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("選択中のアイデア")).toBeTruthy());
   });
 
   it("hides generation controls in public readonly mode", async () => {

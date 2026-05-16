@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import type { IdeaCandidate } from '../types/idea-candidate';
 import './Sidebar.css';
 
 const CATEGORY_FILTERS = [
@@ -22,45 +21,19 @@ const INTEREST_FIELDS = [
     { id: 'entertainment', label: 'エンタメ' },
 ];
 
-const SCALE_FILTERS = [
-    { value: null, label: 'すべて' },
-    { value: 1, label: '★まで' },
-    { value: 2, label: '★★まで' },
-    { value: 3, label: '★★★まで' },
-    { value: 4, label: '★★★★まで' },
-];
-
-const REVENUE_FILTERS = [
-    { value: null, label: 'すべて' },
-    { value: 55, label: '中以上' },
-    { value: 78, label: '高以上' },
-    { value: 95, label: '最高のみ' },
-];
-
 interface SidebarProps {
     onCategoryFilter?: (category: string) => void;
     onInterestChange?: (interests: string[]) => void;
-    onRevenueChange?: (value: number | null) => void;
-    onScaleChange?: (value: number | null) => void;
-    onSortChange?: (sort: string) => void;
-    highlightedIdea?: IdeaCandidate;
 }
 
 export default function Sidebar({
     onCategoryFilter,
     onInterestChange,
-    onRevenueChange,
-    onScaleChange,
-    onSortChange,
-    highlightedIdea,
 }: SidebarProps): JSX.Element {
     const [activeCategory, setActiveCategory] = useState('すべて');
     const [interests, setInterests] = useState<Record<string, boolean>>(
         Object.fromEntries(INTEREST_FIELDS.map((field) => [field.id, false]))
     );
-    const [revenueMin, setRevenueMin] = useState<number | null>(null);
-    const [scaleMax, setScaleMax] = useState<number | null>(null);
-    const [sort, setSort] = useState('おすすめ順');
 
     const handleCategoryClick = (category: string) => {
         setActiveCategory(category);
@@ -73,33 +46,12 @@ export default function Sidebar({
         onInterestChange?.(Object.entries(updated).filter(([, v]) => v).map(([k]) => k));
     };
 
-    const handleRevenueChange = (val: number | null) => {
-        setRevenueMin(val);
-        onRevenueChange?.(val);
-    };
-
-    const handleScaleChange = (val: number | null) => {
-        setScaleMax(val);
-        onScaleChange?.(val);
-    };
-
-    const handleSortChange = (val: string) => {
-        setSort(val);
-        onSortChange?.(val);
-    };
-
     const resetAll = () => {
         const clearedInterests = Object.fromEntries(INTEREST_FIELDS.map((f) => [f.id, false]));
         setActiveCategory('すべて');
         setInterests(clearedInterests);
-        setRevenueMin(null);
-        setScaleMax(null);
-        setSort('おすすめ順');
         onCategoryFilter?.('すべて');
         onInterestChange?.([]);
-        onRevenueChange?.(null);
-        onScaleChange?.(null);
-        onSortChange?.('おすすめ順');
     };
 
     return (
@@ -163,78 +115,6 @@ export default function Sidebar({
                     ))}
                 </div>
             </div>
-
-            {/* 収益化しやすさ */}
-            <div className="sidebar__section">
-                <div className="sidebar__section-header">
-                    <span className="sidebar__section-title">収益化しやすさ</span>
-                    <button type="button" className="sidebar__reset-btn" onClick={() => handleRevenueChange(null)}>
-                        リセット
-                    </button>
-                </div>
-                <div className="sidebar__tags">
-                    {REVENUE_FILTERS.map((filter) => (
-                        <button
-                            key={filter.label}
-                            type="button"
-                            className={`sidebar__tag ${revenueMin === filter.value ? 'sidebar__tag--active' : ''}`}
-                            onClick={() => handleRevenueChange(filter.value)}
-                        >
-                            {filter.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* 開発規模 */}
-            <div className="sidebar__section">
-                <div className="sidebar__section-header">
-                    <span className="sidebar__section-title">開発規模</span>
-                    <button type="button" className="sidebar__reset-btn" onClick={() => handleScaleChange(null)}>
-                        リセット
-                    </button>
-                </div>
-                <div className="sidebar__tags">
-                    {SCALE_FILTERS.map((filter) => (
-                        <button
-                            key={filter.label}
-                            type="button"
-                            className={`sidebar__tag ${scaleMax === filter.value ? 'sidebar__tag--active' : ''}`}
-                            onClick={() => handleScaleChange(filter.value)}
-                        >
-                            {filter.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* 並び替え */}
-            <div className="sidebar__section">
-                <div className="sidebar__section-header">
-                    <span className="sidebar__section-title">並び替え</span>
-                </div>
-                <select className="sidebar__select" value={sort} onChange={(e) => handleSortChange(e.target.value)}>
-                    <option>おすすめ順</option>
-                    <option>トレンドスコア順</option>
-                    <option>収益性順</option>
-                    <option>開発規模 小さい順</option>
-                </select>
-            </div>
-
-            {highlightedIdea && (
-                <div className="sidebar__section" style={{ marginTop: 16 }}>
-                    <div className="sidebar__highlight-card">
-                        <div className="sidebar__highlight-badge">トレンド上位</div>
-                        <div className="sidebar__highlight-title">{highlightedIdea.title}</div>
-                        <div className="sidebar__highlight-desc">
-                            {highlightedIdea.tagline || highlightedIdea.coreProblem}
-                        </div>
-                        <span className="sidebar__highlight-tag">
-                            {highlightedIdea.tags.slice(0, 2).join('・') || highlightedIdea.productType}
-                        </span>
-                    </div>
-                </div>
-            )}
         </aside>
     );
 }

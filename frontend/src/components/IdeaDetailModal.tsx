@@ -1,5 +1,4 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
-import { developmentScaleLabel, developmentScaleStars, getDevelopmentScale } from '../utils/idea-metrics';
 import './IdeaDetailModal.css';
 
 interface IdeaDetailModalProps {
@@ -9,7 +8,6 @@ interface IdeaDetailModalProps {
 
 export default function IdeaDetailModal({ idea, onClose }: IdeaDetailModalProps): JSX.Element {
     const evidenceUrls = idea.sources.evidenceUrls ?? [];
-    const developmentScale = getDevelopmentScale(idea);
 
     return (
         <div className="idea-modal" role="dialog" aria-modal="true" aria-labelledby="idea-modal-title">
@@ -22,21 +20,6 @@ export default function IdeaDetailModal({ idea, onClose }: IdeaDetailModalProps)
                         <p className="idea-modal__tagline">{idea.tagline}</p>
                     </div>
                     <button type="button" className="idea-modal__close" onClick={onClose} aria-label="閉じる">×</button>
-                </div>
-
-                <div className="idea-modal__score-row">
-                    <div className="idea-modal__score">
-                        <span>市場スコア</span>
-                        <strong>{idea.trendScore}</strong>
-                    </div>
-                    <div className="idea-modal__score">
-                        <span>収益性</span>
-                        <strong>{idea.revenuePotential}</strong>
-                    </div>
-                    <div className="idea-modal__score">
-                        <span>開発規模</span>
-                        <strong className="idea-modal__scale-stars">{developmentScaleStars(developmentScale)}</strong>
-                    </div>
                 </div>
 
                 <div className="idea-modal__body">
@@ -58,11 +41,6 @@ export default function IdeaDetailModal({ idea, onClose }: IdeaDetailModalProps)
                     <section className="idea-modal__section">
                         <h3>差別化</h3>
                         <p>{idea.differentiation}</p>
-                    </section>
-
-                    <section className="idea-modal__section">
-                        <h3>開発規模</h3>
-                        <p>{idea.developmentScaleReason ?? developmentScaleLabel(developmentScale)}</p>
                     </section>
 
                     <section className="idea-modal__section">

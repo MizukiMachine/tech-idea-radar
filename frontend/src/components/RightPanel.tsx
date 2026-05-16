@@ -1,5 +1,4 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
-import { developmentScaleLabel, developmentScaleStars, getDevelopmentScale } from '../utils/idea-metrics';
 import './RightPanel.css';
 
 const TAG_COLORS = ['#1a1f36', '#3b82f6', '#3178c6', '#ff9900', '#00B67A'];
@@ -26,42 +25,17 @@ function buildTagData(ideas: IdeaCandidate[]) {
 interface RightPanelProps {
     ideas: IdeaCandidate[];
     selectedIdea: IdeaCandidate | null;
-    topRevenueIdea?: IdeaCandidate;
-    topTrendIdea?: IdeaCandidate;
 }
 
 export default function RightPanel({
     ideas,
     selectedIdea,
-    topRevenueIdea,
-    topTrendIdea,
 }: RightPanelProps): JSX.Element {
     const tagData = buildTagData(ideas);
-    const detailIdea = selectedIdea ?? topTrendIdea;
-    const detailScale = detailIdea ? getDevelopmentScale(detailIdea) : null;
+    const detailIdea = selectedIdea ?? ideas[0];
 
     return (
         <aside className="right-panel">
-            {/* High Revenue Potential Card */}
-            <div className="right-panel__card right-panel__card--highlight">
-                <div className="right-panel__card-badge">高収益ポテンシャル</div>
-                <h3 className="right-panel__card-title">{topRevenueIdea?.title ?? '候補を分析中'}</h3>
-                <p className="right-panel__card-desc">
-                    {topRevenueIdea?.coreProblem ?? '収益性の高いアイデアを抽出しています'}
-                </p>
-                <span className="right-panel__card-tag">{topRevenueIdea?.revenuePotential ?? '-'}</span>
-            </div>
-
-            {/* Trending Card */}
-            <div className="right-panel__card right-panel__card--trend">
-                <div className="right-panel__card-badge">急上昇トレンド</div>
-                <h3 className="right-panel__card-title">{topTrendIdea?.title ?? '候補を分析中'}</h3>
-                <p className="right-panel__card-desc">
-                    {topTrendIdea?.description ?? 'トレンドスコアの高い候補を抽出しています'}
-                </p>
-                <span className="right-panel__card-tag">Score {topTrendIdea?.trendScore ?? '-'}</span>
-            </div>
-
             <div className="right-panel__card right-panel__card--detail">
                 <div className="right-panel__card-badge">選択中のアイデア</div>
                 <h3 className="right-panel__card-title">{detailIdea?.title ?? 'カードを選択'}</h3>
@@ -77,14 +51,6 @@ export default function RightPanel({
                     <div>
                         <dt>差別化</dt>
                         <dd>{detailIdea?.differentiation ?? '-'}</dd>
-                    </div>
-                    <div>
-                        <dt>開発規模</dt>
-                        <dd>
-                            {detailScale
-                                ? `${developmentScaleStars(detailScale)} ${developmentScaleLabel(detailScale)}`
-                                : '-'}
-                        </dd>
                     </div>
                 </dl>
             </div>

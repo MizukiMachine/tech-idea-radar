@@ -85,7 +85,6 @@ export interface RssContext {
 const MCP_RSS_SCOUT_PATH = process.env.MCP_RSS_SCOUT_PATH ?? '';
 const MCP_TIMEOUT = 5000;
 const PUBLIC_RSS_TIMEOUT = 8000;
-const PUBLIC_RSS_CACHE_TTL = 30 * 60 * 1000;
 const MAX_RELATED_ARTICLES = 18;
 const SOURCE_FIRST_PASS_LIMIT = 2;
 const SOURCE_TOTAL_LIMIT = 5;
@@ -93,11 +92,6 @@ const SOURCE_TOTAL_LIMIT = 5;
 interface PublicFeed {
   name: string;
   url: string;
-}
-
-interface PublicRssCache {
-  data: RssContext;
-  expiresAt: number;
 }
 
 type ParsedXml = Record<string, unknown>;
@@ -118,8 +112,6 @@ const STOP_WORDS = new Set([
   'what', 'why', 'new', 'news', 'more', 'after', 'over', 'under', 'their',
   'they', 'will', 'can', 'has', 'have', 'had', 'not', 'but', 'all',
 ]);
-
-let publicRssCache: PublicRssCache | null = null;
 
 function asArray<T>(value: T | T[] | undefined): T[] {
   if (value === undefined) return [];
@@ -336,10 +328,6 @@ function rankArticles(articles: RssArticle[], keywords: string[]): RssArticle[] 
 }
 
 async function fetchPublicRssContext(keywords: string[]): Promise<RssContext> {
-  if (publicRssCache && Date.now() < publicRssCache.expiresAt) {
-    return publicRssCache.data;
-  }
-
   const results = await Promise.all(
     PUBLIC_RSS_FEEDS.map((feed) => fetchFeed(feed, keywords)),
   );
@@ -355,9 +343,6 @@ async function fetchPublicRssContext(keywords: string[]): Promise<RssContext> {
     relatedArticles,
     ...(sourceErrors.length > 0 ? { sourceErrors } : {}),
   };
-  if (relatedArticles.length > 0) {
-    publicRssCache = { data, expiresAt: Date.now() + PUBLIC_RSS_CACHE_TTL };
-  }
 
   console.log(`[RSS] Public RSS fallback: ${relatedArticles.length} articles, ${trendingKeywords.length} keywords`);
   return data;

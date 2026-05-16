@@ -12,13 +12,11 @@ import {
   type TrendScan,
 } from './api/ai';
 import Sidebar from './components/Sidebar';
-import StatsBar from './components/StatsBar';
 import TabFilter from './components/TabFilter';
 import IdeaCard from './components/IdeaCard';
 import RightPanel from './components/RightPanel';
 import IdeaDetailModal from './components/IdeaDetailModal';
 import TrendBoard from './components/TrendBoard';
-import { getDevelopmentScale } from './utils/idea-metrics';
 import './App.css';
 
 type ViewMode = 'grid' | 'list';
@@ -57,15 +55,6 @@ function ideaText(idea: IdeaCandidate): string {
   ].join(' ');
 }
 
-function revenueScore(value: string): number {
-  const normalized = value.toLowerCase();
-  if (normalized.includes('very high')) return 95;
-  if (normalized.includes('high')) return 78;
-  if (normalized.includes('medium')) return 55;
-  if (normalized.includes('low')) return 25;
-  return 50;
-}
-
 function matchesTab(idea: IdeaCandidate, tab: string): boolean {
   if (tab === 'すべて') return true;
   const text = ideaText(idea);
@@ -86,20 +75,6 @@ function matchesCategory(idea: IdeaCandidate, category: string): boolean {
   const keywords = CATEGORY_KEYWORDS[category] ?? [category];
   const text = ideaText(idea);
   return keywords.some((keyword) => text.includes(keyword));
-}
-
-function sortIdeas(ideas: IdeaCandidate[], sort: string): IdeaCandidate[] {
-  const sorted = [...ideas];
-  if (sort === 'トレンドスコア順') return sorted.sort((a, b) => b.trendScore - a.trendScore);
-  if (sort === '収益性順') return sorted.sort((a, b) => revenueScore(b.revenuePotential) - revenueScore(a.revenuePotential));
-  if (sort === '開発規模 小さい順' || sort === '開発規模順') {
-    return sorted.sort((a, b) => getDevelopmentScale(a) - getDevelopmentScale(b) || b.trendScore - a.trendScore);
-  }
-  return sorted.sort((a, b) => {
-    const aScore = a.trendScore + revenueScore(a.revenuePotential);
-    const bScore = b.trendScore + revenueScore(b.revenuePotential);
-    return bScore - aScore;
-  });
 }
 
 function matchesSearchQuery(text: string, query: string): boolean {
@@ -171,9 +146,6 @@ function App(): JSX.Element {
   const [ideasMeta, setIdeasMeta] = useState<IdeasMeta | null>(null);
   const [activeCategory, setActiveCategory] = useState('すべて');
   const [activeInterests, setActiveInterests] = useState<string[]>([]);
-  const [revenueMin, setRevenueMin] = useState<number | null>(null);
-  const [scaleMax, setScaleMax] = useState<number | null>(null);
-  const [sortLabel, setSortLabel] = useState('おすすめ順');
   const [activeTab, setActiveTab] = useState('すべて');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedIdea, setSelectedIdea] = useState<IdeaCandidate | null>(null);
@@ -348,8 +320,7 @@ function App(): JSX.Element {
   }, [handleRefresh, ideas.length, loading, publicReadonlyMode]);
 
   const sourceIdeas = semanticFilteredIdeas ?? ideas;
-  const displayedIdeas = sortIdeas(
-    sourceIdeas.filter((idea) => {
+  const displayedIdeas = sourceIdeas.filter((idea) => {
       const text = ideaText(idea);
       const normalizedSearch = searchQuery.trim().toLowerCase();
       if (!semanticFilteredIdeas && normalizedSearch && !matchesSearchQuery(text, normalizedSearch)) return false;
@@ -361,15 +332,9 @@ function App(): JSX.Element {
         });
         if (!hasInterestMatch) return false;
       }
-      if (revenueMin !== null && revenueScore(idea.revenuePotential) < revenueMin) return false;
-      if (scaleMax !== null && getDevelopmentScale(idea) > scaleMax) return false;
       return matchesTab(idea, activeTab);
-    }),
-    sortLabel,
-  );
+    });
 
-  const topRevenueIdea = sortIdeas(displayedIdeas, '収益性順')[0] ?? ideas[0];
-  const topTrendIdea = sortIdeas(displayedIdeas, 'トレンドスコア順')[0] ?? ideas[0];
   const hasIdeas = ideas.length > 0;
   const showDashboard = loading || hasIdeas;
   const showSetupState = !loading && !hasIdeas;
@@ -527,23 +492,16 @@ function App(): JSX.Element {
                   <Sidebar
                     onCategoryFilter={setActiveCategory}
                     onInterestChange={setActiveInterests}
-                    onRevenueChange={setRevenueMin}
-                    onScaleChange={setScaleMax}
-                    onSortChange={setSortLabel}
-                    highlightedIdea={topTrendIdea}
                   />
                 )}
 
                 <section className="main-content">
-                  {hasIdeas && <StatsBar ideas={displayedIdeas} />}
-
                   {hasIdeas && (
                     <TabFilter
                       activeTab={activeTab}
                       viewMode={viewMode}
                       onTabChange={setActiveTab}
                       onViewChange={setViewMode}
-                      sortLabel={sortLabel}
                       resultCount={displayedIdeas.length}
                     />
                   )}
@@ -583,8 +541,6 @@ function App(): JSX.Element {
                   <RightPanel
                     ideas={displayedIdeas}
                     selectedIdea={selectedIdea}
-                    topRevenueIdea={topRevenueIdea}
-                    topTrendIdea={topTrendIdea}
                   />
                 )}
               </div>

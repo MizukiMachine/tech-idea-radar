@@ -489,8 +489,8 @@ export class EntrepreneurAgent {
   async filterIdeas(input: SemanticFilterInput): Promise<SemanticFilterOutput> {
     if (!input.query.trim()) {
       return {
-        filteredCandidates: [...input.candidates].sort((a, b) => b.trendScore - a.trendScore),
-        filterReasoning: 'クエリが空のため、トレンドスコア順で表示しています。',
+        filteredCandidates: input.candidates,
+        filterReasoning: 'クエリが空のため、絞り込みを行わずそのまま表示しています。',
         matchCriteria: [],
       };
     }

@@ -3,15 +3,10 @@ export interface IdeaCandidate {
   title: string;
   tagline: string;
   description: string;
-  trendScore: number;
   tags: string[];
   productType: string;
   targetUsers: string;
   coreProblem: string;
-  revenuePotential: string;
-  developmentScale?: number;
-  developmentScaleReason?: string;
-  estimatedMvpTime?: string;
   differentiation: string;
   sources: {
     rssKeywords: string[];
