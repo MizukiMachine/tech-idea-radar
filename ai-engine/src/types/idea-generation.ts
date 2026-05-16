@@ -4,9 +4,7 @@ import type { IdeaCandidate } from './idea-candidate';
 export interface IdeaGenerationInput {
   rssContext?: RssContext;
   focusKeywords?: string[];
-  previousIdeas?: IdeaCandidate[];
   requestedIdeaCount?: number;
-  recentlyUsedSources?: UsedRssSource[];
 }
 
 export interface UsedRssSource {
@@ -17,21 +15,21 @@ export interface UsedRssSource {
   ideaTitles?: string[];
 }
 
+export interface BatchInfo {
+  batchTime: string;
+  generatedAt: string;
+  ideaCount: number;
+}
+
 export interface IdeaGenerationOutput {
   candidates: IdeaCandidate[];
   generatedAt: string;
+  batchTime?: string;
   sourceSummary: {
     rssItemCount: number;
     usedLLMFallback: boolean;
     dataQuality?: 'external';
     warnings?: string[];
-    generatedIdeaCount?: number;
-    newIdeaCount?: number;
-    duplicateIdeaCount?: number;
-    totalIdeaCount?: number;
-    maxStoredIdeaCount?: number;
-    usedSourceUrlCount?: number;
-    skippedPreviouslyUsedRssCount?: number;
   };
 }
 
