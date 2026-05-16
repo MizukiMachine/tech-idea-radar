@@ -27,12 +27,22 @@ const allowedOrigins = (process.env.CORS_ORIGIN ?? "")
   .filter(Boolean);
 
 if (isProduction && allowedOrigins.length === 0) {
-  console.warn("[CORS] WARNING: CORS_ORIGIN is not set in production. All origins are allowed.");
+  console.warn("=".repeat(60));
+  console.warn("[CORS] ⚠  SECURITY WARNING ⚠");
+  console.warn("[CORS] CORS_ORIGIN is not set in production.");
+  console.warn("[CORS] All origins are allowed — this is insecure.");
+  console.warn("[CORS] Set CORS_ORIGIN to your domain(s), e.g.:");
+  console.warn("[CORS]   CORS_ORIGIN=https://your-domain.com");
+  console.warn("=".repeat(60));
 }
 app.use(allowedOrigins.length > 0 ? cors({ origin: allowedOrigins }) : cors());
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/", (_req, res) => {
+  // Add CORS warning header in production if not configured
+  if (isProduction && allowedOrigins.length === 0) {
+    res.setHeader("X-CORS-Warning", "CORS_ORIGIN is not configured; all origins are allowed. Set CORS_ORIGIN environment variable.");
+  }
   res.json({ message: "Builder Agent Chain backend service" });
 });
 
