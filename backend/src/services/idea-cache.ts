@@ -413,3 +413,11 @@ export async function filterCachedIdeas(input: SemanticFilterInput): Promise<Sem
   const agent = new EntrepreneurAgent(getClient());
   return agent.filterIdeas(input);
 }
+
+export function flushPersistentCache(): void {
+  if (backgroundRefreshTimer) {
+    clearInterval(backgroundRefreshTimer);
+    backgroundRefreshTimer = null;
+  }
+  persistCache();
+}
