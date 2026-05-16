@@ -1,4 +1,6 @@
 import nodemailer from 'nodemailer';
+import https from 'node:https';
+import http from 'node:http';
 import type { RssSourceUnavailableDetails } from 'ai-engine';
 
 interface RssFailureAlert {
@@ -21,8 +23,10 @@ interface EmailConfig {
 }
 
 const DEFAULT_ALERT_COOLDOWN_MINUTES = 60;
+const WEBHOOK_URL = process.env.ADMIN_ALERT_WEBHOOK_URL?.trim() ?? '';
 const lastAlertSentAt = new Map<string, number>();
 let missingConfigLogged = false;
+let missingWebhookLogged = false;
 
 function isTruthy(value: string | undefined): boolean {
   return ['1', 'true', 'yes', 'on'].includes((value ?? '').trim().toLowerCase());
@@ -116,31 +120,103 @@ function markAlertSent(alert: RssFailureAlert): void {
 }
 
 export async function notifyAdminOfRssFailure(alert: RssFailureAlert): Promise<void> {
+  if (isAlertSuppressed(alert)) return;
+
+  // Send email notification
   const config = getEmailConfig();
-  if (!config) {
-    if (!missingConfigLogged) {
-      console.warn('[AdminNotifier] Email alerts are not configured. Set SMTP_HOST and ADMIN_ALERT_EMAIL_TO.');
-      missingConfigLogged = true;
+  if (config) {
+    const transporter = nodemailer.createTransport({
+      host: config.host,
+      port: config.port,
+      secure: config.secure,
+      auth: config.user && config.pass
+        ? { user: config.user, pass: config.pass }
+        : undefined,
+    });
+
+    await transporter.sendMail({
+      from: config.from,
+      to: config.to,
+      subject: `[Builder Agent Chain] RSS取得失敗: ${alert.operation}`,
+      text: buildAlertText(alert),
+    });
+  } else if (!missingConfigLogged) {
+    console.warn('[AdminNotifier] Email alerts are not configured. Set SMTP_HOST and ADMIN_ALERT_EMAIL_TO.');
+    missingConfigLogged = true;
+  }
+
+  // Send webhook notification (Slack/Discord)
+  await sendWebhookNotification(alert);
+
+  markAlertSent(alert);
+}
+
+function buildWebhookPayload(alert: RssFailureAlert): Record<string, unknown> {
+  const details = alert.details ?? {};
+  const isDiscord = WEBHOOK_URL.includes('discord.com');
+
+  const text = [
+    `**[Builder Agent Chain] RSS取得失敗: ${alert.operation}**`,
+    `発生時刻: ${alert.occurredAt}`,
+    `エラー: ${alert.errorMessage}`,
+    `RSS記事数: ${details.rssArticleCount ?? '-'}`,
+    `注目キーワード数: ${details.trendingKeywordCount ?? '-'}`,
+    `アイデアキャッシュ生成日時: ${alert.ideaCacheGeneratedAt ?? '-'}`,
+    `トレンドキャッシュ生成日時: ${alert.trendCacheGeneratedAt ?? '-'}`,
+  ].join('\n');
+
+  if (isDiscord) {
+    return {
+      content: text,
+      username: 'Builder Agent Chain Alert',
+    };
+  }
+
+  // Slack format
+  return {
+    text,
+    username: 'Builder Agent Chain Alert',
+    icon_emoji: ':warning:',
+  };
+}
+
+async function sendWebhookNotification(alert: RssFailureAlert): Promise<void> {
+  if (!WEBHOOK_URL) {
+    if (!missingWebhookLogged) {
+      console.log('[AdminNotifier] Webhook alerts not configured. Set ADMIN_ALERT_WEBHOOK_URL for Slack/Discord notifications.');
+      missingWebhookLogged = true;
     }
     return;
   }
 
-  if (isAlertSuppressed(alert)) return;
+  try {
+    const payload = JSON.stringify(buildWebhookPayload(alert));
+    const url = new URL(WEBHOOK_URL);
+    const client = url.protocol === 'https:' ? https : http;
 
-  const transporter = nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
-    secure: config.secure,
-    auth: config.user && config.pass
-      ? { user: config.user, pass: config.pass }
-      : undefined,
-  });
-
-  await transporter.sendMail({
-    from: config.from,
-    to: config.to,
-    subject: `[Builder Agent Chain] RSS取得失敗: ${alert.operation}`,
-    text: buildAlertText(alert),
-  });
-  markAlertSent(alert);
+    await new Promise<void>((resolve, reject) => {
+      const req = client.request(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
+        },
+        timeout: 10000,
+      }, (res) => {
+        res.resume(); // drain response
+        if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Webhook returned status ${res.statusCode}`));
+        }
+      });
+      req.on('error', reject);
+      req.on('timeout', () => { req.destroy(); reject(new Error('Webhook request timed out')); });
+      req.write(payload);
+      req.end();
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[AdminNotifier] Webhook notification failed: ${message}`);
+  }
 }
