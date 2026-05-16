@@ -75,15 +75,7 @@ describe('IdeaGenerationAgent', () => {
         }],
       },
       focusKeywords: ['AI', 'SaaS'],
-      previousIdeas: [candidate],
       requestedIdeaCount: 5,
-      recentlyUsedSources: [{
-        title: 'Already used article',
-        url: 'https://example.com/used-rss',
-        lastUsedAt: '2026-05-14T00:00:00.000Z',
-        count: 1,
-        ideaTitles: ['Used idea'],
-      }],
     });
 
     expect(result[0].title).toBe('AI Ops Memo');
@@ -92,11 +84,7 @@ describe('IdeaGenerationAgent', () => {
     expect(prompt).toContain('AI, SaaS');
     expect(prompt).toContain('### RSSコンテキスト');
     expect(prompt).toContain('### フォーカスキーワード');
-    expect(prompt).toContain('### 既存アイデア');
-    expect(prompt).toContain('### 使用済みRSS記事');
     expect(prompt).toContain('最大 5 件');
-    expect(prompt).toContain('障害対応の知見が散らばる');
-    expect(prompt).toContain('https://example.com/used-rss');
   });
 
   it('refuses to call the LLM when RSS articles are unavailable', async () => {
@@ -145,30 +133,24 @@ describe('EntrepreneurAgent', () => {
     expect(progress.length).toBeGreaterThan(0);
   });
 
-  it('passes previous ideas and requested count into the generation prompt', async () => {
+  it('passes requested count into the generation prompt', async () => {
     const client = createMockClient(JSON.stringify([candidate]));
     const agent = new EntrepreneurAgent(client);
 
-    await agent.generateIdeas(undefined, ['AI'], [candidate], 3);
+    await agent.generateIdeas(undefined, ['AI'], 3);
 
     const prompt = vi.mocked(client.send).mock.calls[0]?.[1] ?? '';
     expect(prompt).toContain('最大 3 件');
-    expect(prompt).toContain('AI Ops Memo');
-    expect(prompt).toContain('既存アイデアと実質的に同じものは除外');
   });
 
-  it('stops generation when every available RSS article was previously used', async () => {
+  it('sets batchTime on candidates when provided', async () => {
     const client = createMockClient(JSON.stringify([candidate]));
     const agent = new EntrepreneurAgent(client);
 
-    await expect(agent.generateIdeas(undefined, ['AI'], [], 3, [{
-      title: 'AI Ops article',
-      url: 'https://example.com/ai-ops',
-      lastUsedAt: '2026-05-14T00:00:00.000Z',
-      count: 1,
-    }])).rejects.toMatchObject({ name: 'RssSourceUnavailableError' });
+    const result = await agent.generateIdeas(undefined, undefined, 15, '2026-05-16T08:00:00+09:00');
 
-    expect(client.send).not.toHaveBeenCalled();
+    expect(result.candidates[0].batchTime).toBe('2026-05-16T08:00:00+09:00');
+    expect(result.batchTime).toBe('2026-05-16T08:00:00+09:00');
   });
 
   it('returns candidates unchanged for empty filter queries without calling the LLM', async () => {
