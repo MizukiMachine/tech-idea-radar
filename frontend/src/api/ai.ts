@@ -22,13 +22,29 @@ export interface SourceSummary {
   usedLLMFallback: boolean;
   dataQuality?: 'external';
   warnings?: string[];
-  generatedIdeaCount?: number;
-  newIdeaCount?: number;
-  duplicateIdeaCount?: number;
-  totalIdeaCount?: number;
-  maxStoredIdeaCount?: number;
-  usedSourceUrlCount?: number;
-  skippedPreviouslyUsedRssCount?: number;
+}
+
+export interface BatchInfo {
+  batchTime: string;
+  generatedAt: string;
+  ideaCount: number;
+}
+
+export function formatBatchLabel(batchTime: string): string {
+  // batchTime format: "2026-05-16T08:00:00+09:00"
+  try {
+    const date = new Date(batchTime);
+    if (Number.isNaN(date.getTime())) return batchTime;
+    return date.toLocaleString('ja-JP', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+  } catch {
+    return batchTime;
+  }
 }
 
 export interface IdeasMeta {
@@ -41,19 +57,16 @@ export interface IdeasMeta {
     publicReadonlyMode?: boolean;
     adminAuthEnabled?: boolean;
     persistentCacheEnabled?: boolean;
-    cacheTtlHours?: number;
     warmupOnStart?: boolean;
-    backgroundRefreshIntervalHours?: number;
     ideaGenerationBatchSize?: number;
-    ideaMaxStoredCandidates?: number;
-    ideaSourceHistoryLimit?: number;
+    batchScheduleHours?: number[];
+    maxBatches?: number;
   };
   cache: {
     status: 'empty' | 'cached' | 'stale';
-    expiresAt: string | null;
     generatedAt: string | null;
     candidateCount: number;
-    sourceUsageCount?: number;
+    batchCount: number;
     sourceSummary: SourceSummary | null;
   };
   generationInProgress: boolean;
@@ -97,6 +110,7 @@ export async function fetchIdeas(): Promise<{
   candidates: IdeaCandidate[];
   generatedAt: string;
   sourceSummary: SourceSummary;
+  batches: BatchInfo[];
 }> {
   const res = await fetch(`${API_BASE}/api/ai/ideas`);
   if (!res.ok) await throwApiError(res, 'fetchIdeas');
@@ -134,7 +148,7 @@ function ideaStream(
   callbacks: {
     onProgress?: (text: string) => void;
     onIdeaGenerated: (idea: IdeaCandidate) => void;
-    onComplete: (summary: { generatedAt: string; count: number; sourceSummary?: SourceSummary }) => void;
+    onComplete: (summary: { generatedAt: string; count: number; sourceSummary?: SourceSummary; batches?: BatchInfo[] }) => void;
     onError: (error: string) => void;
   },
   body?: Record<string, unknown>,
