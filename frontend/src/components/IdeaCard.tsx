@@ -1,4 +1,5 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
+import { formatBatchLabel } from '../api/ai';
 import './IdeaCard.css';
 
 const CARD_ICONS = ['AI', 'PR', 'DB', 'UX', 'API', 'SaaS', 'Ops', 'Sc', 'Dev', 'Web', 'Doc', 'Rev', 'Fit', 'CMS', 'BI'];
@@ -41,6 +42,9 @@ export default function IdeaCard({ idea, index, viewMode = 'grid', selected = fa
                 <h3 className="idea-card__title">{idea.title}</h3>
             </div>
             <p className="idea-card__tagline">{idea.tagline}</p>
+            {idea.batchTime && (
+                <span className="idea-card__batch">{formatBatchLabel(idea.batchTime)}</span>
+            )}
         </button>
     );
 }
