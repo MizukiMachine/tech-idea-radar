@@ -176,7 +176,7 @@ function ArticleRow({
         <h4>{displayTitle}</h4>
       </div>
       <div className="rss-row__actions">
-        <a href={articleUrl(article)} target="_blank" rel="noreferrer">読む</a>
+        <a href={articleUrl(article)} target="_blank" rel="noopener noreferrer">読む</a>
         <button type="button" className="rss-row__summary-btn" onClick={onToggleSummary}>
           {expanded ? '要約を閉じる' : '記事の要約'}
         </button>
