@@ -173,8 +173,9 @@ function persistCache(): void {
 
   try {
     fs.mkdirSync(path.dirname(PERSISTENT_CACHE_FILE), { recursive: true });
+    const tmpFile = `${PERSISTENT_CACHE_FILE}.tmp.${process.pid}`;
     fs.writeFileSync(
-      PERSISTENT_CACHE_FILE,
+      tmpFile,
       JSON.stringify({
         version: PERSISTENT_CACHE_VERSION,
         updatedAt: new Date().toISOString(),
@@ -182,6 +183,7 @@ function persistCache(): void {
         trends: trendCache,
       }, null, 2),
     );
+    fs.renameSync(tmpFile, PERSISTENT_CACHE_FILE);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[Cache] Failed to persist cache: ${message}`);
@@ -251,6 +253,20 @@ export function getTrendCacheStatus(): CacheStatus {
 
 export function isPublicReadonlyMode(): boolean {
   return PUBLIC_READONLY_MODE;
+}
+
+export function isGenerationInProgress(): boolean {
+  return Boolean(generationLock);
+}
+
+export async function waitForGeneration(timeoutMs: number): Promise<void> {
+  if (!generationLock) return;
+  await Promise.race([
+    generationLock.then(() => {}),
+    new Promise<void>((_, reject) =>
+      setTimeout(() => reject(new Error('Generation wait timed out')), timeoutMs),
+    ),
+  ]);
 }
 
 export function isAdminAuthEnabled(): boolean {
@@ -472,6 +488,13 @@ export function startBackgroundCacheRefresh(): void {
   }
 
   if (batchScheduleTimer) return;
+
+  // In cluster mode, only worker 0 runs the scheduler to avoid duplicate batches
+  const instanceId = process.env.NODE_APP_INSTANCE;
+  if (instanceId !== undefined && instanceId !== '0') {
+    console.log(`[Cache] Batch scheduler skipped on worker ${instanceId} (worker 0 only)`);
+    return;
+  }
 
   scheduleNextBatch();
   console.log(`[Cache] Batch scheduler started (JST: ${[...BATCH_SCHEDULE_HOURS_JST].join(', ')}時)`);
