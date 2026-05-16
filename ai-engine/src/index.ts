@@ -18,4 +18,4 @@ export * from './types/idea-generation';
 export * from './types/semantic-filter';
 
 // Config
-export { CACHE_REFRESH_INTERVAL_MS, DEFAULT_IDEA_COUNT } from './config/constants';
+export { DEFAULT_IDEA_COUNT, MAX_BATCHES, BATCH_SCHEDULE_HOURS_JST } from './config/constants';
