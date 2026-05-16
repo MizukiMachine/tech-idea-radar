@@ -10,6 +10,7 @@ import {
   type SourceSummary,
   type IdeasMeta,
   type TrendScan,
+  type BatchInfo,
 } from './api/ai';
 import Sidebar from './components/Sidebar';
 import TabFilter from './components/TabFilter';
@@ -150,6 +151,8 @@ function App(): JSX.Element {
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedIdea, setSelectedIdea] = useState<IdeaCandidate | null>(null);
   const [modalIdea, setModalIdea] = useState<IdeaCandidate | null>(null);
+  const [activeBatch, setActiveBatch] = useState<string | null>(null);
+  const [batches, setBatches] = useState<BatchInfo[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const refreshIdeasMeta = useCallback((retryUsage = false) => {
     const update = () => {
@@ -195,6 +198,7 @@ function App(): JSX.Element {
         if (!cancelled && result.candidates.length > 0) {
           setIdeas(result.candidates);
           setSourceSummary(result.sourceSummary);
+          setBatches(result.batches ?? []);
           setLoading(false);
           return;
         }
@@ -279,6 +283,7 @@ function App(): JSX.Element {
       },
       onComplete: (summary) => {
         setSourceSummary(summary.sourceSummary ?? null);
+        setBatches(summary.batches ?? []);
         setLoading(false);
         setProgressText(null);
         refreshIdeasMeta(true);
@@ -321,6 +326,7 @@ function App(): JSX.Element {
 
   const sourceIdeas = semanticFilteredIdeas ?? ideas;
   const displayedIdeas = sourceIdeas.filter((idea) => {
+      if (activeBatch && idea.batchTime !== activeBatch) return false;
       const text = ideaText(idea);
       const normalizedSearch = searchQuery.trim().toLowerCase();
       if (!semanticFilteredIdeas && normalizedSearch && !matchesSearchQuery(text, normalizedSearch)) return false;
@@ -492,6 +498,9 @@ function App(): JSX.Element {
                   <Sidebar
                     onCategoryFilter={setActiveCategory}
                     onInterestChange={setActiveInterests}
+                    batches={batches}
+                    activeBatch={activeBatch}
+                    onBatchFilter={setActiveBatch}
                   />
                 )}
 
