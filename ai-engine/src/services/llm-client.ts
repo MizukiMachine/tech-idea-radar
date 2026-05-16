@@ -75,8 +75,11 @@ export class LLMClient {
 
   async send(systemPrompt: string, userPrompt: string, maxTokens?: number): Promise<string> {
     const tokens = maxTokens ?? this.maxTokens;
-    const promptPreview = userPrompt.slice(0, 80).replace(/\n/g, ' ');
-    console.log(`[LLMClient] Sending request (model=${this.model}, max_tokens=${tokens}, prompt="${promptPreview}...")`);
+    const isProd = process.env.NODE_ENV === 'production';
+    const promptInfo = isProd
+      ? `${userPrompt.length} chars`
+      : `"${userPrompt.slice(0, 80).replace(/\n/g, ' ')}..."`;
+    console.log(`[LLMClient] Sending request (model=${this.model}, max_tokens=${tokens}, prompt=${promptInfo})`);
 
     let lastError: unknown;
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {

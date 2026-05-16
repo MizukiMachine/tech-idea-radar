@@ -1,0 +1,86 @@
+# ============================================
+# Nginx config for Builder Agent Chain
+# ============================================
+# Usage:
+#   1. Replace YOUR_DOMAIN with your actual domain
+#   2. Copy to /etc/nginx/sites-available/builder-agent-chain
+#   3. ln -s /etc/nginx/sites-available/builder-agent-chain /etc/nginx/sites-enabled/
+#   4. certbot --nginx -d YOUR_DOMAIN
+#
+# Assumes:
+#   - Frontend static files at /var/www/builder-agent-chain/frontend
+#   - Backend running on port 3001 (PM2)
+#   - Logs at /var/log/nginx/builder-agent-chain/
+
+upstream backend {
+    server 127.0.0.1:3001;
+    keepalive 64;
+}
+
+server {
+    listen 80;
+    server_name YOUR_DOMAIN;
+
+    # Redirect HTTP to HTTPS (uncomment after certbot setup)
+    # return 301 https://$host$request_uri;
+
+    # --- Uncomment the server block below after certbot setup ---
+    # listen 443 ssl http2;
+    # ssl_certificate /etc/letsencrypt/live/YOUR_DOMAIN/fullchain.pem;
+    # ssl_certificate_key /etc/letsencrypt/live/YOUR_DOMAIN/privkey.pem;
+
+    root /var/www/builder-agent-chain/frontend;
+    index index.html;
+
+    # Gzip
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml;
+    gzip_min_length 256;
+
+    # Static assets with long cache (Vite hashes filenames)
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Frontend SPA — serve index.html for all non-file routes
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # API proxy — no buffering for SSE streams
+    location /api/ {
+        proxy_pass http://backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # SSE support
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_set_header Connection '';
+        proxy_read_timeout 300s;
+    }
+
+    # Health check proxy
+    location /health {
+        proxy_pass http://backend;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # Block dotfiles
+    location ~ /\. {
+        deny all;
+    }
+
+    access_log /var/log/nginx/builder-agent-chain/access.log;
+    error_log /var/log/nginx/builder-agent-chain/error.log;
+}

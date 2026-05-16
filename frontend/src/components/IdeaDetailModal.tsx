@@ -55,7 +55,7 @@ export default function IdeaDetailModal({ idea, onClose }: IdeaDetailModalProps)
                         {evidenceUrls.length > 0 ? (
                             <div className="idea-modal__links">
                                 {evidenceUrls.map((source) => (
-                                    <a key={source.url} href={source.url} target="_blank" rel="noreferrer">
+                                    <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
                                         <span>{source.type}</span>
                                         {source.title || source.url}
                                     </a>
