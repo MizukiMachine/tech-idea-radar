@@ -281,6 +281,7 @@ router.post('/ideas/refresh', async (_req: Request, res: Response) => {
       generatedAt: result.generatedAt,
       count: result.candidates.length,
       sourceSummary: result.sourceSummary,
+      batches: getBatchInfos(),
     }, disconnected);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

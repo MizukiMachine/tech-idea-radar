@@ -36,6 +36,7 @@ export function formatBatchLabel(batchTime: string): string {
     const date = new Date(batchTime);
     if (Number.isNaN(date.getTime())) return batchTime;
     return date.toLocaleString('ja-JP', {
+      timeZone: 'Asia/Tokyo',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',

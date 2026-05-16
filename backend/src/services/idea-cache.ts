@@ -73,7 +73,7 @@ function getNextScheduledBatchTime(now: Date): Date {
 
   // Find the next scheduled hour in JST
   let targetHour = scheduleHours.find((h) => h > jstHour);
-  let targetDate = new Date(jst);
+  const targetDate = new Date(jst);
 
   if (targetHour === undefined) {
     // No more slots today — use first slot tomorrow
@@ -385,10 +385,10 @@ export async function generateAndCacheIdeas(
         },
       };
 
-      // Add new batch to front, trim to MAX_BATCHES
+      // Replace same-slot batch or prepend, trim to MAX_BATCHES
       batches = [
         { batchTime, data: batchOutput },
-        ...batches,
+        ...batches.filter((b) => b.batchTime !== batchTime),
       ].slice(0, MAX_BATCHES);
 
       persistCache();

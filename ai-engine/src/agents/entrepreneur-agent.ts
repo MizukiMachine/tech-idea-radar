@@ -22,10 +22,6 @@ const GENERIC_EVIDENCE_TERMS = new Set([
   '文章を', '章を書', 'を書く',
 ]);
 
-function articleUrl(article: RssArticle): string {
-  return article.url ?? article.link;
-}
-
 function sourceNames(rssContext: RssContext): string[] {
   const articleSources = rssContext.relatedArticles.map((article) => article.source).filter(Boolean);
   const failedSources = rssContext.sourceErrors?.map((error) => error.source).filter(Boolean) ?? [];
