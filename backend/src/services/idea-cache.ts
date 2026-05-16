@@ -134,29 +134,24 @@ function loadPersistentCache(): void {
 
   try {
     if (!fs.existsSync(PERSISTENT_CACHE_FILE)) return;
-    const parsed = JSON.parse(fs.readFileSync(PERSISTENT_CACHE_FILE, 'utf8')) as {
-      version?: number;
-      batches?: BatchEntry[];
-      trends?: { data: TrendScanOutput; expiresAt: number };
-    };
+    const raw = JSON.parse(fs.readFileSync(PERSISTENT_CACHE_FILE, 'utf8')) as Record<string, unknown>;
+    const version = typeof raw.version === 'number' ? raw.version : 0;
 
-    if (parsed.version !== PERSISTENT_CACHE_VERSION) return;
-
-    if (Array.isArray(parsed.batches)) {
-      batches = parsed.batches.slice(0, MAX_BATCHES);
-    } else if (parsed.version === 1) {
+    if (version === PERSISTENT_CACHE_VERSION) {
+      // v2: batch-based cache
+      if (Array.isArray(raw.batches)) {
+        batches = (raw.batches as BatchEntry[]).slice(0, MAX_BATCHES);
+      }
+      const trends = raw.trends as { data: TrendScanOutput; expiresAt: number } | undefined;
+      if (trends?.data && Number.isFinite(trends.expiresAt)) trendCache = trends;
+    } else if (version === 1) {
       // v1 migration: convert single cache to a single batch entry
-      // handled below in v1 compat
-    }
-
-    if (parsed.trends?.data && Number.isFinite(parsed.trends.expiresAt)) trendCache = parsed.trends;
-
-    // v1 migration: if we have old-format data
-    if (batches.length === 0) {
-      const v1 = parsed as {
+      const v1 = raw as {
         version?: number;
         ideas?: { data: IdeaGenerationOutput; expiresAt: number };
+        trends?: { data: TrendScanOutput; expiresAt: number };
       };
+      if (v1.trends?.data && Number.isFinite(v1.trends.expiresAt)) trendCache = v1.trends;
       if (v1.ideas?.data?.candidates?.length) {
         const batchTime = getCurrentBatchTimeJST(new Date(v1.ideas.data.generatedAt));
         const migrated: IdeaGenerationOutput = {
