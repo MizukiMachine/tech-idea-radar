@@ -12,6 +12,7 @@ import {
   isAdminAuthEnabled,
   isPublicReadonlyMode,
   scanAndCacheTrends,
+  getBatchInfos,
 } from '../services/idea-cache';
 import { isRssSourceUnavailableError, type TrendScanOutput } from 'ai-engine';
 
@@ -90,8 +91,9 @@ router.get('/ideas/meta', (_req: Request, res: Response) => {
 router.get('/ideas', async (_req: Request, res: Response) => {
   try {
     const cached = getCachedIdeas();
+    const batchInfos = getBatchInfos();
     if (cached) {
-      res.json({ status: getIdeaCacheStatus(), ...cached });
+      res.json({ status: getIdeaCacheStatus(), ...cached, batches: batchInfos });
       return;
     }
 
@@ -103,6 +105,7 @@ router.get('/ideas', async (_req: Request, res: Response) => {
         rssItemCount: 0,
         usedLLMFallback: false,
       },
+      batches: [],
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -181,6 +184,7 @@ router.get('/ideas/stream', async (_req: Request, res: Response) => {
         generatedAt: cached.generatedAt,
         count: cached.candidates.length,
         sourceSummary: cached.sourceSummary,
+        batches: getBatchInfos(),
       }, disconnected);
     } else {
       // Generate new ideas with progress streaming
@@ -195,6 +199,7 @@ router.get('/ideas/stream', async (_req: Request, res: Response) => {
         generatedAt: result.generatedAt,
         count: result.candidates.length,
         sourceSummary: result.sourceSummary,
+        batches: getBatchInfos(),
       }, disconnected);
     }
   } catch (error) {
