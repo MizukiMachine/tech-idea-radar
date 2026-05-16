@@ -12,6 +12,7 @@
   "scripts": {
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "build": "npm run backend:build && npm run frontend:build",
     "format": "prettier --write .",
     "backend:dev": "npm run dev --workspace backend",
     "backend:dev:3010": "PORT=3010 npm run dev --workspace backend",
