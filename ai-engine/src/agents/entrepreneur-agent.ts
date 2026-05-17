@@ -381,8 +381,14 @@ export class EntrepreneurAgent {
     const totalTime = Date.now() - startTime;
     console.log(`[IdeaGeneration] Generated ${candidates.length} ideas in ${totalTime}ms`);
 
+    let featuredIdea: IdeaCandidate | undefined;
+    if (candidates.length > 0) {
+      featuredIdea = await this.selectFeaturedIdea(candidates);
+    }
+
     return {
       candidates,
+      featuredIdea,
       generatedAt: new Date().toISOString(),
       batchTime,
       sourceSummary: trendScan.sourceSummary,
@@ -407,6 +413,40 @@ export class EntrepreneurAgent {
     );
     console.log(`[IdeaGeneration] Pipeline completed in ${Date.now() - startTime}ms`);
     return result;
+  }
+
+  private async selectFeaturedIdea(candidates: IdeaCandidate[]): Promise<IdeaCandidate | undefined> {
+    try {
+      const summaries = candidates.map((c, i) => ({
+        index: i,
+        title: c.title,
+        tagline: c.tagline,
+        productType: c.productType,
+        coreProblem: c.coreProblem,
+        differentiation: c.differentiation,
+      }));
+
+      const systemPrompt = [
+        'あなたはプロダクト開発の専門家です。',
+        '以下のアイデア候補の中から、最も実現可能性が高く、市場ニーズに合致し、',
+        '技術的優位性がある「一番面白い」アイデアを1つ選んでください。',
+        '選択理由は不要です。選んだアイデアの index 番号のみを返してください。',
+        '出力は JSON: {"index": <number>} のみ。',
+      ].join('');
+
+      const userPrompt = JSON.stringify(summaries, null, 2);
+      const raw = await this.llm.send(systemPrompt, userPrompt, 256);
+      const parsed = JSON.parse(raw.trim());
+      const idx = typeof parsed.index === 'number' ? parsed.index : undefined;
+      if (idx !== undefined && idx >= 0 && idx < candidates.length) {
+        console.log(`[IdeaGeneration] Featured idea selected: index=${idx} "${candidates[idx].title}"`);
+        return candidates[idx];
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[IdeaGeneration] Featured idea selection failed: ${message}`);
+    }
+    return undefined;
   }
 
   async filterIdeas(input: SemanticFilterInput): Promise<SemanticFilterOutput> {

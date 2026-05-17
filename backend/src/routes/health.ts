@@ -7,7 +7,6 @@ import {
   getBatchInfos,
   isPublicReadonlyMode,
   isPersistentCacheEnabled,
-  isCacheDisabled,
   isGenerationInProgress,
 } from "../services/idea-cache";
 
@@ -16,7 +15,6 @@ const healthRouter = Router();
 healthRouter.get("/", (_req, res) => {
   const cached = getCachedIdeas();
   const persistentCacheEnabled = isPersistentCacheEnabled();
-  const cacheDisabled = isCacheDisabled();
   const corsConfigured = (process.env.CORS_ORIGIN ?? "").trim().length > 0;
 
   res.status(200).json({
@@ -40,7 +38,6 @@ healthRouter.get("/", (_req, res) => {
     config: {
       publicReadonlyMode: isPublicReadonlyMode(),
       persistentCacheEnabled,
-      cacheDisabled,
       hasApiKey: Boolean(process.env.ZAI_API_KEY),
       corsConfigured,
       port: process.env.PORT ?? "3001",
@@ -54,7 +51,6 @@ healthRouter.get("/", (_req, res) => {
       generatedAt: cached?.generatedAt ?? null,
       batchCount: getBatchInfos().length,
       persistentCacheEnabled,
-      cacheDisabled,
       generationInProgress: isGenerationInProgress(),
     },
     process: {
