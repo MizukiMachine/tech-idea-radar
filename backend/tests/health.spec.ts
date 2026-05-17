@@ -26,6 +26,16 @@ describe("GET /health", () => {
       expect.objectContaining({
         status: "ok",
         service: "builder-agent-chain-backend",
+        cache: expect.objectContaining({
+          hasData: expect.any(Boolean),
+          batchCount: expect.any(Number),
+          persistentCacheEnabled: expect.any(Boolean),
+          cacheDisabled: expect.any(Boolean),
+        }),
+        config: expect.objectContaining({
+          corsConfigured: expect.any(Boolean),
+          cacheDisabled: expect.any(Boolean),
+        }),
       }),
     );
   });

@@ -28,8 +28,9 @@
 ## 公開運用向けの設定
 
 - `PUBLIC_READONLY_MODE=true`: 訪問者アクセスでは自動生成・再取得せず、キャッシュ済みデータだけを表示
+- `IDEA_CACHE_DISABLED=true`: 当面の運用ではキャッシュを使わず、画面表示用の古い生成結果を復元しない。`false` にすると永続キャッシュ運用に戻せる
 - `ADMIN_API_TOKEN=...`: `Authorization: Bearer ...` 付きの管理リクエストだけ再生成・再取得・AI絞り込みを許可
-- `IDEA_CACHE_FILE=.tmp/idea-cache.json`: アイデアとトレンドのキャッシュをファイルに永続化
+- `IDEA_CACHE_FILE=.tmp/idea-cache.json`: アイデアとトレンドのキャッシュをファイルに永続化。`IDEA_CACHE_DISABLED=true` の間は無視される
 - `IDEA_CACHE_TTL_HOURS=24`: キャッシュの有効時間。公開モードのデフォルトは24時間
 - `IDEA_GENERATION_BATCH_SIZE=5`: 1回の生成で追加を試みるアイデア数。定期更新で蓄積する前提のため少数生成
 - `IDEA_MAX_STORED_CANDIDATES=60`: 過去分を含めて保持するアイデア数の上限。新しい非重複アイデアを優先して残す

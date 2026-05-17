@@ -18,6 +18,9 @@ import { notifyAdminOfRssFailure } from './admin-notifier';
 const SERVER_STARTED_AT = new Date().toISOString();
 const INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
 const PERSISTENT_CACHE_FILE = process.env.IDEA_CACHE_FILE?.trim() ?? '';
+const CACHE_DISABLED = process.env.IDEA_CACHE_DISABLED === undefined
+  ? true
+  : isTruthy(process.env.IDEA_CACHE_DISABLED);
 const PUBLIC_READONLY_MODE = isTruthy(process.env.PUBLIC_READONLY_MODE);
 const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN?.trim() ?? '';
 const PERSISTENT_CACHE_VERSION = 2;
@@ -148,6 +151,7 @@ function isPersistentTrendCache(value: unknown): value is { data: TrendScanOutpu
 }
 
 function loadPersistentCache(): void {
+  if (CACHE_DISABLED) return;
   if (!PERSISTENT_CACHE_FILE) return;
 
   try {
@@ -195,6 +199,7 @@ function loadPersistentCache(): void {
 }
 
 function persistCache(): void {
+  if (CACHE_DISABLED) return;
   if (!PERSISTENT_CACHE_FILE) return;
 
   try {
@@ -267,6 +272,7 @@ async function notifyRssSourceFailure(error: unknown, fallbackOperation: string)
 // --- Public getters ---
 
 export function getCachedIdeas(): IdeaGenerationOutput | null {
+  if (CACHE_DISABLED) return null;
   loadPersistentCache();
   if (batches.length === 0) return null;
 
@@ -283,17 +289,20 @@ export function getCachedIdeas(): IdeaGenerationOutput | null {
 }
 
 export function getCachedTrends(): TrendScanOutput | null {
+  if (CACHE_DISABLED) return null;
   loadPersistentCache();
   return trendCache?.data ?? null;
 }
 
 export function getIdeaCacheStatus(): CacheStatus {
+  if (CACHE_DISABLED) return 'empty';
   loadPersistentCache();
   if (batches.length === 0) return 'empty';
   return 'cached';
 }
 
 export function getTrendCacheStatus(): CacheStatus {
+  if (CACHE_DISABLED) return 'empty';
   loadPersistentCache();
   return cacheStatus(trendCache);
 }
@@ -338,7 +347,11 @@ export function isAdminAuthEnabled(): boolean {
 }
 
 export function isPersistentCacheEnabled(): boolean {
-  return Boolean(PERSISTENT_CACHE_FILE);
+  return Boolean(PERSISTENT_CACHE_FILE) && !CACHE_DISABLED;
+}
+
+export function isCacheDisabled(): boolean {
+  return CACHE_DISABLED;
 }
 
 export function getAdminApiToken(): string {
@@ -355,6 +368,7 @@ export function getRuntimeMeta(): {
     publicReadonlyMode: boolean;
     adminAuthEnabled: boolean;
     persistentCacheEnabled: boolean;
+    cacheDisabled: boolean;
     warmupOnStart: boolean;
     ideaGenerationBatchSize: number;
     batchScheduleHours: readonly number[];
@@ -382,7 +396,8 @@ export function getRuntimeMeta(): {
       hasZaiApiKey: Boolean(process.env.ZAI_API_KEY),
       publicReadonlyMode: PUBLIC_READONLY_MODE,
       adminAuthEnabled: Boolean(ADMIN_API_TOKEN),
-      persistentCacheEnabled: Boolean(PERSISTENT_CACHE_FILE),
+      persistentCacheEnabled: isPersistentCacheEnabled(),
+      cacheDisabled: CACHE_DISABLED,
       warmupOnStart: WARMUP_ON_START,
       ideaGenerationBatchSize: IDEA_GENERATION_BATCH_SIZE,
       batchScheduleHours: BATCH_SCHEDULE_HOURS_JST,
@@ -416,6 +431,7 @@ export interface BatchInfoApi {
 }
 
 export function getBatchInfos(): BatchInfoApi[] {
+  if (CACHE_DISABLED) return [];
   loadPersistentCache();
   return batches.map((b) => ({
     batchTime: b.batchTime,
@@ -436,7 +452,7 @@ export async function generateAndCacheIdeas(
 
   generationLock = (async () => {
     try {
-      loadPersistentCache();
+      if (!CACHE_DISABLED) loadPersistentCache();
       const batchTime = getCurrentBatchTimeJST(new Date());
       const agent = new EntrepreneurAgent(getClient());
       const result = trendScanOverride && !focusKeywords
@@ -465,13 +481,15 @@ export async function generateAndCacheIdeas(
         },
       };
 
-      // Replace same-slot batch or prepend, trim to MAX_BATCHES
-      batches = [
-        { batchTime, data: batchOutput },
-        ...batches.filter((b) => b.batchTime !== batchTime),
-      ].slice(0, MAX_BATCHES);
+      if (!CACHE_DISABLED) {
+        // Replace same-slot batch or prepend, trim to MAX_BATCHES
+        batches = [
+          { batchTime, data: batchOutput },
+          ...batches.filter((b) => b.batchTime !== batchTime),
+        ].slice(0, MAX_BATCHES);
 
-      persistCache();
+        persistCache();
+      }
       return batchOutput;
     } catch (error) {
       await notifyRssSourceFailure(error, 'idea_generation');
@@ -493,11 +511,13 @@ export async function scanAndCacheTrends(
     try {
       const agent = new EntrepreneurAgent(getClient());
       const result = await agent.scanTrends(onProgress);
-      trendCache = {
-        data: result,
-        expiresAt: Date.now() + 4 * 60 * 60 * 1000,
-      };
-      persistCache();
+      if (!CACHE_DISABLED) {
+        trendCache = {
+          data: result,
+          expiresAt: Date.now() + 4 * 60 * 60 * 1000,
+        };
+        persistCache();
+      }
       return result;
     } catch (error) {
       await notifyRssSourceFailure(error, 'trend_scan');
@@ -511,6 +531,11 @@ export async function scanAndCacheTrends(
 }
 
 export function refreshCachesInBackground(reason: string, force = false): Promise<void> {
+  if (CACHE_DISABLED) {
+    console.log(`[Cache] Background refresh skipped (${reason}): cache is disabled`);
+    return Promise.resolve();
+  }
+
   if (backgroundRefreshLock) return backgroundRefreshLock;
 
   loadPersistentCache();
@@ -545,6 +570,11 @@ export function refreshCachesInBackground(reason: string, force = false): Promis
 }
 
 export function startBackgroundCacheRefresh(): void {
+  if (CACHE_DISABLED) {
+    console.log('[Cache] Persistent and in-memory response cache disabled; startup warmup and scheduler skipped');
+    return;
+  }
+
   loadPersistentCache();
 
   if (!isBackgroundCacheOwner()) {
