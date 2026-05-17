@@ -62,6 +62,7 @@ export interface IdeasMeta {
     ideaGenerationBatchSize?: number;
     batchScheduleHours?: number[];
     maxBatches?: number;
+    maxTrendHistory?: number;
   };
   cache: {
     status: 'empty' | 'cached' | 'stale';
@@ -105,6 +106,13 @@ export interface TrendScan {
   sourceSummary: SourceSummary;
 }
 
+export interface TrendHistoryEntry {
+  scannedAt: string;
+  generatedAt: string;
+  articleCount: number;
+  keywordCount: number;
+}
+
 // GET /api/ideas
 export async function fetchIdeas(): Promise<{
   status: string;
@@ -130,6 +138,20 @@ export async function fetchIdeasMeta(): Promise<IdeasMeta> {
 export async function fetchTrends(): Promise<TrendScan> {
   const res = await fetch(`${API_BASE}/api/ai/trends`, { cache: 'no-store' });
   if (!res.ok) await throwApiError(res, 'fetchTrends');
+  return res.json();
+}
+
+// GET /api/trends/history
+export async function fetchTrendHistory(): Promise<{ history: TrendHistoryEntry[] }> {
+  const res = await fetch(`${API_BASE}/api/ai/trends/history`, { cache: 'no-store' });
+  if (!res.ok) await throwApiError(res, 'fetchTrendHistory');
+  return res.json();
+}
+
+// GET /api/trends/history/:index
+export async function fetchTrendSnapshot(index: number): Promise<TrendScan> {
+  const res = await fetch(`${API_BASE}/api/ai/trends/history/${index}`, { cache: 'no-store' });
+  if (!res.ok) await throwApiError(res, 'fetchTrendSnapshot');
   return res.json();
 }
 
