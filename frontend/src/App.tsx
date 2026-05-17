@@ -154,6 +154,7 @@ function App(): JSX.Element {
   const [activeBatch, setActiveBatch] = useState<string | null>(null);
   const [batches, setBatches] = useState<BatchInfo[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const autoGenerateStartedRef = useRef(false);
   const refreshIdeasMeta = useCallback((retryUsage = false) => {
     const update = () => {
       void fetchIdeasMeta()
@@ -171,23 +172,9 @@ function App(): JSX.Element {
     `最終更新 ${formatStamp(generatedAt)}`,
   ];
 
-  // Load trends and any cached ideas on mount. Idea generation is user-triggered.
+  // Load cached ideas/meta on mount. Fresh generation starts automatically when cache is disabled.
   useEffect(() => {
     let cancelled = false;
-
-    async function loadTrends() {
-      setTrendsLoading(true);
-      setTrendError(null);
-      try {
-        const result = await fetchTrends();
-        if (!cancelled) setTrends(result);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'トレンド取得に失敗しました';
-        if (!cancelled) setTrendError(userFacingError(message));
-      } finally {
-        if (!cancelled) setTrendsLoading(false);
-      }
-    }
 
     async function loadIdeas() {
       const metaPromise = fetchIdeasMeta().catch(() => null);
@@ -210,13 +197,36 @@ function App(): JSX.Element {
       if (!cancelled) setLoading(false);
     }
 
-    void loadTrends();
     void loadIdeas();
     return () => {
       cancelled = true;
       abortRef.current?.abort();
     };
   }, [refreshIdeasMeta]);
+
+  useEffect(() => {
+    if (activeView !== 'trends' || trends) return;
+    let cancelled = false;
+
+    async function loadTrends() {
+      setTrendsLoading(true);
+      setTrendError(null);
+      try {
+        const result = await fetchTrends();
+        if (!cancelled) setTrends(result);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'トレンド取得に失敗しました';
+        if (!cancelled) setTrendError(userFacingError(message));
+      } finally {
+        if (!cancelled) setTrendsLoading(false);
+      }
+    }
+
+    void loadTrends();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeView, trends]);
 
   // Debounced search
   const handleSearch = useCallback((value: string) => {
@@ -242,7 +252,7 @@ function App(): JSX.Element {
     setSemanticFiltering(true);
     setError(null);
     try {
-      const result = await filterIdeas(query);
+      const result = await filterIdeas(query, ideas);
       setSemanticFilteredIdeas(result.filteredCandidates);
       setSemanticFilterText(result.filterReasoning);
     } catch (err) {
@@ -251,7 +261,7 @@ function App(): JSX.Element {
     } finally {
       setSemanticFiltering(false);
     }
-  }, [publicReadonlyMode, searchQuery]);
+  }, [ideas, publicReadonlyMode, searchQuery]);
 
   // Refresh
   const handleRefresh = useCallback((focusKeyword?: string) => {
@@ -323,6 +333,15 @@ function App(): JSX.Element {
     setActiveView('ideas');
     if (ideas.length === 0 && !loading && !publicReadonlyMode) handleRefresh();
   }, [handleRefresh, ideas.length, loading, publicReadonlyMode]);
+
+  useEffect(() => {
+    if (!ideasMeta?.env?.cacheDisabled) return;
+    if (autoGenerateStartedRef.current) return;
+    if (loading || ideas.length > 0 || publicReadonlyMode) return;
+
+    autoGenerateStartedRef.current = true;
+    handleRefresh();
+  }, [handleRefresh, ideas.length, ideasMeta?.env?.cacheDisabled, loading, publicReadonlyMode]);
 
   const sourceIdeas = semanticFilteredIdeas ?? ideas;
   const displayedIdeas = sourceIdeas.filter((idea) => {

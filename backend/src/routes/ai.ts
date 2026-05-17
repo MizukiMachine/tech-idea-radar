@@ -14,13 +14,36 @@ import {
   scanAndCacheTrends,
   getBatchInfos,
 } from '../services/idea-cache';
-import { isRssSourceUnavailableError, type TrendScanOutput } from 'ai-engine';
+import { isRssSourceUnavailableError, type IdeaCandidate, type TrendScanOutput } from 'ai-engine';
 
 // --- Request schemas ---
+
+const CandidateInputSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  tagline: z.string(),
+  description: z.string(),
+  tags: z.array(z.string()),
+  productType: z.string(),
+  targetUsers: z.string(),
+  coreProblem: z.string(),
+  differentiation: z.string(),
+  sources: z.object({
+    rssKeywords: z.array(z.string()),
+    evidenceUrls: z.array(z.object({
+      title: z.string(),
+      url: z.string(),
+      type: z.string(),
+    }).passthrough()).optional(),
+  }).passthrough(),
+  generatedAt: z.string(),
+  batchTime: z.string().optional(),
+}).passthrough();
 
 const FilterInputSchema = z.object({
   query: z.string(),
   topK: z.number().optional(),
+  candidates: z.array(CandidateInputSchema).optional(),
 });
 
 const RefreshIdeasInputSchema = z.object({
@@ -227,15 +250,16 @@ router.post('/ideas/filter', async (req: Request, res: Response) => {
   const { query, topK } = parsed.data;
 
   try {
-    const cached = getCachedIdeas();
-    if (!cached) {
+    const candidateSource = (parsed.data.candidates as IdeaCandidate[] | undefined)
+      ?? getCachedIdeas()?.candidates;
+    if (!candidateSource || candidateSource.length === 0) {
       res.status(503).json({ error: 'Ideas not yet generated. Please try again in a moment.' });
       return;
     }
 
     const result = await filterCachedIdeas({
       query,
-      candidates: topK ? cached.candidates.slice(0, topK) : cached.candidates,
+      candidates: topK ? candidateSource.slice(0, topK) : candidateSource,
       topK,
     });
 
