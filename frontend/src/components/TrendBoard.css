@@ -7,6 +7,88 @@
   min-width: 0;
 }
 
+/* ── Timeline Navigator ────────────────────────────────── */
+
+.tb-timeline {
+  position: relative;
+  z-index: 1;
+  margin-top: -8px;
+  margin-bottom: 8px;
+}
+
+.tb-timeline__scroll {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 8px 4px;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-color) transparent;
+}
+
+.tb-timeline__scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.tb-timeline__scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.tb-timeline__scroll::-webkit-scrollbar-thumb {
+  background: var(--border-color);
+  border-radius: 3px;
+}
+
+.tb-timeline__item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 72px;
+  padding: 10px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tb-timeline__item:hover {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue-glow);
+  color: var(--accent-blue);
+}
+
+.tb-timeline__item--active {
+  border-color: var(--accent-blue);
+  background: var(--accent-blue);
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.35);
+}
+
+.tb-timeline__label {
+  pointer-events: none;
+}
+
+.tb-timeline__indicator {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #fff;
+  pointer-events: none;
+}
+
 /* ── Hero header ──────────────────────────────────────── */
 
 .tb-hero {
