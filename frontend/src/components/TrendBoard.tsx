@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { RssArticle, TrendScan } from '../api/ai';
+import type { RssArticle, TrendScan, TrendHistoryEntry } from '../api/ai';
 import './TrendBoard.css';
 
 const SOURCE_STYLE: Record<string, { color: string; bg: string }> = {
@@ -29,6 +29,25 @@ function formatDate(value: string | null | undefined): string {
   });
 }
 
+function formatTimelineLabel(scannedAt: string): string {
+  const date = new Date(scannedAt);
+  if (Number.isNaN(date.getTime())) return scannedAt;
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffHours < 1) return '今';
+  if (diffHours < 24) return `${diffHours}時間前`;
+  if (diffDays < 7) return `${diffDays}日前`;
+  return date.toLocaleString('ja-JP', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function articleUrl(article: RssArticle): string {
   return article.url || article.link;
 }
@@ -45,12 +64,18 @@ interface TrendBoardProps {
   trends: TrendScan | null;
   loading: boolean;
   error: string | null;
+  trendHistory: TrendHistoryEntry[];
+  activeTrendIndex: number;
+  onSelectTrend: (index: number) => void;
 }
 
 export default function TrendBoard({
   trends,
   loading,
   error,
+  trendHistory,
+  activeTrendIndex,
+  onSelectTrend,
 }: TrendBoardProps): JSX.Element {
   const [expandedArticleUrl, setExpandedArticleUrl] = useState<string | null>(null);
   const rssArticles = trends?.rssContext.relatedArticles ?? [];
@@ -117,6 +142,14 @@ export default function TrendBoard({
           <h3>表示できるRSS記事がありません</h3>
           <p>データ更新後に表示されます。</p>
         </div>
+      )}
+
+      {trendHistory.length > 1 && (
+        <TimelineNavigator
+          history={trendHistory}
+          activeIndex={activeTrendIndex}
+          onSelectIndex={onSelectTrend}
+        />
       )}
 
       {trends && rssArticles.length > 0 && (
@@ -201,6 +234,35 @@ export default function TrendBoard({
   );
 }
 
+/* ── Timeline Navigator ───────────────────────────────── */
+
+interface TimelineNavigatorProps {
+  history: TrendHistoryEntry[];
+  activeIndex: number;
+  onSelectIndex: (index: number) => void;
+}
+
+function TimelineNavigator({ history, activeIndex, onSelectIndex }: TimelineNavigatorProps): JSX.Element {
+  return (
+    <div className="tb-timeline">
+      <div className="tb-timeline__scroll">
+        {history.map((entry, index) => (
+          <button
+            key={entry.scannedAt}
+            type="button"
+            className={`tb-timeline__item ${index === activeIndex ? 'tb-timeline__item--active' : ''}`}
+            onClick={() => onSelectIndex(index)}
+            title={new Date(entry.scannedAt).toLocaleString('ja-JP')}
+          >
+            <span className="tb-timeline__label">{formatTimelineLabel(entry.scannedAt)}</span>
+            {index === activeIndex && <span className="tb-timeline__indicator" />}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Featured article (first) ─────────────────────────── */
 
 function FeaturedArticle({
@@ -256,4 +318,3 @@ function FeaturedArticle({
     </article>
   );
 }
-
