@@ -280,7 +280,7 @@ function App(): JSX.Element {
             className={`workspace-tabs__item ${activeView === 'ideas' ? 'workspace-tabs__item--active' : ''}`}
             onClick={handleOpenIdeas}
           >
-            作るもの提案
+            アイデア
             {hasIdeas && <span>{ideas.length}</span>}
           </button>
           <button
