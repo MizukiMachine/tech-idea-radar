@@ -13,6 +13,8 @@ import {
   isPublicReadonlyMode,
   scanAndCacheTrends,
   getBatchInfos,
+  getTrendHistory,
+  getCachedTrendByIndex,
 } from '../services/idea-cache';
 import { isRssSourceUnavailableError, type IdeaCandidate, type TrendScanOutput } from 'ai-engine';
 
@@ -161,6 +163,43 @@ router.get('/trends', async (_req: Request, res: Response) => {
       error: message,
       code: isRssSourceUnavailableError(error) ? 'RSS_SOURCE_UNAVAILABLE' : 'INTERNAL_ERROR',
     });
+  }
+});
+
+// GET /api/trends/history — trend history metadata
+router.get('/trends/history', async (_req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const history = getTrendHistory();
+    res.json({ history });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[API] GET /trends/history error: ${message}`);
+    res.status(500).json({ error: message });
+  }
+});
+
+// GET /api/trends/history/:index — specific trend snapshot
+router.get('/trends/history/:index', async (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'no-store');
+  try {
+    const index = Number.parseInt(req.params.index, 10);
+    if (Number.isNaN(index) || index < 0) {
+      res.status(400).json({ error: 'Invalid index. Must be a non-negative integer.' });
+      return;
+    }
+
+    const snapshot = getCachedTrendByIndex(index);
+    if (!snapshot) {
+      res.status(404).json({ error: `Trend snapshot at index ${index} not found.` });
+      return;
+    }
+
+    res.json(snapshot);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[API] GET /trends/history/:index error: ${message}`);
+    res.status(500).json({ error: message });
   }
 });
 

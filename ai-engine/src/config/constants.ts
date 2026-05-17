@@ -5,3 +5,4 @@ export const LARGE_MAX_TOKENS = 16384;
 export const DEFAULT_IDEA_COUNT = 15;
 export const MAX_BATCHES = 4;
 export const BATCH_SCHEDULE_HOURS_JST = [0, 4, 8, 12, 16, 20] as const;
+export const MAX_TREND_HISTORY = 30;

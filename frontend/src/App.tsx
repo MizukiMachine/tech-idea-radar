@@ -4,10 +4,13 @@ import {
   fetchIdeas,
   fetchIdeasMeta,
   fetchTrends,
+  fetchTrendHistory,
+  fetchTrendSnapshot,
   type SourceSummary,
   type IdeasMeta,
   type TrendScan,
   type BatchInfo,
+  type TrendHistoryEntry,
 } from './api/ai';
 import Sidebar from './components/Sidebar';
 import TabFilter from './components/TabFilter';
@@ -132,6 +135,9 @@ function App(): JSX.Element {
   const [trends, setTrends] = useState<TrendScan | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [trendError, setTrendError] = useState<string | null>(null);
+  const [trendHistory, setTrendHistory] = useState<TrendHistoryEntry[]>([]);
+  const [activeTrendIndex, setActiveTrendIndex] = useState<number>(0);
+  const [trendSnapshotCache, setTrendSnapshotCache] = useState<Map<number, TrendScan>>(new Map());
   const [ideas, setIdeas] = useState<IdeaCandidate[]>([]);
   const [featuredIdea, setFeaturedIdea] = useState<IdeaCandidate | null>(null);
   const [loading, setLoading] = useState(true);
@@ -197,16 +203,24 @@ function App(): JSX.Element {
     };
   }, [refreshIdeasMeta]);
 
+  // Load trends and trend history when switching to trends view
   useEffect(() => {
-    if (activeView !== 'trends' || trends) return;
+    if (activeView !== 'trends') return;
     let cancelled = false;
 
     async function loadTrends() {
       setTrendsLoading(true);
       setTrendError(null);
       try {
-        const result = await fetchTrends();
-        if (!cancelled) setTrends(result);
+        const [trendsResult, historyResult] = await Promise.all([
+          fetchTrends(),
+          fetchTrendHistory(),
+        ]);
+        if (!cancelled) {
+          setTrends(trendsResult);
+          setTrendHistory(historyResult.history);
+          setActiveTrendIndex(0);
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'トレンド取得に失敗しました';
         if (!cancelled) setTrendError(userFacingError(message));
@@ -219,7 +233,38 @@ function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [activeView, trends]);
+  }, [activeView]);
+
+  // Handle trend snapshot selection
+  const handleSelectTrendSnapshot = useCallback(async (index: number) => {
+    if (index === activeTrendIndex) return;
+
+    setTrendsLoading(true);
+    setTrendError(null);
+    setActiveTrendIndex(index);
+
+    try {
+      // Check cache first
+      const cached = trendSnapshotCache.get(index);
+      if (cached) {
+        setTrends(cached);
+        setTrendsLoading(false);
+        return;
+      }
+
+      // Fetch from API
+      const snapshot = await fetchTrendSnapshot(index);
+      if (!trendSnapshotCache.has(index)) {
+        setTrendSnapshotCache((prev) => new Map(prev).set(index, snapshot));
+      }
+      setTrends(snapshot);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'スナップショット取得に失敗しました';
+      setTrendError(userFacingError(message));
+    } finally {
+      setTrendsLoading(false);
+    }
+  }, [activeTrendIndex, trendSnapshotCache]);
 
   // Debounced search
   const handleSearch = useCallback((value: string) => {
@@ -324,6 +369,9 @@ function App(): JSX.Element {
             trends={trends}
             loading={trendsLoading}
             error={trendError}
+            trendHistory={trendHistory}
+            activeTrendIndex={activeTrendIndex}
+            onSelectTrend={handleSelectTrendSnapshot}
           />
         )}
 
