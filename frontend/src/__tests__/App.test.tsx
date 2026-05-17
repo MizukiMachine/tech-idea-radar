@@ -30,6 +30,7 @@ const meta = {
     cacheTtlHours: 1,
     warmupOnStart: true,
     backgroundRefreshIntervalHours: 0,
+    maxTrendHistory: 30,
   },
   cache: {
     status: "cached",
@@ -63,6 +64,16 @@ const trends = {
   generatedAt,
   sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
 };
+const trendHistory = {
+  history: [
+    {
+      scannedAt: generatedAt,
+      generatedAt,
+      articleCount: 1,
+      keywordCount: 1,
+    },
+  ],
+};
 
 beforeEach(() => {
   mockFetch.mockReset();
@@ -75,6 +86,7 @@ beforeEach(() => {
       sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
     };
     if (url.includes("/api/ai/trends")) body = trends;
+    if (url.includes("/api/ai/trends/history")) body = trendHistory;
     if (url.includes("/api/ai/ideas/meta")) body = meta;
     return Promise.resolve({
       ok: true,
@@ -87,9 +99,8 @@ beforeEach(() => {
 describe("App", () => {
   it("renders the idea workspace first", async () => {
     render(<App />);
-    expect(screen.getByText("AI Build Radar")).toBeTruthy();
-    await waitFor(() => expect(screen.getByText("フィルター")).toBeTruthy());
-    expect(screen.getByText("ジャンル・テーマ")).toBeTruthy();
+    expect(screen.getByText("BuildScouter")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
     expect(screen.queryByText("言語")).toBeNull();
     expect(screen.queryByText("短期開発向け")).toBeNull();
     expect(screen.getByPlaceholderText("キーワードで絞り込み（例: AI ツール、SaaS、副業）")).toBeTruthy();
@@ -102,13 +113,13 @@ describe("App", () => {
     expect(screen.getByText("RSSフィード")).toBeTruthy();
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     expect(screen.queryByText("AI agent tools are moving into product workflows")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "記事の要約" }));
+    fireEvent.click(screen.getByRole("button", { name: "要約を見る" }));
     expect(screen.getByText("チームがプロダクト業務にAIエージェントツールを導入している動きを紹介しています。")).toBeTruthy();
   });
 
   it("renders search input on the ideas view", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("フィルター")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
     expect(screen.getByPlaceholderText("キーワードで絞り込み（例: AI ツール、SaaS、副業）")).toBeTruthy();
   });
 
@@ -135,6 +146,7 @@ describe("App", () => {
         sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
       };
       if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
       if (url.includes("/api/ai/ideas/meta")) body = publicMeta;
       return Promise.resolve({
         ok: true,
@@ -153,5 +165,12 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "案を見る" })).toBeNull();
     expect(screen.queryByRole("button", { name: "アイデアを見る" })).toBeNull();
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/ideas/filter"))).toBe(false);
+  });
+
+  it("fetches trend history when switching to trends view", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
+    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
+    expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history"))).toBe(true);
   });
 });
