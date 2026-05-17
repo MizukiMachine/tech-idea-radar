@@ -23,6 +23,7 @@ export interface BatchInfo {
 
 export interface IdeaGenerationOutput {
   candidates: IdeaCandidate[];
+  featuredIdea?: IdeaCandidate;
   generatedAt: string;
   batchTime?: string;
   sourceSummary: {

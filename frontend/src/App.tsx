@@ -1,12 +1,9 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { IdeaCandidate } from './types/idea-candidate';
 import {
   fetchIdeas,
   fetchIdeasMeta,
   fetchTrends,
-  refreshIdeas,
-  refreshTrends,
-  filterIdeas,
   type SourceSummary,
   type IdeasMeta,
   type TrendScan,
@@ -136,13 +133,11 @@ function App(): JSX.Element {
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [trendError, setTrendError] = useState<string | null>(null);
   const [ideas, setIdeas] = useState<IdeaCandidate[]>([]);
+  const [featuredIdea, setFeaturedIdea] = useState<IdeaCandidate | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [progressText, setProgressText] = useState<string | null>(null);
-  const [semanticFilterText, setSemanticFilterText] = useState<string | null>(null);
-  const [semanticFilteredIdeas, setSemanticFilteredIdeas] = useState<IdeaCandidate[] | null>(null);
-  const [semanticFiltering, setSemanticFiltering] = useState(false);
   const [sourceSummary, setSourceSummary] = useState<SourceSummary | null>(null);
   const [ideasMeta, setIdeasMeta] = useState<IdeasMeta | null>(null);
   const [activeCategory, setActiveCategory] = useState('すべて');
@@ -153,8 +148,6 @@ function App(): JSX.Element {
   const [modalIdea, setModalIdea] = useState<IdeaCandidate | null>(null);
   const [activeBatch, setActiveBatch] = useState<string | null>(null);
   const [batches, setBatches] = useState<BatchInfo[]>([]);
-  const abortRef = useRef<AbortController | null>(null);
-  const autoGenerateStartedRef = useRef(false);
   const refreshIdeasMeta = useCallback((retryUsage = false) => {
     const update = () => {
       void fetchIdeasMeta()
@@ -184,6 +177,7 @@ function App(): JSX.Element {
         if (!cancelled && isIdeasMeta(meta)) setIdeasMeta(meta);
         if (!cancelled && result.candidates.length > 0) {
           setIdeas(result.candidates);
+          setFeaturedIdea(result.featuredIdea ?? null);
           setSourceSummary(result.sourceSummary);
           setBatches(result.batches ?? []);
           setLoading(false);
@@ -200,7 +194,6 @@ function App(): JSX.Element {
     void loadIdeas();
     return () => {
       cancelled = true;
-      abortRef.current?.abort();
     };
   }, [refreshIdeasMeta]);
 
@@ -231,124 +224,18 @@ function App(): JSX.Element {
   // Debounced search
   const handleSearch = useCallback((value: string) => {
     setSearchQuery(value);
-    setSemanticFilteredIdeas(null);
-    setSemanticFilterText(null);
-    setError(null);
   }, []);
-
-  const handleSemanticSearch = useCallback(async (queryOverride?: string) => {
-    const query = (queryOverride ?? searchQuery).trim();
-    if (!query) {
-      setSemanticFilteredIdeas(null);
-      setSemanticFilterText(null);
-      return;
-    }
-    if (publicReadonlyMode) {
-      setSemanticFilteredIdeas(null);
-      setSemanticFilterText(null);
-      return;
-    }
-
-    setSemanticFiltering(true);
-    setError(null);
-    try {
-      const result = await filterIdeas(query, ideas);
-      setSemanticFilteredIdeas(result.filteredCandidates);
-      setSemanticFilterText(result.filterReasoning);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '意味検索に失敗しました';
-      setError(userFacingError(message));
-    } finally {
-      setSemanticFiltering(false);
-    }
-  }, [ideas, publicReadonlyMode, searchQuery]);
-
-  // Refresh
-  const handleRefresh = useCallback((focusKeyword?: string) => {
-    if (publicReadonlyMode) {
-      setError('公開版ではキャッシュ済みのアイデアのみ表示しています。再生成は管理環境で実行します。');
-      return;
-    }
-
-    const previousIdeas = ideas;
-    const previousSourceSummary = sourceSummary;
-    let receivedAnyIdea = false;
-    setLoading(true);
-    setError(null);
-    setSemanticFilteredIdeas(null);
-    setSemanticFilterText(null);
-    setProgressText('トレンドデータを取得しています...');
-    abortRef.current?.abort();
-
-    abortRef.current = refreshIdeas({
-      onProgress: (text) => setProgressText(text),
-      onIdeaGenerated: (idea) => {
-        setIdeas((prev) => {
-          if (!receivedAnyIdea) {
-            receivedAnyIdea = true;
-            return [idea];
-          }
-          return [...prev, idea];
-        });
-      },
-      onComplete: (summary) => {
-        setSourceSummary(summary.sourceSummary ?? null);
-        setBatches(summary.batches ?? []);
-        setLoading(false);
-        setProgressText(null);
-        refreshIdeasMeta(true);
-      },
-      onError: (msg) => {
-        if (!receivedAnyIdea) {
-          setIdeas(previousIdeas);
-          setSourceSummary(previousSourceSummary);
-        }
-        setError(userFacingError(msg));
-        setLoading(false);
-        setProgressText(null);
-      },
-    }, focusKeyword);
-  }, [ideas, publicReadonlyMode, refreshIdeasMeta, sourceSummary]);
-
-  const handleTrendRefresh = useCallback(async () => {
-    if (publicReadonlyMode) {
-      setTrendError('公開版ではキャッシュ済みのトレンドのみ表示しています。再取得は管理環境で実行します。');
-      return;
-    }
-
-    setTrendsLoading(true);
-    setTrendError(null);
-    try {
-      const result = await refreshTrends();
-      setTrends(result);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'トレンド再取得に失敗しました';
-      setTrendError(userFacingError(message));
-    } finally {
-      setTrendsLoading(false);
-    }
-  }, [publicReadonlyMode]);
 
   const handleOpenIdeas = useCallback(() => {
     setActiveView('ideas');
-    if (ideas.length === 0 && !loading && !publicReadonlyMode) handleRefresh();
-  }, [handleRefresh, ideas.length, loading, publicReadonlyMode]);
+  }, []);
 
-  useEffect(() => {
-    if (!ideasMeta?.env?.cacheDisabled) return;
-    if (autoGenerateStartedRef.current) return;
-    if (loading || ideas.length > 0 || publicReadonlyMode) return;
-
-    autoGenerateStartedRef.current = true;
-    handleRefresh();
-  }, [handleRefresh, ideas.length, ideasMeta?.env?.cacheDisabled, loading, publicReadonlyMode]);
-
-  const sourceIdeas = semanticFilteredIdeas ?? ideas;
+  const sourceIdeas = ideas;
   const displayedIdeas = sourceIdeas.filter((idea) => {
       if (activeBatch && idea.batchTime !== activeBatch) return false;
       const text = ideaText(idea);
       const normalizedSearch = searchQuery.trim().toLowerCase();
-      if (!semanticFilteredIdeas && normalizedSearch && !matchesSearchQuery(text, normalizedSearch)) return false;
+      if (normalizedSearch && !matchesSearchQuery(text, normalizedSearch)) return false;
       if (!matchesCategory(idea, activeCategory)) return false;
       if (activeInterests.length > 0) {
         const hasInterestMatch = activeInterests.some((interest) => {
@@ -375,7 +262,7 @@ function App(): JSX.Element {
         <div className="app-header__top">
           <div className="app-header__brand">
             <div>
-              <span className="app-header__eyebrow">AI Build Radar</span>
+              <span className="app-header__eyebrow">BuildScouter</span>
               <h1>作るものが決まっていないエンジニアへ</h1>
               <p>今日の技術ニュースとAI開発トレンドから、検証の起点になるプロダクト仮説を提案します。</p>
             </div>
@@ -393,7 +280,7 @@ function App(): JSX.Element {
             className={`workspace-tabs__item ${activeView === 'ideas' ? 'workspace-tabs__item--active' : ''}`}
             onClick={handleOpenIdeas}
           >
-            作るもの提案
+            アイデア
             {hasIdeas && <span>{ideas.length}</span>}
           </button>
           <button
@@ -415,9 +302,6 @@ function App(): JSX.Element {
                 value={searchQuery}
                 onChange={(e) => handleSearch(e.target.value)}
                 disabled={!hasIdeas}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !publicReadonlyMode) void handleSemanticSearch();
-                }}
               />
               {searchQuery && hasIdeas && (
                 <button
@@ -430,26 +314,6 @@ function App(): JSX.Element {
                 </button>
               )}
             </div>
-            {!publicReadonlyMode && (
-              <button
-                type="button"
-                className="idea-command-bar__secondary"
-                onClick={() => void handleSemanticSearch()}
-                disabled={!hasIdeas || loading || semanticFiltering || !searchQuery.trim()}
-              >
-                {semanticFiltering ? '検索中...' : 'AIで絞り込み'}
-              </button>
-            )}
-            {!publicReadonlyMode && (
-              <button
-                type="button"
-                className="idea-command-bar__primary"
-                onClick={() => handleRefresh()}
-                disabled={loading}
-              >
-                {loading ? '生成中...' : hasIdeas ? '再生成' : '生成する'}
-              </button>
-            )}
           </div>
         )}
       </header>
@@ -460,8 +324,6 @@ function App(): JSX.Element {
             trends={trends}
             loading={trendsLoading}
             error={trendError}
-            onRefresh={() => void handleTrendRefresh()}
-            refreshDisabled={publicReadonlyMode}
           />
         )}
 
@@ -487,27 +349,13 @@ function App(): JSX.Element {
               </div>
             )}
 
-            {semanticFilterText && (
-              <div className="semantic-filter-banner">
-                <span className="semantic-filter-banner__label">意味検索</span>
-                <p>{semanticFilterText}</p>
-              </div>
-            )}
-
             {showSetupState && (
               <section className="setup-state">
                 <div className="setup-state__icon">BR</div>
-                <h2>{publicReadonlyMode ? '公開データを準備中です' : 'トレンドから作るものを生成します'}</h2>
+                <h2>アイデアを準備中です</h2>
                 <p>
-                  {publicReadonlyMode
-                    ? '現在表示できるアイデアがありません。データ更新後に候補が表示されます。'
-                    : '技術ニュースとRSSシグナルを材料に、検証の起点になるプロダクト仮説を出します。'}
+                  技術ニュースとRSSシグナルを分析中です。完了後にプロダクト仮説が表示されます。
                 </p>
-                {!publicReadonlyMode && (
-                  <button type="button" className="setup-state__button" onClick={() => handleRefresh()}>
-                    アイデアを生成
-                  </button>
-                )}
               </section>
             )}
 
@@ -568,6 +416,7 @@ function App(): JSX.Element {
                 {hasIdeas && (
                   <RightPanel
                     ideas={displayedIdeas}
+                    featuredIdea={featuredIdea}
                     selectedIdea={selectedIdea}
                   />
                 )}

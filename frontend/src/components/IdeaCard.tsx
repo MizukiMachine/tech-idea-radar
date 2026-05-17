@@ -58,8 +58,8 @@ export default function IdeaCard({ idea, index, viewMode = 'grid', selected = fa
                 <h3 className="idea-card__title">{idea.title}</h3>
             </div>
             <p className="idea-card__tagline">{idea.tagline}</p>
-            {idea.generatedAt && (
-                <span className="idea-card__batch">生成 {formatGeneratedAtLabel(idea.generatedAt)}</span>
+            {idea.batchTime && (
+                <span className="idea-card__batch">生成 {formatGeneratedAtLabel(idea.batchTime)}</span>
             )}
         </button>
     );

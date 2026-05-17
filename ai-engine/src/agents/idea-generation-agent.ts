@@ -1,6 +1,6 @@
 import { LLMClient } from '../services/llm-client';
 import { PromptBuilder } from '../services/prompt-builder';
-import { DEFAULT_IDEA_COUNT, LARGE_MAX_TOKENS } from '../config/constants';
+import { DEFAULT_IDEA_COUNT } from '../config/constants';
 import { IDEA_GENERATION_SYSTEM_PROMPT, IDEA_GENERATION_USER_TEMPLATE } from '../prompts/idea-generation';
 import type { IdeaGenerationInput } from '../types/idea-generation';
 import type { IdeaCandidate } from '../types/idea-candidate';
@@ -9,7 +9,7 @@ import { RssSourceUnavailableError } from '../errors';
 
 export class IdeaGenerationAgent extends BaseAgent<IdeaGenerationInput, IdeaCandidate[]> {
   readonly name = 'IdeaGenerationAgent';
-  readonly maxTokens = LARGE_MAX_TOKENS;
+  readonly maxTokens = 32768;
 
   constructor(llm: LLMClient) {
     super(llm);

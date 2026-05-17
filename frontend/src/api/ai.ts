@@ -58,7 +58,6 @@ export interface IdeasMeta {
     publicReadonlyMode?: boolean;
     adminAuthEnabled?: boolean;
     persistentCacheEnabled?: boolean;
-    cacheDisabled?: boolean;
     warmupOnStart?: boolean;
     ideaGenerationBatchSize?: number;
     batchScheduleHours?: number[];
@@ -110,6 +109,7 @@ export interface TrendScan {
 export async function fetchIdeas(): Promise<{
   status: string;
   candidates: IdeaCandidate[];
+  featuredIdea?: IdeaCandidate;
   generatedAt: string;
   sourceSummary: SourceSummary;
   batches: BatchInfo[];
