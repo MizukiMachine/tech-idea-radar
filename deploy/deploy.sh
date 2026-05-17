@@ -44,12 +44,31 @@ npm run frontend:build
 
 # --- Deploy ---
 echo "[3/6] Deploying files..."
+
+FRONTEND_BUILD_DIR="$PROJECT_DIR/frontend/dist"
+FRONTEND_STAGE_DIR=""
+cleanup() {
+    if [[ -n "$FRONTEND_STAGE_DIR" ]]; then
+        rm -rf "$FRONTEND_STAGE_DIR"
+    fi
+}
+trap cleanup EXIT
+
+PROJECT_REAL_DIR="$(realpath "$PROJECT_DIR")"
+DEPLOY_REAL_DIR="$(realpath -m "$DEPLOY_DIR")"
+if [[ "$PROJECT_REAL_DIR" == "$DEPLOY_REAL_DIR" ]]; then
+    echo "Deploy target matches project directory; staging frontend build artifacts first."
+    FRONTEND_STAGE_DIR="$(mktemp -d)"
+    cp -r "$FRONTEND_BUILD_DIR/." "$FRONTEND_STAGE_DIR/"
+    FRONTEND_BUILD_DIR="$FRONTEND_STAGE_DIR"
+fi
+
 rm -rf "$DEPLOY_DIR/frontend" "$DEPLOY_DIR/backend/dist" "$DEPLOY_DIR/ai-engine/dist"
 mkdir -p "$DEPLOY_DIR"/{frontend,backend/dist,backend/logs,ai-engine/dist}
 mkdir -p "$DATA_DIR"
 
 # Frontend static files
-cp -r "$PROJECT_DIR/frontend/dist/." "$DEPLOY_DIR/frontend/"
+cp -r "$FRONTEND_BUILD_DIR/." "$DEPLOY_DIR/frontend/"
 
 # Backend
 cp -r "$PROJECT_DIR/backend/dist/." "$DEPLOY_DIR/backend/dist/"

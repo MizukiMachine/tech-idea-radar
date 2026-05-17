@@ -58,6 +58,7 @@ export interface IdeasMeta {
     publicReadonlyMode?: boolean;
     adminAuthEnabled?: boolean;
     persistentCacheEnabled?: boolean;
+    cacheDisabled?: boolean;
     warmupOnStart?: boolean;
     ideaGenerationBatchSize?: number;
     batchScheduleHours?: number[];
@@ -213,7 +214,7 @@ export function streamIdeas(callbacks: Parameters<typeof ideaStream>[2]): AbortC
 }
 
 // POST /api/ideas/filter
-export async function filterIdeas(query: string, topK?: number): Promise<{
+export async function filterIdeas(query: string, candidates: IdeaCandidate[], topK?: number): Promise<{
   filteredCandidates: IdeaCandidate[];
   filterReasoning: string;
   matchCriteria: string[];
@@ -221,7 +222,7 @@ export async function filterIdeas(query: string, topK?: number): Promise<{
   const res = await fetch(`${API_BASE}/api/ai/ideas/filter`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, topK }),
+    body: JSON.stringify({ query, candidates, topK }),
   });
   if (!res.ok) await throwApiError(res, 'filterIdeas');
   return res.json();

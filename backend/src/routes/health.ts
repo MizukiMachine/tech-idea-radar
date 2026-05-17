@@ -4,8 +4,10 @@ import {
   getIdeaCacheStatus,
   getTrendCacheStatus,
   getCachedIdeas,
+  getBatchInfos,
   isPublicReadonlyMode,
   isPersistentCacheEnabled,
+  isCacheDisabled,
   isGenerationInProgress,
 } from "../services/idea-cache";
 
@@ -13,6 +15,9 @@ const healthRouter = Router();
 
 healthRouter.get("/", (_req, res) => {
   const cached = getCachedIdeas();
+  const persistentCacheEnabled = isPersistentCacheEnabled();
+  const cacheDisabled = isCacheDisabled();
+  const corsConfigured = (process.env.CORS_ORIGIN ?? "").trim().length > 0;
 
   res.status(200).json({
     status: "ok",
@@ -34,16 +39,22 @@ healthRouter.get("/", (_req, res) => {
     },
     config: {
       publicReadonlyMode: isPublicReadonlyMode(),
-      persistentCacheEnabled: isPersistentCacheEnabled(),
+      persistentCacheEnabled,
+      cacheDisabled,
       hasApiKey: Boolean(process.env.ZAI_API_KEY),
+      corsConfigured,
       port: process.env.PORT ?? "3001",
       nodeEnv: process.env.NODE_ENV ?? "development",
     },
     cache: {
+      hasData: Boolean(cached && cached.candidates.length > 0),
       ideaStatus: getIdeaCacheStatus(),
       trendStatus: getTrendCacheStatus(),
       candidateCount: cached?.candidates.length ?? 0,
       generatedAt: cached?.generatedAt ?? null,
+      batchCount: getBatchInfos().length,
+      persistentCacheEnabled,
+      cacheDisabled,
       generationInProgress: isGenerationInProgress(),
     },
     process: {
