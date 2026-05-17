@@ -19,10 +19,12 @@ import { notifyAdminOfRssFailure } from './admin-notifier';
 const SERVER_STARTED_AT = new Date().toISOString();
 const INSTANCE_ID = `${process.pid}-${Date.now().toString(36)}`;
 const PERSISTENT_CACHE_FILE = process.env.IDEA_CACHE_FILE?.trim() ?? '';
-const FILE_CACHE_DISABLED = !PERSISTENT_CACHE_FILE;
+const CACHE_DISABLED = isTruthy(process.env.IDEA_CACHE_DISABLED);
+const FILE_CACHE_DISABLED = CACHE_DISABLED || !PERSISTENT_CACHE_FILE;
 const PUBLIC_READONLY_MODE = isTruthy(process.env.PUBLIC_READONLY_MODE);
 const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN?.trim() ?? '';
 const PERSISTENT_CACHE_VERSION = 3;
+const TREND_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 const WARMUP_ON_START = process.env.IDEA_WARMUP_ON_START === undefined
   ? true
   : isTruthy(process.env.IDEA_WARMUP_ON_START);
@@ -154,16 +156,24 @@ function isPersistentBatchEntry(value: unknown): value is BatchEntry {
     && isRecord(value.data.sourceSummary);
 }
 
+function isPersistentTrendScanOutput(value: unknown): value is TrendScanOutput {
+  if (!isRecord(value) || !isRecord(value.rssContext)) return false;
+  return Array.isArray(value.rssContext.trendingKeywords)
+    && Array.isArray(value.rssContext.relatedArticles)
+    && Array.isArray(value.focusKeywords)
+    && typeof value.generatedAt === 'string'
+    && isRecord(value.sourceSummary);
+}
+
 function isPersistentTrendHistoryEntry(value: unknown): value is TrendHistoryEntry {
-  if (!isRecord(value) || typeof value.scannedAt !== 'string' || !isRecord(value.data)) return false;
-  return Array.isArray(value.data.rssContext)
-    && typeof value.data.generatedAt === 'string'
-    && isRecord(value.data.sourceSummary);
+  return isRecord(value)
+    && typeof value.scannedAt === 'string'
+    && isPersistentTrendScanOutput(value.data);
 }
 
 function isPersistentV2TrendCache(value: unknown): value is { data: TrendScanOutput; expiresAt: number } {
   if (!isRecord(value)) return false;
-  return isRecord(value.data)
+  return isPersistentTrendScanOutput(value.data)
     && typeof value.expiresAt === 'number'
     && Number.isFinite(value.expiresAt);
 }
@@ -227,7 +237,7 @@ function loadPersistentCache(): void {
     persistentCacheMtimeMs = stat.mtimeMs;
 
     if (migrated) {
-      console.log('[Cache] Persistent cache migrated from v2 to v3');
+      console.log('[Cache] Persistent cache migrated to v3');
       persistCache();
     }
   } catch (error) {
@@ -261,13 +271,10 @@ function persistCache(): void {
   }
 }
 
-function cacheStatus(entry: { expiresAt: number } | null): CacheStatus {
-  if (!entry) return 'empty';
-  return Date.now() > entry.expiresAt ? 'stale' : 'cached';
-}
-
-function isExpired(entry: { expiresAt: number } | null): boolean {
-  return Boolean(entry && Date.now() > entry.expiresAt);
+function isTrendEntryStale(entry: TrendHistoryEntry | null): boolean {
+  if (!entry) return true;
+  const scannedAt = new Date(entry.scannedAt).getTime();
+  return Number.isNaN(scannedAt) || Date.now() - scannedAt > TREND_CACHE_TTL_MS;
 }
 
 function isBackgroundCacheOwner(): boolean {
@@ -347,10 +354,7 @@ export function getTrendCacheStatus(): CacheStatus {
   loadPersistentCache();
   const latest = latestTrend();
   if (!latest) return 'empty';
-  // 4-hour TTL from scannedAt
-  const scannedAt = new Date(latest.scannedAt).getTime();
-  const expiresAt = scannedAt + 4 * 60 * 60 * 1000;
-  return Date.now() > expiresAt ? 'stale' : 'cached';
+  return isTrendEntryStale(latest) ? 'stale' : 'cached';
 }
 
 export function isPublicReadonlyMode(): boolean {
@@ -394,6 +398,10 @@ export function isAdminAuthEnabled(): boolean {
 
 export function isPersistentCacheEnabled(): boolean {
   return !FILE_CACHE_DISABLED;
+}
+
+export function isCacheDisabled(): boolean {
+  return CACHE_DISABLED;
 }
 
 export function getAdminApiToken(): string {
@@ -603,7 +611,7 @@ export function refreshCachesInBackground(reason: string, force = false, useSche
 
   loadPersistentCache();
   const latest = latestTrend();
-  const isTrendStale = !latest || (Date.now() - new Date(latest.scannedAt).getTime() > 4 * 60 * 60 * 1000);
+  const isTrendStale = isTrendEntryStale(latest);
   const shouldRefreshTrends = force || trendHistory.length === 0 || isTrendStale;
   const shouldRefreshIdeas = force || batches.length === 0;
 
