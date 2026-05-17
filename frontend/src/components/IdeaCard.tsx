@@ -1,5 +1,4 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
-import { formatBatchLabel } from '../api/ai';
 import './IdeaCard.css';
 
 const CARD_ICONS = ['AI', 'PR', 'DB', 'UX', 'API', 'SaaS', 'Ops', 'Sc', 'Dev', 'Web', 'Doc', 'Rev', 'Fit', 'CMS', 'BI'];
@@ -15,6 +14,23 @@ function getIconForIdea(id: string, index: number) {
         icon: CARD_ICONS[(hash + index) % CARD_ICONS.length],
         color: ICON_COLORS[(hash + index) % ICON_COLORS.length],
     };
+}
+
+function formatGeneratedAtLabel(generatedAt: string) {
+    try {
+        const date = new Date(generatedAt);
+        if (Number.isNaN(date.getTime())) return generatedAt;
+        return date.toLocaleString('ja-JP', {
+            timeZone: 'Asia/Tokyo',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        });
+    } catch {
+        return generatedAt;
+    }
 }
 
 interface IdeaCardProps {
@@ -42,8 +58,8 @@ export default function IdeaCard({ idea, index, viewMode = 'grid', selected = fa
                 <h3 className="idea-card__title">{idea.title}</h3>
             </div>
             <p className="idea-card__tagline">{idea.tagline}</p>
-            {idea.batchTime && (
-                <span className="idea-card__batch">{formatBatchLabel(idea.batchTime)}</span>
+            {idea.generatedAt && (
+                <span className="idea-card__batch">生成 {formatGeneratedAtLabel(idea.generatedAt)}</span>
             )}
         </button>
     );
