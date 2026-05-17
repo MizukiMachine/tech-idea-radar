@@ -47,8 +47,12 @@ function addCorsWarningHeader(res: Response): void {
   }
 }
 
-function sendServiceInfo(_req: Request, res: Response): void {
+app.use((_req, res, next) => {
   addCorsWarningHeader(res);
+  next();
+});
+
+function sendServiceInfo(_req: Request, res: Response): void {
   res.json({ message: "Builder Agent Chain backend service" });
 }
 
