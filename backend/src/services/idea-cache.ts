@@ -4,6 +4,7 @@ import {
   DEFAULT_IDEA_COUNT,
   MAX_BATCHES,
   BATCH_SCHEDULE_HOURS_JST,
+  MAX_TREND_HISTORY,
   EntrepreneurAgent,
   isRssSourceUnavailableError,
   type IdeaGenerationOutput,
@@ -21,7 +22,7 @@ const PERSISTENT_CACHE_FILE = process.env.IDEA_CACHE_FILE?.trim() ?? '';
 const FILE_CACHE_DISABLED = !PERSISTENT_CACHE_FILE;
 const PUBLIC_READONLY_MODE = isTruthy(process.env.PUBLIC_READONLY_MODE);
 const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN?.trim() ?? '';
-const PERSISTENT_CACHE_VERSION = 2;
+const PERSISTENT_CACHE_VERSION = 3;
 const WARMUP_ON_START = process.env.IDEA_WARMUP_ON_START === undefined
   ? true
   : isTruthy(process.env.IDEA_WARMUP_ON_START);
@@ -39,10 +40,15 @@ let batches: BatchEntry[] = [];
 type CacheStatus = 'empty' | 'cached' | 'stale';
 
 let generationLock: Promise<IdeaGenerationOutput> | null = null;
-let trendCache: {
+
+// --- Trend history data structure ---
+
+interface TrendHistoryEntry {
+  scannedAt: string;
   data: TrendScanOutput;
-  expiresAt: number;
-} | null = null;
+}
+
+let trendHistory: TrendHistoryEntry[] = [];
 let trendScanLock: Promise<TrendScanOutput> | null = null;
 let persistentCacheLoaded = false;
 let persistentCacheMtimeMs = 0;
@@ -148,7 +154,14 @@ function isPersistentBatchEntry(value: unknown): value is BatchEntry {
     && isRecord(value.data.sourceSummary);
 }
 
-function isPersistentTrendCache(value: unknown): value is { data: TrendScanOutput; expiresAt: number } {
+function isPersistentTrendHistoryEntry(value: unknown): value is TrendHistoryEntry {
+  if (!isRecord(value) || typeof value.scannedAt !== 'string' || !isRecord(value.data)) return false;
+  return Array.isArray(value.data.rssContext)
+    && typeof value.data.generatedAt === 'string'
+    && isRecord(value.data.sourceSummary);
+}
+
+function isPersistentV2TrendCache(value: unknown): value is { data: TrendScanOutput; expiresAt: number } {
   if (!isRecord(value)) return false;
   return isRecord(value.data)
     && typeof value.expiresAt === 'number'
@@ -165,22 +178,38 @@ function loadPersistentCache(): void {
     const raw = JSON.parse(fs.readFileSync(PERSISTENT_CACHE_FILE, 'utf8')) as Record<string, unknown>;
     const version = typeof raw.version === 'number' ? raw.version : 0;
     let nextBatches: BatchEntry[] = [];
-    let nextTrendCache: typeof trendCache = null;
+    let nextTrendHistory: TrendHistoryEntry[] = [];
+    let migrated = false;
 
     if (version === PERSISTENT_CACHE_VERSION) {
-      // v2: batch-based cache
+      // v3: batch-based cache + trend history
       nextBatches = Array.isArray(raw.batches)
         ? raw.batches.filter(isPersistentBatchEntry).slice(0, MAX_BATCHES)
         : [];
-      nextTrendCache = isPersistentTrendCache(raw.trends) ? raw.trends : null;
+      nextTrendHistory = Array.isArray(raw.trendHistory)
+        ? raw.trendHistory.filter(isPersistentTrendHistoryEntry).slice(0, MAX_TREND_HISTORY)
+        : [];
+    } else if (version === 2) {
+      // v2 → v3 migration: convert single trendCache to trendHistory[0]
+      migrated = true;
+      nextBatches = Array.isArray(raw.batches)
+        ? raw.batches.filter(isPersistentBatchEntry).slice(0, MAX_BATCHES)
+        : [];
+      const v2TrendCache = isPersistentV2TrendCache(raw.trends) ? raw.trends : null;
+      if (v2TrendCache) {
+        nextTrendHistory = [{ scannedAt: v2TrendCache.data.generatedAt, data: v2TrendCache.data }];
+      }
     } else if (version === 1) {
       // v1 migration: convert single cache to a single batch entry
+      migrated = true;
       const v1 = raw as {
         version?: number;
         ideas?: { data: IdeaGenerationOutput; expiresAt: number };
         trends?: { data: TrendScanOutput; expiresAt: number };
       };
-      if (isPersistentTrendCache(v1.trends)) nextTrendCache = v1.trends;
+      if (isPersistentV2TrendCache(v1.trends)) {
+        nextTrendHistory = [{ scannedAt: v1.trends.data.generatedAt, data: v1.trends.data }];
+      }
       if (v1.ideas?.data?.candidates?.length) {
         const batchTime = getCurrentBatchTimeJST(new Date(v1.ideas.data.generatedAt));
         const migrated: IdeaGenerationOutput = {
@@ -191,10 +220,16 @@ function loadPersistentCache(): void {
         nextBatches = [{ batchTime, data: migrated }];
       }
     }
+
     batches = nextBatches;
-    trendCache = nextTrendCache;
+    trendHistory = nextTrendHistory;
     persistentCacheLoaded = true;
     persistentCacheMtimeMs = stat.mtimeMs;
+
+    if (migrated) {
+      console.log('[Cache] Persistent cache migrated from v2 to v3');
+      persistCache();
+    }
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return;
     const message = error instanceof Error ? error.message : String(error);
@@ -214,7 +249,7 @@ function persistCache(): void {
         version: PERSISTENT_CACHE_VERSION,
         updatedAt: new Date().toISOString(),
         batches,
-        trends: trendCache,
+        trendHistory,
       }, null, 2),
     );
     fs.renameSync(tmpFile, PERSISTENT_CACHE_FILE);
@@ -264,7 +299,7 @@ async function notifyRssSourceFailure(error: unknown, fallbackOperation: string)
       occurredAt: new Date().toISOString(),
       details: error.details,
       ideaCacheGeneratedAt: batches[0]?.data.generatedAt ?? null,
-      trendCacheGeneratedAt: trendCache?.data.generatedAt ?? null,
+      trendCacheGeneratedAt: latestTrend()?.data.generatedAt ?? null,
     });
   } catch (notifyError) {
     const message = notifyError instanceof Error ? notifyError.message : String(notifyError);
@@ -292,9 +327,14 @@ export function getCachedIdeas(): IdeaGenerationOutput | null {
   };
 }
 
-export function getCachedTrends(): TrendScanOutput | null {
+// Helper to get the latest trend entry
+function latestTrend(): TrendHistoryEntry | null {
   loadPersistentCache();
-  return trendCache?.data ?? null;
+  return trendHistory[0] ?? null;
+}
+
+export function getCachedTrends(): TrendScanOutput | null {
+  return latestTrend()?.data ?? null;
 }
 
 export function getIdeaCacheStatus(): CacheStatus {
@@ -305,7 +345,12 @@ export function getIdeaCacheStatus(): CacheStatus {
 
 export function getTrendCacheStatus(): CacheStatus {
   loadPersistentCache();
-  return cacheStatus(trendCache);
+  const latest = latestTrend();
+  if (!latest) return 'empty';
+  // 4-hour TTL from scannedAt
+  const scannedAt = new Date(latest.scannedAt).getTime();
+  const expiresAt = scannedAt + 4 * 60 * 60 * 1000;
+  return Date.now() > expiresAt ? 'stale' : 'cached';
 }
 
 export function isPublicReadonlyMode(): boolean {
@@ -369,6 +414,7 @@ export function getRuntimeMeta(): {
     ideaGenerationBatchSize: number;
     batchScheduleHours: readonly number[];
     maxBatches: number;
+    maxTrendHistory: number;
   };
   cache: {
     status: CacheStatus;
@@ -397,6 +443,7 @@ export function getRuntimeMeta(): {
       ideaGenerationBatchSize: IDEA_GENERATION_BATCH_SIZE,
       batchScheduleHours: BATCH_SCHEDULE_HOURS_JST,
       maxBatches: MAX_BATCHES,
+      maxTrendHistory: MAX_TREND_HISTORY,
     },
     cache: cached ? {
       status: ideaStatus,
@@ -432,6 +479,31 @@ export function getBatchInfos(): BatchInfoApi[] {
     generatedAt: b.data.generatedAt,
     ideaCount: b.data.candidates.length,
   }));
+}
+
+// --- Trend history metadata for API ---
+
+export interface TrendHistoryEntryApi {
+  scannedAt: string;
+  generatedAt: string;
+  articleCount: number;
+  keywordCount: number;
+}
+
+export function getTrendHistory(): TrendHistoryEntryApi[] {
+  loadPersistentCache();
+  return trendHistory.map((entry) => ({
+    scannedAt: entry.scannedAt,
+    generatedAt: entry.data.generatedAt,
+    articleCount: entry.data.rssContext.relatedArticles.length,
+    keywordCount: entry.data.rssContext.trendingKeywords.length,
+  }));
+}
+
+export function getCachedTrendByIndex(index: number): TrendScanOutput | null {
+  loadPersistentCache();
+  if (index < 0 || index >= trendHistory.length) return null;
+  return trendHistory[index].data;
 }
 
 // --- Generation ---
@@ -505,10 +577,14 @@ export async function scanAndCacheTrends(
     try {
       const agent = new EntrepreneurAgent(getClient());
       const result = await agent.scanTrends(onProgress);
-      trendCache = {
-        data: result,
-        expiresAt: Date.now() + 4 * 60 * 60 * 1000,
-      };
+      const now = new Date().toISOString();
+
+      // Prepend to history, deduplicate by generatedAt, trim to MAX_TREND_HISTORY
+      trendHistory = [
+        { scannedAt: now, data: result },
+        ...trendHistory.filter((e) => e.data.generatedAt !== result.generatedAt),
+      ].slice(0, MAX_TREND_HISTORY);
+
       persistCache();
       return result;
     } catch (error) {
@@ -526,7 +602,9 @@ export function refreshCachesInBackground(reason: string, force = false, useSche
   if (backgroundRefreshLock) return backgroundRefreshLock;
 
   loadPersistentCache();
-  const shouldRefreshTrends = force || !trendCache || isExpired(trendCache);
+  const latest = latestTrend();
+  const isTrendStale = !latest || (Date.now() - new Date(latest.scannedAt).getTime() > 4 * 60 * 60 * 1000);
+  const shouldRefreshTrends = force || trendHistory.length === 0 || isTrendStale;
   const shouldRefreshIdeas = force || batches.length === 0;
 
   if (!shouldRefreshTrends && !shouldRefreshIdeas) {
