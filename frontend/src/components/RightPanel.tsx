@@ -24,18 +24,44 @@ function buildTagData(ideas: IdeaCandidate[]) {
 
 interface RightPanelProps {
     ideas: IdeaCandidate[];
+    featuredIdea: IdeaCandidate | null;
     selectedIdea: IdeaCandidate | null;
 }
 
 export default function RightPanel({
     ideas,
+    featuredIdea,
     selectedIdea,
 }: RightPanelProps): JSX.Element {
     const tagData = buildTagData(ideas);
     const detailIdea = selectedIdea ?? ideas[0];
+    const latestIdea = ideas[0];
+    const highlightIdea = featuredIdea ?? latestIdea;
 
     return (
         <aside className="right-panel">
+            <div className="right-panel__card right-panel__card--highlight">
+                <div className="right-panel__card-badge">🔥 注目のアイデア</div>
+                <h3 className="right-panel__card-title">{highlightIdea?.title ?? '-'}</h3>
+                <p className="right-panel__card-desc">
+                    {highlightIdea?.tagline ?? ''}
+                </p>
+                {highlightIdea?.tags[0] && (
+                    <span className="right-panel__card-tag">{highlightIdea.tags[0]}</span>
+                )}
+            </div>
+
+            <div className="right-panel__card right-panel__card--trend">
+                <div className="right-panel__card-badge">🚀 最新バッチ</div>
+                <h3 className="right-panel__card-title">{latestIdea?.title ?? '-'}</h3>
+                <p className="right-panel__card-desc">
+                    {latestIdea?.tagline ?? ''}
+                </p>
+                {latestIdea?.tags[0] && (
+                    <span className="right-panel__card-tag">{latestIdea.tags[0]}</span>
+                )}
+            </div>
+
             <div className="right-panel__card right-panel__card--detail">
                 <div className="right-panel__card-badge">選択中のアイデア</div>
                 <h3 className="right-panel__card-title">{detailIdea?.title ?? 'カードを選択'}</h3>

@@ -30,16 +30,12 @@ interface TrendBoardProps {
   trends: TrendScan | null;
   loading: boolean;
   error: string | null;
-  onRefresh: () => void;
-  refreshDisabled?: boolean;
 }
 
 export default function TrendBoard({
   trends,
   loading,
   error,
-  onRefresh,
-  refreshDisabled = false,
 }: TrendBoardProps): JSX.Element {
   const [expandedArticleUrl, setExpandedArticleUrl] = useState<string | null>(null);
   const rssArticles = trends?.rssContext.relatedArticles ?? [];
@@ -54,13 +50,7 @@ export default function TrendBoard({
           <p className="trend-board__eyebrow">Today signal scan</p>
           <h2 className="trend-board__title">今日のAI開発シグナル</h2>
         </div>
-        <div className="trend-board__actions">
-          {!refreshDisabled && (
-            <button type="button" className="trend-board__secondary-btn" onClick={onRefresh} disabled={loading}>
-              {loading ? '取得中...' : '再取得'}
-            </button>
-          )}
-        </div>
+        <div className="trend-board__actions" />
       </div>
 
       {error && (
@@ -102,7 +92,7 @@ export default function TrendBoard({
       {!loading && trends && rssArticles.length === 0 && (
         <div className="trend-board__empty">
           <h3>表示できるRSS記事がありません</h3>
-          <p>{refreshDisabled ? 'データ更新後に表示されます。' : 'RSS の接続状態を確認して、再取得してください。'}</p>
+          <p>データ更新後に表示されます。</p>
         </div>
       )}
 
