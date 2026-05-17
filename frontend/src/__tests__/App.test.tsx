@@ -61,6 +61,14 @@ const trends = {
     }],
   },
   focusKeywords: ["AI"],
+  featuredTrend: {
+    title: "AI agent tools are moving into product workflows",
+    titleJa: "AIエージェントツールがプロダクト業務に広がる",
+    url: "https://example.com/article",
+    source: "Example RSS",
+    published: generatedAt,
+    summary: "AIエージェント導入がプロダクト業務に広がっています。",
+  },
   generatedAt,
   sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
 };
@@ -99,7 +107,7 @@ beforeEach(() => {
 describe("App", () => {
   it("renders the idea workspace first", async () => {
     render(<App />);
-    expect(screen.getByText("BuildScouter")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Lume" })).toBeTruthy();
     await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
     expect(screen.queryByText("言語")).toBeNull();
     expect(screen.queryByText("短期開発向け")).toBeNull();
@@ -126,6 +134,8 @@ describe("App", () => {
   it("renders right panel cards on the ideas view", async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText("選択中のアイデア")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("注目のトレンド")).toBeTruthy());
+    expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
   });
 
   it("hides generation controls in public readonly mode", async () => {
@@ -155,7 +165,7 @@ describe("App", () => {
     });
 
     render(<App />);
-    await waitFor(() => expect(screen.getByText("閲覧用キャッシュ")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Lume" })).toBeTruthy());
     expect(screen.queryByRole("button", { name: "AIで絞り込み" })).toBeNull();
     expect(screen.queryByRole("button", { name: "再生成" })).toBeNull();
 

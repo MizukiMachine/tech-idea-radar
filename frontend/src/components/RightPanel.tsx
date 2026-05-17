@@ -1,7 +1,8 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
+import type { FeaturedTrend } from '../api/ai';
 import './RightPanel.css';
 
-const TAG_COLORS = ['#1a1f36', '#3b82f6', '#3178c6', '#ff9900', '#00B67A'];
+const TAG_COLORS = ['#1a1f36', '#6B8F2A', '#00B67A', '#FF9900', '#8B4DFF'];
 
 function buildTagData(ideas: IdeaCandidate[]) {
     const counts = new Map<string, number>();
@@ -25,13 +26,17 @@ function buildTagData(ideas: IdeaCandidate[]) {
 interface RightPanelProps {
     ideas: IdeaCandidate[];
     featuredIdea: IdeaCandidate | null;
+    featuredTrend: FeaturedTrend | null;
     selectedIdea: IdeaCandidate | null;
+    onOpenTrends: () => void;
 }
 
 export default function RightPanel({
     ideas,
     featuredIdea,
+    featuredTrend,
     selectedIdea,
+    onOpenTrends,
 }: RightPanelProps): JSX.Element {
     const tagData = buildTagData(ideas);
     const detailIdea = selectedIdea ?? ideas[0];
@@ -52,14 +57,19 @@ export default function RightPanel({
             </div>
 
             <div className="right-panel__card right-panel__card--trend">
-                <div className="right-panel__card-badge">🚀 最新バッチ</div>
-                <h3 className="right-panel__card-title">{latestIdea?.title ?? '-'}</h3>
+                <div className="right-panel__card-badge">注目のトレンド</div>
+                <h3 className="right-panel__card-title">
+                    {featuredTrend?.titleJa ?? featuredTrend?.title ?? 'トレンドを確認'}
+                </h3>
                 <p className="right-panel__card-desc">
-                    {latestIdea?.tagline ?? ''}
+                    {featuredTrend?.summary ?? '最新のRSSフィードから、次のアイデアにつながる動きを確認できます。'}
                 </p>
-                {latestIdea?.tags[0] && (
-                    <span className="right-panel__card-tag">{latestIdea.tags[0]}</span>
+                {featuredTrend?.source && (
+                    <span className="right-panel__card-tag">{featuredTrend.source}</span>
                 )}
+                <button type="button" className="right-panel__card-action" onClick={onOpenTrends}>
+                    トレンドを見る
+                </button>
             </div>
 
             <div className="right-panel__card right-panel__card--detail">

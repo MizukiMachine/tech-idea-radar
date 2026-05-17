@@ -5,7 +5,12 @@ import { FilterAgent } from './filter-agent';
 import { fetchRssContext } from '../services/mcp-client';
 import { DEFAULT_IDEA_COUNT } from '../config/constants';
 import { RssSourceUnavailableError } from '../errors';
-import type { IdeaGenerationInput, IdeaGenerationOutput, TrendScanOutput } from '../types/idea-generation';
+import type {
+  FeaturedTrend,
+  IdeaGenerationInput,
+  IdeaGenerationOutput,
+  TrendScanOutput,
+} from '../types/idea-generation';
 import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semantic-filter';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { RssArticle, RssContext } from '../services/mcp-client';
@@ -331,9 +336,11 @@ export class EntrepreneurAgent {
   async scanTrends(onProgress?: (text: string) => void): Promise<TrendScanOutput> {
     console.log('[TrendScan] Starting trend scan pipeline');
     const result = await this.scanTrendContext(onProgress);
+    const rssContext = await this.translateRssArticles(result.rssContext);
     return {
       ...result,
-      rssContext: await this.translateRssArticles(result.rssContext),
+      rssContext,
+      featuredTrend: await this.selectFeaturedTrend(rssContext),
     };
   }
 
@@ -447,6 +454,53 @@ export class EntrepreneurAgent {
       console.warn(`[IdeaGeneration] Featured idea selection failed: ${message}`);
     }
     return undefined;
+  }
+
+  private async selectFeaturedTrend(rssContext: RssContext): Promise<FeaturedTrend | undefined> {
+    const articles = rssContext.relatedArticles
+      .filter((article) => article.url || article.link)
+      .slice(0, 18);
+    if (articles.length === 0) return undefined;
+
+    try {
+      const summaries = articles.map((article, index) => ({
+        index,
+        title: article.title,
+        titleJa: article.titleJa,
+        source: article.source,
+        published: article.publishedAt ?? article.published,
+        summary: article.summaryJa ?? article.summary ?? article.description,
+        keywords: article.keywords ?? [],
+      }));
+
+      const systemPrompt = [
+        'あなたは技術トレンドを読むプロダクト編集者です。',
+        '以下のRSS記事候補から、エンジニアがプロダクト仮説を考えるうえで最も気になるトレンドを1つ選んでください。',
+        '選定した記事の要点を、日本語で60字以内の自然なサマリーにしてください。',
+        '出力は JSON: {"index": <number>, "summary": "<summary>"} のみ。',
+      ].join('');
+
+      const raw = await this.llm.send(systemPrompt, JSON.stringify(summaries, null, 2), 512);
+      const parsed = ResponseParser.parse<{ index?: unknown; summary?: unknown }>(raw);
+      const index = typeof parsed.index === 'number' ? parsed.index : undefined;
+      const summary = typeof parsed.summary === 'string' ? normalizeTitle(parsed.summary) : '';
+      if (index === undefined || index < 0 || index >= articles.length || !summary) return undefined;
+
+      const article = articles[index];
+      console.log(`[TrendScan] Featured trend selected: index=${index} "${article.titleJa ?? article.title}"`);
+      return {
+        title: article.title,
+        titleJa: article.titleJa,
+        url: article.url ?? article.link,
+        source: article.source,
+        published: article.publishedAt ?? article.published,
+        summary,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[TrendScan] Featured trend selection failed: ${message}`);
+      return undefined;
+    }
   }
 
   async filterIdeas(input: SemanticFilterInput): Promise<SemanticFilterOutput> {

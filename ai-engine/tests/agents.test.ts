@@ -117,6 +117,41 @@ describe('FilterAgent', () => {
 });
 
 describe('EntrepreneurAgent', () => {
+  it('selects a featured trend from scanned RSS articles', async () => {
+    vi.mocked(fetchRssContext).mockResolvedValueOnce({
+      trendingKeywords: [{ word: 'AI', count: 3 }],
+      relatedArticles: [{
+        title: 'AIエージェントツールがプロダクト業務に広がる',
+        link: 'https://example.com/agent-tools',
+        url: 'https://example.com/agent-tools',
+        published: '2026-05-14T00:00:00.000Z',
+        publishedAt: '2026-05-14T00:00:00.000Z',
+        summary: 'プロダクトチームがAIエージェントツールを導入している。',
+        source: 'Test RSS',
+        keywords: ['AI', 'agent'],
+      }],
+    });
+    const client = createMockClient(JSON.stringify({
+      index: 0,
+      summary: 'AIエージェント導入がプロダクト業務に広がっています。',
+    }));
+    const agent = new EntrepreneurAgent(client);
+
+    const result = await agent.scanTrends();
+
+    expect(result.featuredTrend).toEqual(expect.objectContaining({
+      title: 'AIエージェントツールがプロダクト業務に広がる',
+      url: 'https://example.com/agent-tools',
+      source: 'Test RSS',
+      summary: 'AIエージェント導入がプロダクト業務に広がっています。',
+    }));
+    expect(client.send).toHaveBeenCalledWith(
+      expect.stringContaining('技術トレンド'),
+      expect.any(String),
+      512,
+    );
+  });
+
   it('generates ideas with RSS enrichment and trusted evidence URLs', async () => {
     const client = createMockClient(JSON.stringify([candidate]));
     const agent = new EntrepreneurAgent(client);

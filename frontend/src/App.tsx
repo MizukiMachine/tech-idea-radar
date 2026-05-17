@@ -11,6 +11,8 @@ import {
   type TrendScan,
   type BatchInfo,
   type TrendHistoryEntry,
+  type FeaturedTrend,
+  type RssArticle,
 } from './api/ai';
 import Sidebar from './components/Sidebar';
 import TabFilter from './components/TabFilter';
@@ -113,11 +115,29 @@ function userFacingError(message: string): string {
   return message;
 }
 
-function formatStamp(iso: string | null | undefined): string {
-  if (!iso) return '-';
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return iso;
-  return date.toLocaleString('ja-JP');
+function trendArticleUrl(article: RssArticle): string {
+  return article.url || article.link;
+}
+
+function trendSummary(article: RssArticle): string {
+  return article.summaryJa
+    || article.summary
+    || article.description
+    || `${article.titleJa || article.title} に関するトレンドです。`;
+}
+
+function trendPreviewFromScan(scan: TrendScan): FeaturedTrend | null {
+  if (scan.featuredTrend) return scan.featuredTrend;
+  const article = scan.rssContext.relatedArticles[0];
+  if (!article) return null;
+  return {
+    title: article.title,
+    titleJa: article.titleJa,
+    url: trendArticleUrl(article),
+    source: article.source,
+    published: article.publishedAt ?? article.published,
+    summary: trendSummary(article),
+  };
 }
 
 function isIdeasMeta(value: unknown): value is IdeasMeta {
@@ -138,12 +158,13 @@ function App(): JSX.Element {
   const [trendHistory, setTrendHistory] = useState<TrendHistoryEntry[]>([]);
   const [activeTrendIndex, setActiveTrendIndex] = useState<number>(0);
   const [trendSnapshotCache, setTrendSnapshotCache] = useState<Map<number, TrendScan>>(new Map());
+  const [featuredTrend, setFeaturedTrend] = useState<FeaturedTrend | null>(null);
   const [ideas, setIdeas] = useState<IdeaCandidate[]>([]);
   const [featuredIdea, setFeaturedIdea] = useState<IdeaCandidate | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [progressText, setProgressText] = useState<string | null>(null);
+  const error: string | null = null;
+  const progressText: string | null = null;
   const [sourceSummary, setSourceSummary] = useState<SourceSummary | null>(null);
   const [ideasMeta, setIdeasMeta] = useState<IdeasMeta | null>(null);
   const [activeCategory, setActiveCategory] = useState('すべて');
@@ -164,12 +185,6 @@ function App(): JSX.Element {
     if (retryUsage) window.setTimeout(update, 2000);
   }, []);
   const publicReadonlyMode = Boolean(ideasMeta?.env?.publicReadonlyMode);
-  const generatedAt = ideasMeta?.cache?.generatedAt ?? null;
-  const headerStatusItems = [
-    ideasMeta ? (publicReadonlyMode ? '閲覧用キャッシュ' : '編集・生成モード') : 'データ確認中',
-    'データ元 RSS',
-    `最終更新 ${formatStamp(generatedAt)}`,
-  ];
 
   // Load cached ideas/meta on mount. Fresh generation starts automatically when cache is disabled.
   useEffect(() => {
@@ -203,6 +218,28 @@ function App(): JSX.Element {
     };
   }, [refreshIdeasMeta]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTrendPreview() {
+      try {
+        const result = await fetchTrends();
+        if (!cancelled) {
+          setTrends(result);
+          setFeaturedTrend(trendPreviewFromScan(result));
+          setTrendSnapshotCache(new Map([[0, result]]));
+        }
+      } catch {
+        // The trends view still performs its own user-facing load and error handling.
+      }
+    }
+
+    void loadTrendPreview();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Load trends and trend history when switching to trends view
   useEffect(() => {
     if (activeView !== 'trends') return;
@@ -212,14 +249,14 @@ function App(): JSX.Element {
       setTrendsLoading(true);
       setTrendError(null);
       try {
-        const [trendsResult, historyResult] = await Promise.all([
-          fetchTrends(),
-          fetchTrendHistory(),
-        ]);
+        const trendsResult = await fetchTrends();
+        const historyResult = await fetchTrendHistory();
         if (!cancelled) {
           setTrends(trendsResult);
+          setFeaturedTrend(trendPreviewFromScan(trendsResult));
           setTrendHistory(historyResult.history);
           setActiveTrendIndex(0);
+          setTrendSnapshotCache(new Map([[0, trendsResult]]));
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'トレンド取得に失敗しました';
@@ -239,25 +276,23 @@ function App(): JSX.Element {
   const handleSelectTrendSnapshot = useCallback(async (index: number) => {
     if (index === activeTrendIndex) return;
 
-    setTrendsLoading(true);
     setTrendError(null);
-    setActiveTrendIndex(index);
+    const cached = trendSnapshotCache.get(index);
+    if (cached) {
+      setTrends(cached);
+      setActiveTrendIndex(index);
+      setTrendsLoading(false);
+      return;
+    }
+
+    setTrendsLoading(true);
 
     try {
-      // Check cache first
-      const cached = trendSnapshotCache.get(index);
-      if (cached) {
-        setTrends(cached);
-        setTrendsLoading(false);
-        return;
-      }
-
-      // Fetch from API
       const snapshot = await fetchTrendSnapshot(index);
-      if (!trendSnapshotCache.has(index)) {
-        setTrendSnapshotCache((prev) => new Map(prev).set(index, snapshot));
-      }
+      setTrendSnapshotCache((prev) => new Map(prev).set(index, snapshot));
       setTrends(snapshot);
+      setFeaturedTrend(trendPreviewFromScan(snapshot));
+      setActiveTrendIndex(index);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'スナップショット取得に失敗しました';
       setTrendError(userFacingError(message));
@@ -307,35 +342,29 @@ function App(): JSX.Element {
         <div className="app-header__top">
           <div className="app-header__brand">
             <div>
-              <span className="app-header__eyebrow">BuildScouter</span>
-              <h1>作るものが決まっていないエンジニアへ</h1>
-              <p>今日の技術ニュースとAI開発トレンドから、検証の起点になるプロダクト仮説を提案します。</p>
+              <h1>Lume</h1>
+              <p>作るものが決まっていないエンジニアへ</p>
             </div>
           </div>
-          <div className="app-header__status">
-            {headerStatusItems.map((item) => (
-              <span key={item}>{item}</span>
-            ))}
-          </div>
-        </div>
 
-        <nav className="workspace-tabs" aria-label="主要機能">
-          <button
-            type="button"
-            className={`workspace-tabs__item ${activeView === 'ideas' ? 'workspace-tabs__item--active' : ''}`}
-            onClick={handleOpenIdeas}
-          >
-            アイデア
-            {hasIdeas && <span>{ideas.length}</span>}
-          </button>
-          <button
-            type="button"
-            className={`workspace-tabs__item ${activeView === 'trends' ? 'workspace-tabs__item--active' : ''}`}
-            onClick={() => setActiveView('trends')}
-          >
-            トレンド
-          </button>
-        </nav>
+          <nav className="workspace-tabs" aria-label="主要機能">
+            <button
+              type="button"
+              className={`workspace-tabs__item ${activeView === 'ideas' ? 'workspace-tabs__item--active' : ''}`}
+              onClick={handleOpenIdeas}
+            >
+              アイデア
+              {hasIdeas && <span>{ideas.length}</span>}
+            </button>
+            <button
+              type="button"
+              className={`workspace-tabs__item ${activeView === 'trends' ? 'workspace-tabs__item--active' : ''}`}
+              onClick={() => setActiveView('trends')}
+            >
+              トレンド
+            </button>
+          </nav>
+        </div>
 
         {showIdeaCommandBar && (
           <div className="idea-command-bar">
@@ -465,7 +494,9 @@ function App(): JSX.Element {
                   <RightPanel
                     ideas={displayedIdeas}
                     featuredIdea={featuredIdea}
+                    featuredTrend={featuredTrend}
                     selectedIdea={selectedIdea}
+                    onOpenTrends={() => setActiveView('trends')}
                   />
                 )}
               </div>

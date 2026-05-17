@@ -1,7 +1,7 @@
 /* ===== Idea Card ===== */
 .idea-card {
-    background: #fff;
-    border: 1px solid #e8ecf1;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
     border-radius: 8px;
     padding: 18px;
     transition: box-shadow 0.25s, transform 0.2s;
@@ -24,7 +24,7 @@
 
 .idea-card--selected {
     border-color: var(--border-active);
-    box-shadow: 0 0 0 3px rgba(74, 108, 247, 0.12);
+    box-shadow: 0 0 0 3px var(--accent-primary-glow);
 }
 
 .idea-card--list {
@@ -58,7 +58,7 @@
 .idea-card__title {
     font-size: 15px;
     font-weight: 700;
-    color: #1a1f36;
+    color: var(--text-primary);
     margin: 0;
     line-height: 1.45;
     overflow-wrap: anywhere;
@@ -73,7 +73,7 @@
 
 .idea-card__tagline {
     font-size: 13px;
-    color: #64748b;
+    color: var(--text-secondary);
     margin: 0;
     line-height: 1.6;
     display: -webkit-box;
@@ -90,7 +90,7 @@
 .idea-card__batch {
     align-self: flex-end;
     margin-top: auto;
-    color: #94a3b8;
+    color: var(--text-tertiary);
     font-size: 11px;
     font-weight: 600;
     line-height: 1;
@@ -108,7 +108,7 @@
     align-items: center;
     gap: 4px;
     margin-top: auto;
-    color: #4a6cf7;
+    color: var(--accent-primary);
 }
 
 .idea-card--list .idea-card__footer {

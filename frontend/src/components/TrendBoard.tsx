@@ -35,11 +35,9 @@ function formatTimelineLabel(scannedAt: string): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffHours < 1) return '今';
   if (diffHours < 24) return `${diffHours}時間前`;
-  if (diffDays < 7) return `${diffDays}日前`;
   return date.toLocaleString('ja-JP', {
     month: '2-digit',
     day: '2-digit',
@@ -280,13 +278,11 @@ function FeaturedArticle({
   return (
     <article
       className="tb-featured"
-      style={{ '--source-color': style.color } as React.CSSProperties}
+      style={{ '--source-color': style.color, '--source-bg': style.bg } as React.CSSProperties}
     >
       <div className="tb-featured__source">
-        <span
-          className="tb-featured__source-badge"
-          style={{ background: style.bg, color: style.color }}
-        >
+        <span className="tb-featured__source-badge">
+          <span className="tb-featured__source-dot" />
           {article.source || 'RSS'}
         </span>
         <time className="tb-featured__date">

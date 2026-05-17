@@ -34,9 +34,19 @@ export interface IdeaGenerationOutput {
   };
 }
 
+export interface FeaturedTrend {
+  title: string;
+  titleJa?: string;
+  url: string;
+  source: string;
+  published?: string;
+  summary: string;
+}
+
 export interface TrendScanOutput {
   rssContext: RssContext;
   focusKeywords: string[];
+  featuredTrend?: FeaturedTrend;
   generatedAt: string;
   sourceSummary: IdeaGenerationOutput['sourceSummary'];
 }

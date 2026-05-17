@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Outfit:wght@700;800;900&display=swap');
 
 :root {
   /* Neutral product workspace */
@@ -9,14 +9,18 @@
   --bg-card-hover: #F8FAFC;
   --bg-input: #F8FAFC;
   --border-color: #E2E8F0;
-  --border-active: #1D63ED;
+  --border-active: #55751F;
   --text-primary: #1E2B4D;
   --text-secondary: #4A5568;
   --text-tertiary: #718096;
 
   /* Accents */
-  --accent-blue: #2B6AFF;
-  --accent-blue-glow: rgba(43, 106, 255, 0.14);
+  --accent-primary: #6B8F2A;
+  --accent-primary-hover: #55751F;
+  --accent-primary-soft: #F1F7EA;
+  --accent-primary-active: #E2F0D2;
+  --accent-primary-border: #C9DEA9;
+  --accent-primary-glow: rgba(107, 143, 42, 0.15);
   --accent-green: #00B67A;
   --accent-green-glow: rgba(0, 182, 122, 0.15);
   --accent-yellow: #FFB300;
@@ -33,7 +37,7 @@
   --shadow-sm: 0 2px 4px rgba(30, 43, 77, 0.04);
   --shadow-md: 0 4px 12px rgba(30, 43, 77, 0.06);
   --shadow-lg: 0 12px 24px rgba(30, 43, 77, 0.08);
-  --shadow-glow: 0 4px 20px rgba(43, 106, 255, 0.08);
+  --shadow-glow: 0 4px 18px rgba(107, 143, 42, 0.14);
 
   --sidebar-width: 280px;
   --metrics-width: 320px;

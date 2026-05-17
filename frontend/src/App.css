@@ -9,80 +9,57 @@
 .app-header {
   width: 100%;
   margin: 0 auto;
-  padding: 60px 24px 34px;
+  padding: 22px 0 30px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 20px;
-  text-align: center;
+  justify-content: flex-start;
+  gap: 18px;
+  text-align: left;
 }
 
 .app-header__top {
   display: flex;
   width: 100%;
-  flex-direction: column;
-  align-items: center;
-  gap: 18px;
+  max-width: 1700px;
+  padding: 0 32px;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
 }
 
 .app-header__brand {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-inline-start: 10px;
   min-width: 0;
-  text-align: center;
-}
-
-.app-header__eyebrow {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--accent-blue);
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0;
-  text-transform: uppercase;
+  text-align: left;
 }
 
 .app-header__brand h1 {
-  margin: 0 0 16px;
-  color: var(--text-primary);
-  font-size: 38px;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: -0.8px;
+  margin: 0 0 6px;
+  color: var(--accent-primary);
+  font-family: "Outfit", "Inter", "Noto Sans JP", system-ui, sans-serif;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0;
 }
 
 .app-header__brand p {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.app-header__status {
-  display: flex;
-  max-width: 820px;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-
-.app-header__status span {
-  max-width: 100%;
-  padding: 5px 9px;
-  border: 1px solid var(--border-color);
-  border-radius: 999px;
-  background: var(--bg-card);
-  color: var(--text-tertiary);
-  font-size: 12px;
-  font-weight: 800;
-  overflow-wrap: anywhere;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .workspace-tabs {
   display: inline-flex;
+  flex: 0 0 auto;
   width: fit-content;
+  margin-top: 4px;
   padding: 4px;
   border: 1px solid var(--border-color);
   border-radius: 999px;
@@ -103,8 +80,9 @@
 }
 
 .workspace-tabs__item--active {
-  background: var(--accent-blue);
-  color: #fff;
+  border: 1px solid var(--accent-primary-border);
+  background: var(--accent-primary-active);
+  color: var(--accent-primary-hover);
   box-shadow: var(--shadow-glow);
 }
 
@@ -112,7 +90,7 @@
   min-width: 22px;
   padding: 2px 7px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(85, 117, 31, 0.12);
   color: inherit;
   font-size: 12px;
   text-align: center;
@@ -122,7 +100,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: min(820px, 100%);
+  width: min(820px, calc(100% - 64px));
   gap: 12px;
   flex-wrap: wrap;
   padding: 0;
@@ -209,7 +187,7 @@
 }
 
 .idea-command-bar__primary {
-  background: var(--accent-blue);
+  background: var(--accent-primary);
   color: #fff;
   box-shadow: var(--shadow-glow);
 }
@@ -271,8 +249,8 @@
 .progress-bar__text {
   font-size: 14px;
   font-weight: 600;
-  color: var(--accent-blue);
-  background: var(--accent-blue-glow);
+  color: var(--accent-primary);
+  background: var(--accent-primary-glow);
   padding: 6px 20px;
   border-radius: 999px;
   display: inline-block;
@@ -348,7 +326,7 @@
 
 .semantic-filter-banner__label {
   flex: 0 0 auto;
-  color: var(--accent-blue);
+  color: var(--accent-primary);
   font-weight: 800;
 }
 
@@ -434,7 +412,7 @@
   height: 56px;
   margin: 0 auto 20px;
   border-radius: 16px;
-  background: var(--accent-blue);
+  background: var(--accent-primary);
   color: #fff;
   display: flex;
   align-items: center;
@@ -477,7 +455,7 @@
   padding: 14px 28px;
   border: none;
   border-radius: 999px;
-  background: var(--accent-blue);
+  background: var(--accent-primary);
   color: #fff;
   font-size: 15px;
   font-weight: 800;
@@ -487,7 +465,7 @@
 }
 
 .setup-state__button:hover {
-  background: #1A54DF;
+  background: var(--accent-primary-hover);
   transform: translateY(-2px);
 }
 
@@ -534,10 +512,11 @@
 @media (max-width: 900px) {
   .app-header__top {
     flex-direction: column;
+    align-items: flex-start;
   }
 
-  .app-header__status {
-    justify-content: flex-start;
+  .workspace-tabs {
+    margin-top: 0;
   }
 
   .dashboard {
@@ -555,7 +534,11 @@
 
 @media (max-width: 600px) {
   .app-header {
-    padding: 22px 16px 16px;
+    padding: 22px 0 16px;
+  }
+
+  .app-header__top {
+    padding: 0 16px;
   }
 
   .app-header__brand {
@@ -581,6 +564,7 @@
   }
 
   .idea-command-bar {
+    width: calc(100% - 32px);
     flex-direction: column;
     align-items: stretch;
   }
