@@ -58,6 +58,17 @@ function ideaText(idea: IdeaCandidate): string {
   ].join(' ');
 }
 
+function ideaRenderKey(idea: IdeaCandidate, index: number): string {
+  return `${idea.id}:${idea.batchTime ?? idea.generatedAt}:${index}`;
+}
+
+function isSameIdea(a: IdeaCandidate | null, b: IdeaCandidate): boolean {
+  if (!a) return false;
+  return a.id === b.id
+    && a.generatedAt === b.generatedAt
+    && (a.batchTime ?? '') === (b.batchTime ?? '');
+}
+
 function matchesTab(idea: IdeaCandidate, tab: string): boolean {
   if (tab === 'すべて') return true;
   const text = ideaText(idea);
@@ -121,8 +132,6 @@ function trendArticleUrl(article: RssArticle): string {
 
 function trendSummary(article: RssArticle): string {
   return article.summaryJa
-    || article.summary
-    || article.description
     || `${article.titleJa || article.title} に関するトレンドです。`;
 }
 
@@ -250,7 +259,12 @@ function App(): JSX.Element {
       setTrendError(null);
       try {
         const trendsResult = await fetchTrends();
-        const historyResult = await fetchTrendHistory();
+        let historyResult: { history: TrendHistoryEntry[] } = { history: [] };
+        try {
+          historyResult = await fetchTrendHistory();
+        } catch {
+          historyResult = { history: [] };
+        }
         if (!cancelled) {
           setTrends(trendsResult);
           setFeaturedTrend(trendPreviewFromScan(trendsResult));
@@ -471,11 +485,11 @@ function App(): JSX.Element {
                     <div className={`idea-grid idea-grid--${viewMode}`}>
                       {displayedIdeas.map((idea, index) => (
                         <IdeaCard
-                          key={idea.id}
+                          key={ideaRenderKey(idea, index)}
                           idea={idea}
                           index={index}
                           viewMode={viewMode}
-                          selected={selectedIdea?.id === idea.id}
+                          selected={isSameIdea(selectedIdea, idea)}
                           onSelect={handleIdeaSelect}
                         />
                       ))}

@@ -95,6 +95,19 @@ export interface RssArticle {
   keywords?: string[];
 }
 
+export interface RssSourceError {
+  source: string;
+  message: string;
+}
+
+export interface RssSummaryError {
+  index: number;
+  title: string;
+  source: string;
+  message: string;
+  url?: string;
+}
+
 export interface FeaturedTrend {
   title: string;
   titleJa?: string;
@@ -109,6 +122,8 @@ export interface TrendScan {
   rssContext: {
     trendingKeywords: RssTrendItem[];
     relatedArticles: RssArticle[];
+    sourceErrors?: RssSourceError[];
+    summaryErrors?: RssSummaryError[];
   };
   focusKeywords: string[];
   featuredTrend?: FeaturedTrend;
