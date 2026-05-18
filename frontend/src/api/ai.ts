@@ -127,6 +127,16 @@ export interface RssArticleSummaryPolicy {
   minJapaneseToLatinRatio: number;
 }
 
+export const DEFAULT_RSS_ARTICLE_SUMMARY_POLICY: RssArticleSummaryPolicy = {
+  minItems: 3,
+  maxItems: 6,
+  minTotalChars: 240,
+  maxTotalChars: 1200,
+  maxItemChars: 260,
+  minJapaneseChars: 120,
+  minJapaneseToLatinRatio: 0.35,
+};
+
 export interface TrendScan {
   status: string;
   rssContext: {
@@ -140,6 +150,7 @@ export interface TrendScan {
   generatedAt: string;
   sourceSummary: SourceSummary;
   summaryPolicy: RssArticleSummaryPolicy;
+  summaryPolicySource?: 'api' | 'default';
 }
 
 export interface TrendHistoryEntry {
@@ -147,6 +158,34 @@ export interface TrendHistoryEntry {
   generatedAt: string;
   articleCount: number;
   keywordCount: number;
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isRssArticleSummaryPolicy(value: unknown): value is RssArticleSummaryPolicy {
+  if (!value || typeof value !== 'object') return false;
+  const policy = value as Record<string, unknown>;
+  return isFiniteNumber(policy.minItems)
+    && isFiniteNumber(policy.maxItems)
+    && isFiniteNumber(policy.minTotalChars)
+    && isFiniteNumber(policy.maxTotalChars)
+    && isFiniteNumber(policy.maxItemChars)
+    && isFiniteNumber(policy.minJapaneseChars)
+    && isFiniteNumber(policy.minJapaneseToLatinRatio);
+}
+
+function normalizeTrendScan(value: TrendScan): TrendScan {
+  const summaryPolicy = isRssArticleSummaryPolicy(value.summaryPolicy)
+    ? value.summaryPolicy
+    : DEFAULT_RSS_ARTICLE_SUMMARY_POLICY;
+
+  return {
+    ...value,
+    summaryPolicy,
+    summaryPolicySource: summaryPolicy === value.summaryPolicy ? 'api' : 'default',
+  };
 }
 
 // GET /api/ideas
@@ -174,7 +213,7 @@ export async function fetchIdeasMeta(): Promise<IdeasMeta> {
 export async function fetchTrends(): Promise<TrendScan> {
   const res = await fetch(`${API_BASE}/api/ai/trends`, { cache: 'no-store' });
   if (!res.ok) await throwApiError(res, 'fetchTrends');
-  return res.json();
+  return normalizeTrendScan(await res.json() as TrendScan);
 }
 
 // GET /api/trends/history
@@ -188,7 +227,7 @@ export async function fetchTrendHistory(): Promise<{ history: TrendHistoryEntry[
 export async function fetchTrendSnapshot(index: number): Promise<TrendScan> {
   const res = await fetch(`${API_BASE}/api/ai/trends/history/${index}`, { cache: 'no-store' });
   if (!res.ok) await throwApiError(res, 'fetchTrendSnapshot');
-  return res.json();
+  return normalizeTrendScan(await res.json() as TrendScan);
 }
 
 // POST /api/trends/refresh
@@ -198,7 +237,7 @@ export async function refreshTrends(): Promise<TrendScan> {
     cache: 'no-store',
   });
   if (!res.ok) await throwApiError(res, 'refreshTrends');
-  return res.json();
+  return normalizeTrendScan(await res.json() as TrendScan);
 }
 
 // SSE helper for idea generation / refresh streams

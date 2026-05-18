@@ -124,6 +124,16 @@ function isDisplayableArticle(article: RssArticle, policy: RssArticleSummaryPoli
   return totalChars >= policy.minTotalChars && totalChars <= policy.maxTotalChars;
 }
 
+function hasLegacySummary(article: RssArticle): boolean {
+  const summary = article.summaryJa?.trim() ?? '';
+  return Boolean(
+    summary
+    && containsJapanese(summary)
+    && !containsFeedMetadataOrUrl(summary)
+    && articleUrl(article),
+  );
+}
+
 function articleSummaryLines(article: RssArticle): string[] {
   return articleSummary(article)
     .replace(/\s+・/g, '\n・')
@@ -173,10 +183,12 @@ export default function TrendBoard({
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 16;
   const summaryPolicy = trends?.summaryPolicy;
+  const usesLegacySummaryContract = trends?.summaryPolicySource === 'default';
   const relatedArticles = trends?.rssContext.relatedArticles ?? [];
-  const displayableArticles = summaryPolicy
+  const policyDisplayableArticles = summaryPolicy
     ? (trends?.rssContext.relatedArticles ?? []).filter((article) => isDisplayableArticle(article, summaryPolicy))
     : [];
+  const displayableArticles = usesLegacySummaryContract ? [] : policyDisplayableArticles;
   const fallbackArticles = displayableArticles.length > 0
     ? []
     : relatedArticles.filter((article) => {
@@ -184,10 +196,15 @@ export default function TrendBoard({
       return Boolean(title && articleUrl(article));
     });
   const rssArticles = displayableArticles.length > 0 ? displayableArticles : fallbackArticles;
-  const summaryArticleUrls = new Set(displayableArticles.map((article) => articleUrl(article)));
+  const summaryArticleUrls = new Set(
+    (usesLegacySummaryContract
+      ? rssArticles.filter(hasLegacySummary)
+      : displayableArticles
+    ).map((article) => articleUrl(article)),
+  );
   const keywords = trends?.rssContext.trendingKeywords ?? [];
   const sourceCount = new Set(rssArticles.map((a) => a.source).filter(Boolean)).size;
-  const summarizedCount = displayableArticles.length;
+  const summarizedCount = summaryArticleUrls.size;
 
   const maxKeywordCount = keywords.length > 0
     ? Math.max(...keywords.map((k) => k.count))
