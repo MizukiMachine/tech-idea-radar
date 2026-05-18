@@ -67,9 +67,6 @@ export default function RightPanel({
                 {featuredTrend?.source && (
                     <span className="right-panel__card-tag">{featuredTrend.source}</span>
                 )}
-                <button type="button" className="right-panel__card-action" onClick={onOpenTrends}>
-                    トレンドを見る
-                </button>
             </div>
 
 
