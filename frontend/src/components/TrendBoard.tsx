@@ -163,6 +163,8 @@ export default function TrendBoard({
   onSelectTrend,
 }: TrendBoardProps): JSX.Element {
   const [expandedArticleUrls, setExpandedArticleUrls] = useState<Set<string>>(() => new Set());
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 15;
   const summaryPolicy = trends?.summaryPolicy;
   const rssArticles = summaryPolicy
     ? (trends?.rssContext.relatedArticles ?? []).filter((article) => isDisplayableArticle(article, summaryPolicy))
@@ -181,9 +183,9 @@ export default function TrendBoard({
       <div className="tb-hero">
         <div className="tb-hero__inner">
           <div className="tb-hero__badge">SIGNAL SCAN</div>
-          <h2 className="tb-hero__title">今日のAI開発シグナル</h2>
+          <h2 className="tb-hero__title">tech系開発シグナル</h2>
           <p className="tb-hero__subtitle">
-            主要テックメディアの最新記事から、プロダクト開発に活きるトレンドを毎日キャッチ
+            海外メディアを中心にトレンドをキャッチ
           </p>
         </div>
         <div className="tb-hero__metrics">
@@ -249,7 +251,7 @@ export default function TrendBoard({
                 <span className="tb-feed__count">{rssArticles.length}件</span>
               </div>
               <div className="tb-feed__list">
-                {rssArticles.map((article) => (
+                {rssArticles.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((article) => (
                   <FeaturedArticle
                     key={articleUrl(article)}
                     article={article}
@@ -266,6 +268,14 @@ export default function TrendBoard({
                   />
                 ))}
               </div>
+              {rssArticles.length > PAGE_SIZE && (
+                <Pagination
+                  total={rssArticles.length}
+                  pageSize={PAGE_SIZE}
+                  current={page}
+                  onChange={setPage}
+                />
+              )}
             </section>
           </div>
 
@@ -419,5 +429,70 @@ function FeaturedArticle({
         </div>
       )}
     </article>
+  );
+}
+
+/* ── Pagination ───────────────────────────────────────── */
+
+function Pagination({
+  total,
+  pageSize,
+  current,
+  onChange,
+}: {
+  total: number;
+  pageSize: number;
+  current: number;
+  onChange: (page: number) => void;
+}): JSX.Element {
+  const totalPages = Math.ceil(total / pageSize);
+  if (totalPages <= 1) return <></>;
+
+  const pages: (number | '...')[] = [];
+  if (totalPages <= 7) {
+    for (let i = 0; i < totalPages; i++) pages.push(i);
+  } else {
+    pages.push(0);
+    if (current > 2) pages.push('...');
+    for (let i = Math.max(1, current - 1); i <= Math.min(totalPages - 2, current + 1); i++) {
+      pages.push(i);
+    }
+    if (current < totalPages - 3) pages.push('...');
+    pages.push(totalPages - 1);
+  }
+
+  return (
+    <div className="tb-pagination">
+      <button
+        type="button"
+        className="tb-pagination__btn"
+        disabled={current === 0}
+        onClick={() => onChange(current - 1)}
+      >
+        ‹
+      </button>
+      {pages.map((p, i) =>
+        p === '...' ? (
+          <span key={`ellipsis-${i}`} className="tb-pagination__ellipsis">…</span>
+        ) : (
+          <button
+            key={p}
+            type="button"
+            className={`tb-pagination__btn ${p === current ? 'tb-pagination__btn--active' : ''}`}
+            onClick={() => onChange(p)}
+          >
+            {p + 1}
+          </button>
+        ),
+      )}
+      <button
+        type="button"
+        className="tb-pagination__btn"
+        disabled={current === totalPages - 1}
+        onClick={() => onChange(current + 1)}
+      >
+        ›
+      </button>
+    </div>
   );
 }
