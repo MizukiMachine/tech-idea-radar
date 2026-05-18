@@ -1,23 +1,21 @@
 import { useState } from 'react';
-import type { RssArticle, TrendScan, TrendHistoryEntry } from '../api/ai';
+import type { RssArticle, RssArticleSummaryPolicy, TrendScan, TrendHistoryEntry } from '../api/ai';
 import './TrendBoard.css';
 
 const SOURCE_STYLE: Record<string, { color: string; bg: string }> = {
   'Hacker News': { color: '#C67A3A', bg: 'rgba(198,122,58,0.045)' },
   'TechCrunch': { color: '#8A7A3E', bg: 'rgba(138,122,62,0.045)' },
-  'The Verge': { color: '#BA6C94', bg: 'rgba(186,108,148,0.045)' },
-  'DEV Community': { color: '#6B73B8', bg: 'rgba(107,115,184,0.045)' },
   'Zenn': { color: '#6099BD', bg: 'rgba(96,153,189,0.045)' },
   'Qiita Popular': { color: '#76A852', bg: 'rgba(118,168,82,0.045)' },
   'Qiita': { color: '#76A852', bg: 'rgba(118,168,82,0.045)' },
+  'GitHub Blog': { color: '#59636E', bg: 'rgba(89,99,110,0.045)' },
+  'Stack Overflow Blog': { color: '#C47A36', bg: 'rgba(196,122,54,0.045)' },
+  'Product Hunt': { color: '#C96B3E', bg: 'rgba(201,107,62,0.045)' },
+  InfoQ: { color: '#4F7DB8', bg: 'rgba(79,125,184,0.045)' },
+  'AWS News Blog': { color: '#98722E', bg: 'rgba(152,114,46,0.045)' },
+  'Microsoft DevBlogs': { color: '#5A8F62', bg: 'rgba(90,143,98,0.045)' },
 };
 const FALLBACK_SOURCE = { color: '#7B8491', bg: 'rgba(123,132,145,0.045)' };
-const MIN_SUMMARY_ITEMS = 5;
-const MAX_SUMMARY_ITEMS = 7;
-const MIN_SUMMARY_CHARS = 700;
-const MAX_SUMMARY_CHARS = 1200;
-const MIN_SUMMARY_ITEM_CHARS = 90;
-const MAX_SUMMARY_ITEM_CHARS = 180;
 
 function sourceStyle(source: string | undefined) {
   return SOURCE_STYLE[source ?? ''] ?? FALLBACK_SOURCE;
@@ -56,6 +54,17 @@ function containsJapanese(text: string): boolean {
   return /[ぁ-んァ-ヶ一-龯]/.test(text);
 }
 
+function countMatches(text: string, pattern: RegExp): number {
+  return text.match(pattern)?.length ?? 0;
+}
+
+function looksLikeJapaneseSummary(text: string, policy: RssArticleSummaryPolicy): boolean {
+  const japaneseChars = countMatches(text, /[ぁ-んァ-ヶ一-龯]/g);
+  const latinChars = countMatches(text, /[A-Za-z]/g);
+  return japaneseChars >= policy.minJapaneseChars
+    && japaneseChars >= latinChars * policy.minJapaneseToLatinRatio;
+}
+
 function containsFeedMetadataOrUrl(text: string): boolean {
   return /\bArticle URL:|\bComments URL:|\bPoints:|#\s*Comments:|\bhttps?:\/\/\S+|\bwww\.\S+/i.test(text);
 }
@@ -88,14 +97,11 @@ function articleSummary(article: RssArticle): string {
   return compact || `${normalized.slice(0, 678).trim()}。`;
 }
 
-function isDisplayableArticle(article: RssArticle): boolean {
-  const title = article.titleJa || article.title;
-  const summary = articleSummary(article);
-  if (!containsJapanese(title) || !containsJapanese(summary)) return false;
-  if (containsFeedMetadataOrUrl(summary)) return false;
-
+function isDisplayableArticle(article: RssArticle, policy: RssArticleSummaryPolicy): boolean {
+  const title = article.titleJa?.trim() || (containsJapanese(article.title) ? article.title.trim() : '');
   const policySummary = article.summaryJa?.trim() ?? '';
-  if (!policySummary) return summary.length >= 20;
+  if (!title || !policySummary) return false;
+  if (!containsJapanese(title) || !looksLikeJapaneseSummary(policySummary, policy)) return false;
   if (containsFeedMetadataOrUrl(policySummary)) return false;
 
   const items = policySummary
@@ -108,14 +114,14 @@ function isDisplayableArticle(article: RssArticle): boolean {
       ? line.replace(/^・\s*/, '').replace(/[。．.]$/u, '').trim()
       : ''));
 
-  if (items.length < MIN_SUMMARY_ITEMS || items.length > MAX_SUMMARY_ITEMS) return summary.length >= 40;
-  if (items.some((item) => !item)) return summary.length >= 40;
-  if (items.some((item) => item.length < MIN_SUMMARY_ITEM_CHARS || item.length > MAX_SUMMARY_ITEM_CHARS)) {
-    return summary.length >= 40;
+  if (items.length < policy.minItems || items.length > policy.maxItems) return false;
+  if (items.some((item) => !item)) return false;
+  if (items.some((item) => item.length > policy.maxItemChars)) {
+    return false;
   }
 
   const totalChars = items.join('').length;
-  return (totalChars >= MIN_SUMMARY_CHARS && totalChars <= MAX_SUMMARY_CHARS) || summary.length >= 40;
+  return totalChars >= policy.minTotalChars && totalChars <= policy.maxTotalChars;
 }
 
 function articleSummaryLines(article: RssArticle): string[] {
@@ -157,7 +163,10 @@ export default function TrendBoard({
   onSelectTrend,
 }: TrendBoardProps): JSX.Element {
   const [expandedArticleUrls, setExpandedArticleUrls] = useState<Set<string>>(() => new Set());
-  const rssArticles = (trends?.rssContext.relatedArticles ?? []).filter(isDisplayableArticle);
+  const summaryPolicy = trends?.summaryPolicy;
+  const rssArticles = summaryPolicy
+    ? (trends?.rssContext.relatedArticles ?? []).filter((article) => isDisplayableArticle(article, summaryPolicy))
+    : [];
   const keywords = trends?.rssContext.trendingKeywords ?? [];
   const sourceCount = new Set(rssArticles.map((a) => a.source).filter(Boolean)).size;
   const summarizedCount = rssArticles.filter((a) => a.titleJa || a.summaryJa).length;
@@ -240,7 +249,7 @@ export default function TrendBoard({
                 <span className="tb-feed__count">{rssArticles.length}件</span>
               </div>
               <div className="tb-feed__list">
-                {rssArticles.slice(0, 12).map((article) => (
+                {rssArticles.map((article) => (
                   <FeaturedArticle
                     key={articleUrl(article)}
                     article={article}

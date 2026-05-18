@@ -4,6 +4,15 @@ import App from "../App";
 
 const mockFetch = vi.fn();
 const generatedAt = new Date().toISOString();
+const summaryPolicy = {
+  minItems: 3,
+  maxItems: 6,
+  minTotalChars: 240,
+  maxTotalChars: 1200,
+  maxItemChars: 260,
+  minJapaneseChars: 120,
+  minJapaneseToLatinRatio: 0.35,
+};
 
 function validTrendSummary(topic: string): string {
   return [
@@ -11,7 +20,6 @@ function validTrendSummary(topic: string): string {
     `・記事では、チームが日々の業務にAI支援を組み込み、情報収集や論点整理を自動化しようとする動きが中心に描かれている。個人の便利機能から、組織の運用プロセスへAIを組み込む段階に移りつつあり、現場の使い方も変わり始めている`,
     `・具体例として、複数の情報源を見比べる作業、会議前の論点整理、実装前の技術検証などをAIで補助する場面が示されている。短時間で仮説を比較し、検討漏れを減らす使い方が重要になっており、担当者の準備作業を軽くできる`,
     `・一方で、AIの出力精度、既存ワークフローとの接続、チーム内での責任分界は課題として残る。導入するだけでは成果につながらず、確認やレビューを含めた運用設計が必要になる点が転換点になっており、管理方法も問われる`,
-    `・転換点は、AIを単体の便利機能として使う段階から、業務プロセスの中に組み込み、判断やレビューの流れそのものを変える段階へ移っていることにある。効果測定も作業時間だけでは不十分になり、意思決定の質まで見る必要がある`,
     `・開発者やプロダクト担当者にとっては、流行語として追うより、どの作業の時間を減らし、どの判断の質を高めるかを小さく検証する姿勢が重要になる。失敗時に戻せる運用単位で試すことが示唆になり、導入範囲を絞る判断も必要になる`,
     `・最終的には、AIを大きく導入する前に、対象業務、確認責任、成功指標を明確にすることが重要になる。小さな検証で効果とリスクを見極めれば、現場に無理なく定着するプロダクト改善につなげやすい`,
   ].join("\n");
@@ -90,6 +98,7 @@ const trends = {
     ],
   },
   focusKeywords: ["AI"],
+  summaryPolicy,
   featuredTrend: {
     title: "AI agent tools are moving into product workflows",
     titleJa: "AIエージェントツールがプロダクト業務に広がる",
@@ -156,6 +165,54 @@ describe("App", () => {
     fireEvent.click(buttons[1]);
     expect(screen.getByText(firstSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
     expect(screen.getByText(secondSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
+  });
+
+  it("hides trend articles whose generated Japanese summary fails the display policy", async () => {
+    const invalidTrends = {
+      ...trends,
+      rssContext: {
+        ...trends.rssContext,
+        relatedArticles: [
+          trends.rssContext.relatedArticles[0],
+          {
+            title: "Broken generated summary remains too short",
+            titleJa: "短すぎる要約が残った記事",
+            link: "https://example.com/broken-summary",
+            url: "https://example.com/broken-summary",
+            published: generatedAt,
+            publishedAt: generatedAt,
+            summary: "A short generated summary.",
+            summaryJa: "これは短すぎる要約です。",
+            source: "Example RSS",
+            keywords: ["AI"],
+          },
+        ],
+      },
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = invalidTrends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
+
+    await waitFor(() => expect(screen.getByText("RSSフィード")).toBeTruthy());
+    expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
+    expect(screen.queryByText("短すぎる要約が残った記事")).toBeNull();
   });
 
   it("renders search input on the ideas view", async () => {

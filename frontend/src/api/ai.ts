@@ -117,6 +117,16 @@ export interface FeaturedTrend {
   summary: string;
 }
 
+export interface RssArticleSummaryPolicy {
+  minItems: number;
+  maxItems: number;
+  minTotalChars: number;
+  maxTotalChars: number;
+  maxItemChars: number;
+  minJapaneseChars: number;
+  minJapaneseToLatinRatio: number;
+}
+
 export interface TrendScan {
   status: string;
   rssContext: {
@@ -129,6 +139,7 @@ export interface TrendScan {
   featuredTrend?: FeaturedTrend;
   generatedAt: string;
   sourceSummary: SourceSummary;
+  summaryPolicy: RssArticleSummaryPolicy;
 }
 
 export interface TrendHistoryEntry {

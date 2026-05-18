@@ -158,16 +158,17 @@ prompts:
     version: 1
     description: RSS記事のタイトルと抜粋だけを根拠に、トレンド一覧用の日本語タイトルと要約を生成する。
     inputs:
+      - name: summary_policy
+        type: markdown
+        required: true
+        sensitivity: public
+        render_as: markdown
       - name: articles
         type: json
         required: true
         sensitivity: public
         render_as: json
     rules:
-      - summaryJaは、読者が元記事を読まなくても記事の流れと重要点を把握できるように、5〜7項目の箇条書きにすること。
-      - summaryJa全体は700〜1200字程度を目安にすること。
-      - 各項目は必ず「・」で始め、項目ごとに必ず改行すること。1項目は90〜180字程度にすること。
-      - 箇条書き各項目の末尾には「。」や「.」などの句点を付けないこと。
       - 起承転結が伝わる順番にすること。背景/問題提起、何が起きたか、具体例や根拠、課題や転換点、技術者やプロダクト担当者への示唆。
       - 入力抜粋が短い場合でも、読み取れる範囲で、背景・主な論点・具体例・影響を分けること。
       - 入力にない事実を補完せず、不明な点は断定しないこと。
@@ -177,7 +178,10 @@ prompts:
       - 「解説しています」だけで終わる薄い要約にせず、何が起きていて、開発者やプロダクト担当者に何が示唆されるかを具体的に含めること。
       - 入力にない事実、数値、固有名詞は足さないこと。
       - 英語タイトルには自然な日本語titleJaを付け、日本語タイトルはtitleJaを原文と同じにすること。
-      - 出力のindexは入力のindexと同じ数値を必ず入れること。
+      - 最終出力前に、titleJaが日本語として自然であること、summaryJaが上記の箇条書き数・文字数・メタ情報禁止・URL禁止・日本語要約条件をすべて満たすことを記事ごとに自己検証すること。
+      - 基準を満たせない記事、日本語化できない記事、入力抜粋だけでは要約品質を満たせない記事は、推測で埋めずにそのindexのオブジェクトを出力しないこと。掲載側では要約失敗として除外し、部分失敗は管理者通知の対象になります。
+      - 出力する各オブジェクトのindexは入力のindexと同じ数値を必ず入れること。
+      - 有効な要約だけをJSON配列に含めること。全件が基準未満の場合は空配列を返すこと。
       - JSON以外は出力しないこと。
     output_format: |
       [
@@ -195,6 +199,7 @@ prompts:
           RSS記事のタイトルと抜粋だけを根拠に、トレンド一覧で読むための日本語要約を作ります。
 
           ## 要約ルール
+          ${summary_policy}
           ${rules}
 
           ## 出力形式
@@ -204,6 +209,71 @@ prompts:
       - role: user
         content: |
           次のRSS記事を一覧用に要約してください。
+
+          ## RSS記事
+          ```json
+          ${articles}
+          ```
+
+  rss_article_summary_repair:
+    id: ai_engine.rss_article_summary_repair
+    version: 1
+    description: 検証に失敗したRSS記事要約を、検証エラーを踏まえて単体で再生成する。
+    inputs:
+      - name: summary_policy
+        type: markdown
+        required: true
+        sensitivity: public
+        render_as: markdown
+      - name: articles
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+      - name: validation_errors
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+    rules:
+      - 入力は検証に失敗した記事だけです。各記事について検証エラーを解消したtitleJaとsummaryJaを再生成すること。
+      - Article URL、Comments URL、Points、# Comments、URL文字列などRSSフィードのメタ情報はsummaryJaに絶対に含めないこと。
+      - 入力にない事実、数値、固有名詞は足さないこと。不明な点は断定しないこと。
+      - 英語タイトルには自然な日本語titleJaを付け、日本語タイトルはtitleJaを原文と同じにすること。
+      - 検証エラーがindex欠落の場合は、そのindexのオブジェクトを返すこと。ただし、入力抜粋だけでは記事内容を安全に要約できない場合だけ、そのindexを出力しないこと。
+      - 出力する各オブジェクトのindexは入力のindexと同じ数値を必ず入れること。
+      - JSON以外は出力しないこと。
+    output_format: |
+      [
+        {
+          "index": 0,
+          "title": "原文タイトル",
+          "titleJa": "日本語タイトル",
+          "summaryJa": "日本語の要約"
+        }
+      ]
+    messages:
+      - role: system
+        content: |
+          あなたは技術ニュースの編集者です。
+          検証に失敗したRSS記事要約を、入力記事と検証エラーだけを根拠に修正します。
+
+          ## 修正ルール
+          ${summary_policy}
+          ${rules}
+
+          ## 出力形式
+          ```json
+          ${output_format}
+          ```
+      - role: user
+        content: |
+          次のRSS記事について、検証エラーを解消した一覧用の日本語要約を再生成してください。
+
+          ## 検証エラー
+          ```json
+          ${validation_errors}
+          ```
 
           ## RSS記事
           ```json

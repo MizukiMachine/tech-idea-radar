@@ -43,6 +43,7 @@ const DEFAULT_RSS_FETCH_TIMEOUT_MS = 8000;
 const DEFAULT_ARTICLE_FETCH_TIMEOUT_MS = 5000;
 const DEFAULT_MAX_RELATED_ARTICLES = 18;
 const DEFAULT_SOURCE_FIRST_PASS_LIMIT = 1;
+const DEFAULT_SOURCE_TOTAL_LIMIT = 3;
 const MIN_USEFUL_SUMMARY_LENGTH = 280;
 
 interface PublicFeed {
@@ -56,8 +57,12 @@ type FeedFetchResult = { articles: RssArticle[]; error?: RssSourceError };
 const DEFAULT_RSS_FEEDS: PublicFeed[] = [
   { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
   { name: 'TechCrunch', url: 'https://techcrunch.com/feed/' },
-  { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
-  { name: 'DEV Community', url: 'https://dev.to/feed' },
+  { name: 'GitHub Blog', url: 'https://github.blog/feed/' },
+  { name: 'Stack Overflow Blog', url: 'https://stackoverflow.blog/feed/' },
+  { name: 'InfoQ', url: 'https://feed.infoq.com/' },
+  { name: 'AWS News Blog', url: 'https://aws.amazon.com/blogs/aws/feed/' },
+  { name: 'Microsoft DevBlogs', url: 'https://devblogs.microsoft.com/feed/' },
+  { name: 'Product Hunt', url: 'https://www.producthunt.com/feed' },
   { name: 'Zenn', url: 'https://zenn.dev/feed' },
   { name: 'Qiita Popular', url: 'https://qiita.com/popular-items/feed' },
 ];
@@ -68,6 +73,20 @@ const STOP_WORDS = new Set([
   'what', 'why', 'new', 'news', 'more', 'after', 'over', 'under', 'their',
   'they', 'will', 'can', 'has', 'have', 'had', 'not', 'but', 'all',
 ]);
+
+const PRODUCT_SIGNAL_TERMS = [
+  'ai', 'agent', 'agents', 'api', 'automation', 'cloud', 'code', 'coding',
+  'database', 'developer', 'developers', 'engineering', 'infrastructure',
+  'llm', 'model', 'open source', 'platform', 'privacy', 'product', 'saas',
+  'sdk', 'security', 'startup', 'tool', 'tools', 'workflow',
+  'エンジニア', 'クラウド', 'コード', 'セキュリティ', 'ツール', 'データ',
+  'プロダクト', 'モデル', '開発', '基盤', '自動化', '生成ai',
+];
+
+type ScoredArticle = {
+  article: RssArticle;
+  score: number;
+};
 
 function asArray<T>(value: T | T[] | undefined): T[] {
   if (value === undefined) return [];
@@ -396,6 +415,43 @@ function buildTrendingKeywords(articles: RssArticle[], seedKeywords: string[]): 
     .map(([word, count]) => ({ word, count }));
 }
 
+function articleScore(article: RssArticle, keywords: string[]): number {
+  const title = normalizeSearchText(article.title);
+  const summary = normalizeSearchText(article.summary);
+  const keywordText = normalizeSearchText((article.keywords ?? []).join(' '));
+  const combined = `${title} ${summary} ${keywordText}`;
+
+  const keywordScore = keywords.reduce((score, keyword) => {
+    const normalized = normalizeSearchText(keyword);
+    if (!normalized) return score;
+    if (title.includes(normalized)) return score + 16;
+    if (summary.includes(normalized)) return score + 10;
+    if (keywordText.includes(normalized)) return score + 8;
+    return score;
+  }, 0);
+
+  const signalMatches = PRODUCT_SIGNAL_TERMS.reduce((count, term) => (
+    combined.includes(normalizeSearchText(term)) ? count + 1 : count
+  ), 0);
+  const signalScore = Math.min(18, signalMatches * 3);
+
+  const publishedTime = Date.parse(article.published);
+  const ageDays = Number.isNaN(publishedTime) ? 14 : Math.max(0, (Date.now() - publishedTime) / 86_400_000);
+  const recencyScore = Math.max(0, 12 - ageDays);
+
+  const summaryLength = article.summary.trim().length;
+  const substanceScore = summaryLength >= 280 ? 8 : summaryLength >= 120 ? 4 : 0;
+
+  return keywordScore + signalScore + recencyScore + substanceScore;
+}
+
+function normalizeSearchText(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function rankArticles(articles: RssArticle[], keywords: string[], feeds: PublicFeed[]): RssArticle[] {
   const seen = new Set<string>();
   const deduped = articles.filter((article) => {
@@ -406,42 +462,42 @@ function rankArticles(articles: RssArticle[], keywords: string[], feeds: PublicF
   });
 
   const ranked = deduped
-    .map((article) => {
-      const text = `${article.title} ${article.summary} ${(article.keywords ?? []).join(' ')}`.toLowerCase();
-      const keywordScore = keywords.reduce((score, keyword) => (
-        text.includes(keyword.toLowerCase()) ? score + 10 : score
-      ), 0);
-      const publishedTime = Date.parse(article.published);
-      const recencyScore = Number.isNaN(publishedTime) ? 0 : Math.max(0, 7 - ((Date.now() - publishedTime) / 86_400_000));
-      return { article, score: keywordScore + recencyScore };
-    })
+    .map((article): ScoredArticle => ({ article, score: articleScore(article, keywords) }))
     .sort((a, b) => b.score - a.score);
 
   const sourceOrder = [
     ...feeds.map((feed) => feed.name).filter((source) => ranked.some((item) => item.article.source === source)),
     ...new Set(ranked.map(({ article }) => article.source).filter((source) => !feeds.some((feed) => feed.name === source))),
   ].filter(Boolean);
-  const selected: RssArticle[] = [];
+  const selected: ScoredArticle[] = [];
   const selectedUrls = new Set<string>();
   const sourceCounts = new Map<string, number>();
   const maxArticles = parsePositiveInt(process.env.RSS_MAX_RELATED_ARTICLES, DEFAULT_MAX_RELATED_ARTICLES);
   const firstPassLimit = parsePositiveInt(process.env.RSS_SOURCE_FIRST_PASS_LIMIT, DEFAULT_SOURCE_FIRST_PASS_LIMIT);
-  const rankedBySource = new Map<string, RssArticle[]>();
+  const sourceTotalLimit = Math.max(
+    firstPassLimit,
+    parsePositiveInt(process.env.RSS_SOURCE_TOTAL_LIMIT, DEFAULT_SOURCE_TOTAL_LIMIT),
+  );
+  const rankedBySource = new Map<string, ScoredArticle[]>();
 
-  for (const { article } of ranked) {
+  for (const scored of ranked) {
+    const { article } = scored;
     const sourceArticles = rankedBySource.get(article.source) ?? [];
-    sourceArticles.push(article);
+    sourceArticles.push(scored);
     rankedBySource.set(article.source, sourceArticles);
   }
 
-  const addArticle = (article: RssArticle): void => {
-    if (selected.length >= maxArticles) return;
+  const addArticle = (scored: ScoredArticle): boolean => {
+    if (selected.length >= maxArticles) return false;
+    const { article } = scored;
     const key = articleKey(article);
-    if (selectedUrls.has(key)) return;
+    if (selectedUrls.has(key)) return false;
     const currentCount = sourceCounts.get(article.source) ?? 0;
-    selected.push(article);
+    if (currentCount >= sourceTotalLimit) return false;
+    selected.push(scored);
     selectedUrls.add(key);
     sourceCounts.set(article.source, currentCount + 1);
+    return true;
   };
 
   for (let index = 0; index < firstPassLimit && selected.length < maxArticles; index += 1) {
@@ -451,11 +507,22 @@ function rankArticles(articles: RssArticle[], keywords: string[], feeds: PublicF
     }
   }
 
-  for (const { article } of ranked) {
-    addArticle(article);
+  for (let index = firstPassLimit; selected.length < maxArticles; index += 1) {
+    const round = sourceOrder
+      .map((source) => rankedBySource.get(source)?.[index])
+      .filter((article): article is ScoredArticle => Boolean(article))
+      .sort((a, b) => b.score - a.score);
+
+    if (round.length === 0) break;
+    for (const article of round) {
+      addArticle(article);
+      if (selected.length >= maxArticles) break;
+    }
   }
 
-  return selected;
+  return selected
+    .sort((a, b) => b.score - a.score)
+    .map(({ article }) => article);
 }
 
 export async function fetchRssContext(keywords: string[]): Promise<RssContext> {

@@ -39,6 +39,8 @@
 - `IDEA_BACKGROUND_REFRESH_HOURS=12`: 指定した時間ごとに、表示中のキャッシュを残したままバックグラウンド再生成（未設定/0なら定期更新なし）
 - `RSS_FEEDS='[{"name":"Hacker News","url":"https://hnrss.org/frontpage"}]'`: RSSソースのJSON配列。未指定なら既定の主要テックRSSを直接取得
 - `RSS_MAX_RELATED_ARTICLES=18`: トレンドページとアイデア生成に渡すRSS記事数の上限
+- `RSS_SOURCE_FIRST_PASS_LIMIT=1`: 各成功RSSソースから最初に確保する記事数
+- `RSS_SOURCE_TOTAL_LIMIT=3`: 1つのRSSソースから選ぶ記事数の上限。初回確保後はソースごとのラウンドで追加
 - `RSS_FETCH_TIMEOUT_MS=8000`: RSSソース1件あたりの取得タイムアウト
 - `CORS_ORIGIN=https://your-site.example.com`: APIを別ドメインで公開する場合、ブラウザからの許可元をカンマ区切りで指定
 - `SMTP_HOST=smtp.example.com`: RSS取得失敗時の管理者メール通知に使うSMTPホスト
