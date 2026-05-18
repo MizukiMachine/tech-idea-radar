@@ -472,8 +472,8 @@
 /* ===== Idea Grid ===== */
 .idea-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
   min-width: 0;
 }
 
@@ -495,7 +495,7 @@
 /* ===== Responsive ===== */
 @media (max-width: 1550px) {
   .idea-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

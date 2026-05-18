@@ -155,7 +155,7 @@ describe("App", () => {
   it("renders RSS-only trends after switching tabs", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
-    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("tech系開発シグナル")).toBeTruthy());
     expect(screen.getByText("RSSフィード")).toBeTruthy();
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     expect(screen.queryByText("AI agent tools are moving into product workflows")).toBeNull();
@@ -260,7 +260,7 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "再生成" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
-    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("tech系開発シグナル")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "再取得" })).toBeNull();
     expect(screen.queryByRole("button", { name: "案を見る" })).toBeNull();
     expect(screen.queryByRole("button", { name: "アイデアを見る" })).toBeNull();
@@ -270,7 +270,7 @@ describe("App", () => {
   it("fetches trend history when switching to trends view", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
-    await waitFor(() => expect(screen.getByText("今日のAI開発シグナル")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("tech系開発シグナル")).toBeTruthy());
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history"))).toBe(true);
   });
 
