@@ -532,7 +532,7 @@
 .idea-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
+  gap: 6px;
   min-width: 0;
 }
 
