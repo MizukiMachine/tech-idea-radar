@@ -233,11 +233,6 @@ export default function TrendBoard({
   return (
     <section className="trend-board">
       <div className="tb-header">
-        <div className="tb-header__copy">
-          <span className="tb-header__eyebrow">SIGNAL SCAN</span>
-          <h2>tech系開発シグナル</h2>
-          <p>海外メディアを中心にトレンドをキャッチ</p>
-        </div>
         <div className="tb-header__metrics">
           <TrendMetric label="RSS記事" value={rssArticles.length} />
           <TrendMetric label="メディア" value={sourceCount} />
@@ -377,7 +372,7 @@ function TrendCardsLayout({
 function TrendFeedHeader({ count }: { count: number }): JSX.Element {
   return (
     <div className="tb-feed__header">
-      <h3>RSSフィード</h3>
+      <h3>海外メディアを中心にトレンドをキャッチ</h3>
       <span className="tb-feed__count">{count}件</span>
     </div>
   );
