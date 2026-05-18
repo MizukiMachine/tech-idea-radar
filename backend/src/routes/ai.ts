@@ -16,7 +16,12 @@ import {
   getTrendHistory,
   getCachedTrendByIndex,
 } from '../services/idea-cache';
-import { isRssSourceUnavailableError, type IdeaCandidate, type TrendScanOutput } from 'ai-engine';
+import {
+  RSS_ARTICLE_SUMMARY_POLICY,
+  isRssSourceUnavailableError,
+  type IdeaCandidate,
+  type TrendScanOutput,
+} from 'ai-engine';
 
 // --- Request schemas ---
 
@@ -64,6 +69,7 @@ function emptyTrendScan(): TrendScanOutput {
     },
     focusKeywords: [],
     generatedAt: '',
+    summaryPolicy: RSS_ARTICLE_SUMMARY_POLICY,
     sourceSummary: {
       rssItemCount: 0,
       usedLLMFallback: false,

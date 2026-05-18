@@ -1,5 +1,6 @@
 import type { RssContext } from '../services/rss-client';
 import type { IdeaCandidate } from './idea-candidate';
+import type { RssArticleSummaryPolicy } from '../policies/rss-summary-policy';
 
 export interface IdeaGenerationInput {
   rssContext?: RssContext;
@@ -49,4 +50,5 @@ export interface TrendScanOutput {
   featuredTrend?: FeaturedTrend;
   generatedAt: string;
   sourceSummary: IdeaGenerationOutput['sourceSummary'];
+  summaryPolicy: RssArticleSummaryPolicy;
 }

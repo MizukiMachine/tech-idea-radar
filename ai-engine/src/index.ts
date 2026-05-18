@@ -21,3 +21,9 @@ export * from './types/semantic-filter';
 
 // Config
 export { DEFAULT_IDEA_COUNT, MAX_BATCHES, BATCH_SCHEDULE_HOURS_JST, MAX_TREND_HISTORY } from './config/constants';
+export {
+  RSS_ARTICLE_SUMMARY_POLICY,
+  renderRssArticleSummaryPolicy,
+  renderRssArticleSummaryRepairPolicy,
+} from './policies/rss-summary-policy';
+export type { RssArticleSummaryPolicy } from './policies/rss-summary-policy';

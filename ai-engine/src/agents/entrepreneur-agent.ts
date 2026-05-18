@@ -6,6 +6,11 @@ import { FilterAgent } from './filter-agent';
 import { fetchRssContext } from '../services/rss-client';
 import { DEFAULT_IDEA_COUNT } from '../config/constants';
 import { RssSourceUnavailableError } from '../errors';
+import {
+  RSS_ARTICLE_SUMMARY_POLICY,
+  renderRssArticleSummaryPolicy,
+  renderRssArticleSummaryRepairPolicy,
+} from '../policies/rss-summary-policy';
 import type {
   FeaturedTrend,
   IdeaGenerationInput,
@@ -22,12 +27,6 @@ const MAX_SUMMARIZED_RSS_ARTICLES = 18;
 const RSS_SUMMARY_BATCH_SIZE = 4;
 const RSS_SUMMARY_MAX_TOKENS = 7000;
 const MIN_RSS_EVIDENCE_SCORE = 4;
-const MIN_RSS_SUMMARY_ITEMS = 5;
-const MAX_RSS_SUMMARY_ITEMS = 7;
-const MIN_RSS_SUMMARY_CHARS = 700;
-const MAX_RSS_SUMMARY_CHARS = 1200;
-const MIN_RSS_SUMMARY_ITEM_CHARS = 90;
-const MAX_RSS_SUMMARY_ITEM_CHARS = 180;
 const FEED_METADATA_PATTERN = /\bArticle URL:|\bComments URL:|\bPoints:|#\s*Comments:/i;
 const URL_TEXT_PATTERN = /\bhttps?:\/\/\S+|\bwww\.\S+/i;
 const GENERIC_EVIDENCE_TERMS = new Set([
@@ -86,12 +85,21 @@ function looksLikeJapaneseTitle(text: string): boolean {
 function looksLikeJapaneseSummary(text: string): boolean {
   const japaneseChars = countMatches(text, /[ぁ-んァ-ヶ一-龯]/g);
   const latinChars = countMatches(text, /[A-Za-z]/g);
-  return japaneseChars >= 120 && japaneseChars >= latinChars * 0.35;
+  return japaneseChars >= RSS_ARTICLE_SUMMARY_POLICY.minJapaneseChars
+    && japaneseChars >= latinChars * RSS_ARTICLE_SUMMARY_POLICY.minJapaneseToLatinRatio;
 }
 
 type SummaryValidationResult =
   | { ok: true; summaryJa: string }
   | { ok: false; message: string };
+
+type RssSummaryTarget = {
+  index: number;
+  title: string;
+  source: string;
+  language: 'ja' | 'other';
+  summary: string;
+};
 
 function validateSummaryJa(value: string | undefined): SummaryValidationResult {
   const original = normalizeTitle(value ?? '');
@@ -109,10 +117,11 @@ function validateSummaryJa(value: string | undefined): SummaryValidationResult {
     .map((line) => line.trim())
     .filter(Boolean);
 
-  if (lines.length < MIN_RSS_SUMMARY_ITEMS || lines.length > MAX_RSS_SUMMARY_ITEMS) {
+  const policy = RSS_ARTICLE_SUMMARY_POLICY;
+  if (lines.length < policy.minItems || lines.length > policy.maxItems) {
     return {
       ok: false,
-      message: `summaryJa must contain ${MIN_RSS_SUMMARY_ITEMS}-${MAX_RSS_SUMMARY_ITEMS} bullet items`,
+      message: `summaryJa must contain ${policy.minItems}-${policy.maxItems} bullet items`,
     };
   }
 
@@ -129,15 +138,7 @@ function validateSummaryJa(value: string | undefined): SummaryValidationResult {
     return { ok: false, message: 'summaryJa contains an empty bullet item' };
   }
 
-  const shortItem = items.find((item) => item.length < MIN_RSS_SUMMARY_ITEM_CHARS);
-  if (shortItem) {
-    return {
-      ok: false,
-      message: `summaryJa bullet item is too short (${shortItem.length} chars)`,
-    };
-  }
-
-  const longItem = items.find((item) => item.length > MAX_RSS_SUMMARY_ITEM_CHARS);
+  const longItem = items.find((item) => item.length > policy.maxItemChars);
   if (longItem) {
     return {
       ok: false,
@@ -147,7 +148,7 @@ function validateSummaryJa(value: string | undefined): SummaryValidationResult {
 
   const summaryJa = items.map((item) => `・${item}`).join('\n');
   const totalChars = items.join('').length;
-  if (totalChars < MIN_RSS_SUMMARY_CHARS || totalChars > MAX_RSS_SUMMARY_CHARS) {
+  if (totalChars < policy.minTotalChars || totalChars > policy.maxTotalChars) {
     return {
       ok: false,
       message: `summaryJa total length is outside the expected range (${totalChars} chars)`,
@@ -403,11 +404,11 @@ export class EntrepreneurAgent {
   }
 
   private async summarizeRssArticles(rssContext: RssContext, focusKeywords: string[]): Promise<RssContext> {
-    const targets = rssContext.relatedArticles
+    const targets: RssSummaryTarget[] = rssContext.relatedArticles
       .map((article, index) => ({ article, index }))
       .filter(({ article }) => article.title && !article.summaryJa)
       .slice(0, MAX_SUMMARIZED_RSS_ARTICLES)
-      .map(({ article, index }) => ({
+      .map(({ article, index }): RssSummaryTarget => ({
         index,
         title: article.title,
         source: article.source,
@@ -417,69 +418,91 @@ export class EntrepreneurAgent {
 
     if (targets.length === 0) return rssContext;
 
-    const systemPrompt = renderPromptRole('rss_article_summary', 'system');
-
-    const translations: RssArticleTranslation[] = [];
-    const summaryErrors = new Map<number, RssSummaryError>();
-    const addSummaryError = (index: number, message: string): void => {
-      const article = rssContext.relatedArticles[index];
-      if (!article || summaryErrors.has(index)) return;
-      summaryErrors.set(index, summaryError(index, article, message));
-    };
-
-    for (const batch of chunkArray(targets, RSS_SUMMARY_BATCH_SIZE)) {
+    const translationByIndex = new Map<number, RssArticleTranslation>();
+    const requestErrors = new Map<number, string>();
+    const requestTranslations = async (
+      batch: RssSummaryTarget[],
+      failurePrefix: string,
+      mode: 'initial' | 'repair' = 'initial',
+    ): Promise<void> => {
       try {
+        const promptKey = mode === 'repair' ? 'rss_article_summary_repair' : 'rss_article_summary';
+        const variables = mode === 'repair'
+          ? {
+              summary_policy: renderRssArticleSummaryRepairPolicy(),
+              articles: batch,
+              validation_errors: batch.map((target) => ({
+                index: target.index,
+                error: validateTarget(target),
+              })),
+            }
+          : {
+              summary_policy: renderRssArticleSummaryPolicy(),
+              articles: batch,
+            };
         const raw = await this.llm.send(
-          systemPrompt,
-          renderPromptRole('rss_article_summary', 'user', { articles: batch }),
+          renderPromptRole(promptKey, 'system', variables),
+          renderPromptRole(promptKey, 'user', variables),
           RSS_SUMMARY_MAX_TOKENS,
         );
         const parsed = ResponseParser.parse<RssArticleTranslation[]>(raw);
         if (!Array.isArray(parsed)) throw new Error('RSS summary response was not a JSON array');
-        translations.push(...parsed);
+        for (const translation of parsed) {
+          if (Number.isInteger(translation.index)) {
+            translationByIndex.set(translation.index as number, translation);
+          }
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         const indexes = batch.map((target) => target.index).join(',');
         console.warn(`[TrendScan] RSS article summarization failed for indexes ${indexes}: ${message}`);
         for (const target of batch) {
-          addSummaryError(target.index, `summary generation failed: ${message}`);
+          requestErrors.set(target.index, `${failurePrefix}: ${message}`);
         }
       }
-    }
+    };
 
-    const translationByIndex = new Map(
-      translations
-        .filter((translation) => Number.isInteger(translation.index))
-        .map((translation) => [translation.index as number, translation] as const),
-    );
-
-    const summarizedArticles: RssArticle[] = [];
-    const candidates = rssContext.relatedArticles.slice(0, MAX_SUMMARIZED_RSS_ARTICLES);
-    candidates.forEach((article, index) => {
-      const translation = translationByIndex.get(index);
+    const validateTarget = (target: RssSummaryTarget): RssArticle | string => {
+      const article = rssContext.relatedArticles[target.index];
+      const translation = translationByIndex.get(target.index);
+      if (!article) return 'article disappeared before summary validation';
       if (!translation) {
-        addSummaryError(index, 'summary response did not include this article index');
-        return;
+        return requestErrors.get(target.index) ?? 'summary response did not include this article index';
       }
 
       const titleJa = titleJaForArticle(article, translation);
-      if (!titleJa) {
-        addSummaryError(index, 'titleJa was missing or was not translated into Japanese');
-        return;
-      }
+      if (!titleJa) return 'titleJa was missing or was not translated into Japanese';
 
       const summary = validateSummaryJa(translation.summaryJa);
-      if (!summary.ok) {
-        addSummaryError(index, summary.message);
-        return;
-      }
+      if (!summary.ok) return summary.message;
 
-      summarizedArticles.push({
+      return {
         ...article,
         titleJa,
         summaryJa: summary.summaryJa,
-      });
-    });
+      };
+    };
+
+    for (const batch of chunkArray(targets, RSS_SUMMARY_BATCH_SIZE)) {
+      await requestTranslations(batch, 'summary generation failed');
+    }
+
+    const retryTargets = targets.filter((target) => typeof validateTarget(target) === 'string');
+    for (const retryTarget of retryTargets) {
+      await requestTranslations([retryTarget], 'summary repair failed', 'repair');
+    }
+
+    const summarizedArticles: RssArticle[] = [];
+    const summaryErrors = new Map<number, RssSummaryError>();
+    for (const target of targets) {
+      const validation = validateTarget(target);
+      if (typeof validation === 'string') {
+        const article = rssContext.relatedArticles[target.index];
+        if (article) summaryErrors.set(target.index, summaryError(target.index, article, validation));
+        continue;
+      }
+      summarizedArticles.push(validation);
+    }
 
     const errors = [...summaryErrors.values()];
     if (summarizedArticles.length === 0) {
@@ -535,6 +558,7 @@ export class EntrepreneurAgent {
       rssContext,
       focusKeywords: effectiveKeywords,
       generatedAt: new Date().toISOString(),
+      summaryPolicy: RSS_ARTICLE_SUMMARY_POLICY,
       sourceSummary: {
         rssItemCount: rssCount,
         usedLLMFallback: false,

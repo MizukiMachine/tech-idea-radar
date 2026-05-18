@@ -5,6 +5,7 @@ import {
   MAX_BATCHES,
   BATCH_SCHEDULE_HOURS_JST,
   MAX_TREND_HISTORY,
+  RSS_ARTICLE_SUMMARY_POLICY,
   EntrepreneurAgent,
   isRssSourceUnavailableError,
   type IdeaGenerationOutput,
@@ -165,6 +166,13 @@ function isPersistentTrendScanOutput(value: unknown): value is TrendScanOutput {
     && isRecord(value.sourceSummary);
 }
 
+function withSummaryPolicy(data: TrendScanOutput): TrendScanOutput {
+  return {
+    ...data,
+    summaryPolicy: data.summaryPolicy ?? RSS_ARTICLE_SUMMARY_POLICY,
+  };
+}
+
 function isPersistentTrendHistoryEntry(value: unknown): value is TrendHistoryEntry {
   return isRecord(value)
     && typeof value.scannedAt === 'string'
@@ -232,7 +240,10 @@ function loadPersistentCache(): void {
     }
 
     batches = nextBatches;
-    trendHistory = nextTrendHistory;
+    trendHistory = nextTrendHistory.map((entry) => ({
+      ...entry,
+      data: withSummaryPolicy(entry.data),
+    }));
     persistentCacheLoaded = true;
     persistentCacheMtimeMs = stat.mtimeMs;
 
@@ -382,7 +393,8 @@ function latestTrend(): TrendHistoryEntry | null {
 }
 
 export function getCachedTrends(): TrendScanOutput | null {
-  return latestTrend()?.data ?? null;
+  const latest = latestTrend();
+  return latest ? withSummaryPolicy(latest.data) : null;
 }
 
 export function getIdeaCacheStatus(): CacheStatus {
@@ -552,7 +564,7 @@ export function getTrendHistory(): TrendHistoryEntryApi[] {
 export function getCachedTrendByIndex(index: number): TrendScanOutput | null {
   loadPersistentCache();
   if (index < 0 || index >= trendHistory.length) return null;
-  return trendHistory[index].data;
+  return withSummaryPolicy(trendHistory[index].data);
 }
 
 // --- Generation ---
@@ -625,7 +637,7 @@ export async function scanAndCacheTrends(
   trendScanLock = (async () => {
     try {
       const agent = new EntrepreneurAgent(getClient());
-      const result = await agent.scanTrends(onProgress);
+      const result = withSummaryPolicy(await agent.scanTrends(onProgress));
       const now = new Date().toISOString();
 
       // Prepend to history, deduplicate by generatedAt, trim to MAX_TREND_HISTORY

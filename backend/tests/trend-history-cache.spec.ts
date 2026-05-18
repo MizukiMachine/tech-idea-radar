@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { TrendScanOutput } from "ai-engine";
+import { RSS_ARTICLE_SUMMARY_POLICY, type TrendScanOutput } from "ai-engine";
 
 const originalCacheDisabled = process.env.IDEA_CACHE_DISABLED;
 const originalCacheFile = process.env.IDEA_CACHE_FILE;
@@ -32,6 +32,7 @@ function trendScan(generatedAt: string): TrendScanOutput {
     },
     focusKeywords: ["AI"],
     generatedAt,
+    summaryPolicy: RSS_ARTICLE_SUMMARY_POLICY,
     sourceSummary: {
       rssItemCount: 1,
       usedLLMFallback: false,
@@ -73,6 +74,7 @@ describe("trend history persistent cache", () => {
       keywordCount: 1,
     }]);
     expect(cache.getCachedTrendByIndex(0)?.generatedAt).toBe(generatedAt);
+    expect(cache.getCachedTrendByIndex(0)?.summaryPolicy).toEqual(RSS_ARTICLE_SUMMARY_POLICY);
     expect(cache.getCachedTrends()?.rssContext.relatedArticles[0]?.title).toBe("Agent tooling expands");
   });
 });

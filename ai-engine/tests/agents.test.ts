@@ -4,6 +4,7 @@ import { IdeaGenerationAgent } from '../src/agents/idea-generation-agent';
 import { FilterAgent } from '../src/agents/filter-agent';
 import { EntrepreneurAgent } from '../src/agents/entrepreneur-agent';
 import { fetchRssContext } from '../src/services/rss-client';
+import { RSS_ARTICLE_SUMMARY_POLICY } from '../src/policies/rss-summary-policy';
 import type { IdeaCandidate } from '../src/types/idea-candidate';
 
 vi.mock('../src/services/rss-client', () => ({
@@ -46,7 +47,6 @@ function validTrendSummary(topic = 'AIエージェント導入'): string {
     `・記事では、チームが日々の業務にAI支援を組み込み、情報収集や論点整理を自動化しようとする動きが中心に描かれている。個人の便利機能から、組織の運用プロセスへAIを組み込む段階に移りつつあり、現場の使い方も変わり始めている`,
     `・具体例として、複数の情報源を見比べる作業、会議前の論点整理、実装前の技術検証などをAIで補助する場面が示されている。短時間で仮説を比較し、検討漏れを減らす使い方が重要になっており、担当者の準備作業を軽くできる`,
     `・一方で、AIの出力精度、既存ワークフローとの接続、チーム内での責任分界は課題として残る。導入するだけでは成果につながらず、確認やレビューを含めた運用設計が必要になる点が転換点になっており、管理方法も問われる`,
-    `・転換点は、AIを単体の便利機能として使う段階から、業務プロセスの中に組み込み、判断やレビューの流れそのものを変える段階へ移っていることにある。効果測定も作業時間だけでは不十分になり、意思決定の質まで見る必要がある`,
     `・開発者やプロダクト担当者にとっては、流行語として追うより、どの作業の時間を減らし、どの判断の質を高めるかを小さく検証する姿勢が重要になる。失敗時に戻せる運用単位で試すことが示唆になり、導入範囲を絞る判断も必要になる`,
     `・最終的には、AIを大きく導入する前に、対象業務、確認責任、成功指標を明確にすることが重要になる。小さな検証で効果とリスクを見極めれば、現場に無理なく定着するプロダクト改善につなげやすい`,
   ].join('\n');
@@ -165,6 +165,7 @@ describe('EntrepreneurAgent', () => {
       source: 'Test RSS',
       summary: 'AIエージェント導入がプロダクト業務に広がっています。',
     }));
+    expect(result.summaryPolicy).toEqual(RSS_ARTICLE_SUMMARY_POLICY);
     expect(client.send).toHaveBeenLastCalledWith(
       expect.stringContaining('技術トレンド'),
       expect.any(String),
@@ -205,7 +206,7 @@ describe('EntrepreneurAgent', () => {
     const summarizationPrompt = vi.mocked(client.send).mock.calls[0]?.[0] ?? '';
 
     expect(article.summaryJa).toBe(summaryJa);
-    expect(article.summaryJa?.split('\n')).toHaveLength(7);
+    expect(article.summaryJa?.split('\n')).toHaveLength(6);
     expect(article.summaryJa?.split('\n').every((line) => line.startsWith('・'))).toBe(true);
     expect(article.summaryJa?.split('\n').every((line) => !/[。．.]$/.test(line))).toBe(true);
     expect(article.summaryJa).not.toContain('はじめに');
@@ -244,7 +245,7 @@ describe('EntrepreneurAgent', () => {
     const article = result.rssContext.relatedArticles[0];
 
     expect(article.titleJa).toBe('IBMからLenovoへ続くThinkPadの歴史');
-    expect(article.summaryJa?.split('\n')).toHaveLength(7);
+    expect(article.summaryJa?.split('\n')).toHaveLength(6);
     expect(article.summaryJa).not.toContain('Article URL');
   });
 
