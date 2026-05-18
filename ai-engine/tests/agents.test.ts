@@ -3,10 +3,10 @@ import { LLMClient } from '../src/services/llm-client';
 import { IdeaGenerationAgent } from '../src/agents/idea-generation-agent';
 import { FilterAgent } from '../src/agents/filter-agent';
 import { EntrepreneurAgent } from '../src/agents/entrepreneur-agent';
-import { fetchRssContext } from '../src/services/mcp-client';
+import { fetchRssContext } from '../src/services/rss-client';
 import type { IdeaCandidate } from '../src/types/idea-candidate';
 
-vi.mock('../src/services/mcp-client', () => ({
+vi.mock('../src/services/rss-client', () => ({
   fetchRssContext: vi.fn(),
 }));
 
@@ -38,6 +38,18 @@ function createMockClient(response: string): LLMClient {
     return response;
   });
   return client;
+}
+
+function validTrendSummary(topic = 'AIエージェント導入'): string {
+  return [
+    `・${topic}の背景には、開発やプロダクト運営で調査、整理、連携が細かく分断され、既存ツールだけでは判断材料を十分に追い切れない状況がある。単なる効率化ではなく、情報の質と責任ある判断をどう保つかが論点になっており、チーム全体の運用課題として浮上している`,
+    `・記事では、チームが日々の業務にAI支援を組み込み、情報収集や論点整理を自動化しようとする動きが中心に描かれている。個人の便利機能から、組織の運用プロセスへAIを組み込む段階に移りつつあり、現場の使い方も変わり始めている`,
+    `・具体例として、複数の情報源を見比べる作業、会議前の論点整理、実装前の技術検証などをAIで補助する場面が示されている。短時間で仮説を比較し、検討漏れを減らす使い方が重要になっており、担当者の準備作業を軽くできる`,
+    `・一方で、AIの出力精度、既存ワークフローとの接続、チーム内での責任分界は課題として残る。導入するだけでは成果につながらず、確認やレビューを含めた運用設計が必要になる点が転換点になっており、管理方法も問われる`,
+    `・転換点は、AIを単体の便利機能として使う段階から、業務プロセスの中に組み込み、判断やレビューの流れそのものを変える段階へ移っていることにある。効果測定も作業時間だけでは不十分になり、意思決定の質まで見る必要がある`,
+    `・開発者やプロダクト担当者にとっては、流行語として追うより、どの作業の時間を減らし、どの判断の質を高めるかを小さく検証する姿勢が重要になる。失敗時に戻せる運用単位で試すことが示唆になり、導入範囲を絞る判断も必要になる`,
+    `・最終的には、AIを大きく導入する前に、対象業務、確認責任、成功指標を明確にすることが重要になる。小さな検証で効果とリスクを見極めれば、現場に無理なく定着するプロダクト改善につなげやすい`,
+  ].join('\n');
 }
 
 beforeEach(() => {
@@ -131,10 +143,18 @@ describe('EntrepreneurAgent', () => {
         keywords: ['AI', 'agent'],
       }],
     });
-    const client = createMockClient(JSON.stringify({
-      index: 0,
-      summary: 'AIエージェント導入がプロダクト業務に広がっています。',
-    }));
+    const client = createMockClient('{}');
+    vi.mocked(client.send)
+      .mockResolvedValueOnce(JSON.stringify([{
+        index: 0,
+        title: 'AIエージェントツールがプロダクト業務に広がる',
+        titleJa: 'AIエージェントツールがプロダクト業務に広がる',
+        summaryJa: validTrendSummary(),
+      }]))
+      .mockResolvedValueOnce(JSON.stringify({
+        index: 0,
+        summary: 'AIエージェント導入がプロダクト業務に広がっています。',
+      }));
     const agent = new EntrepreneurAgent(client);
 
     const result = await agent.scanTrends();
@@ -145,11 +165,171 @@ describe('EntrepreneurAgent', () => {
       source: 'Test RSS',
       summary: 'AIエージェント導入がプロダクト業務に広がっています。',
     }));
-    expect(client.send).toHaveBeenCalledWith(
+    expect(client.send).toHaveBeenLastCalledWith(
       expect.stringContaining('技術トレンド'),
       expect.any(String),
       512,
     );
+  });
+
+  it('summarizes Japanese RSS excerpts instead of displaying raw feed text', async () => {
+    vi.mocked(fetchRssContext).mockResolvedValueOnce({
+      trendingKeywords: [{ word: 'AI', count: 3 }],
+      relatedArticles: [{
+        title: '中小企業のDX支援で最初に自動化すべき3つの業務',
+        link: 'https://example.com/dx-automation',
+        url: 'https://example.com/dx-automation',
+        published: '2026-05-14T00:00:00.000Z',
+        summary: 'はじめに：自動化は「全部やる」と失敗する 中小企業のDX支援に関わっていると、何から手をつければいいかわからないという相談をよく受ける。...',
+        source: 'Zenn',
+        keywords: ['AI', '自動化'],
+      }],
+    });
+    const client = createMockClient('{}');
+    const summaryJa = validTrendSummary('中小企業DXの自動化');
+    vi.mocked(client.send)
+      .mockResolvedValueOnce(JSON.stringify([{
+        index: 0,
+        title: '中小企業のDX支援で最初に自動化すべき3つの業務',
+        titleJa: '中小企業のDX支援で最初に自動化すべき3つの業務',
+        summaryJa,
+      }]))
+      .mockResolvedValueOnce(JSON.stringify({
+        index: 0,
+        summary: '中小企業DXで自動化対象を絞る重要性が示されています。',
+      }));
+    const agent = new EntrepreneurAgent(client);
+
+    const result = await agent.scanTrends();
+    const article = result.rssContext.relatedArticles[0];
+    const summarizationPrompt = vi.mocked(client.send).mock.calls[0]?.[0] ?? '';
+
+    expect(article.summaryJa).toBe(summaryJa);
+    expect(article.summaryJa?.split('\n')).toHaveLength(7);
+    expect(article.summaryJa?.split('\n').every((line) => line.startsWith('・'))).toBe(true);
+    expect(article.summaryJa?.split('\n').every((line) => !/[。．.]$/.test(line))).toBe(true);
+    expect(article.summaryJa).not.toContain('はじめに');
+    expect(article.summaryJa).not.toContain('...');
+    expect(summarizationPrompt).toContain('文末に「...」「…」を付けない');
+  });
+
+  it('applies Japanese titles to English RSS articles by index', async () => {
+    vi.mocked(fetchRssContext).mockResolvedValueOnce({
+      trendingKeywords: [{ word: 'ThinkPad', count: 3 }],
+      relatedArticles: [{
+        title: 'ThinkPad history from IBM to Lenovo',
+        link: 'https://example.com/thinkpad',
+        url: 'https://example.com/thinkpad',
+        published: '2026-05-17T00:00:00.000Z',
+        summary: 'ThinkPad began as an IBM laptop line and later moved under Lenovo.',
+        source: 'Hacker News',
+        keywords: ['ThinkPad'],
+      }],
+    });
+    const client = createMockClient('{}');
+    vi.mocked(client.send)
+      .mockResolvedValueOnce(JSON.stringify([{
+        index: 0,
+        title: 'Slightly different source title',
+        titleJa: 'IBMからLenovoへ続くThinkPadの歴史',
+        summaryJa: validTrendSummary('ThinkPadの歴史的変遷'),
+      }]))
+      .mockResolvedValueOnce(JSON.stringify({
+        index: 0,
+        summary: 'ThinkPadの歴史的変遷が紹介されています。',
+      }));
+    const agent = new EntrepreneurAgent(client);
+
+    const result = await agent.scanTrends();
+    const article = result.rssContext.relatedArticles[0];
+
+    expect(article.titleJa).toBe('IBMからLenovoへ続くThinkPadの歴史');
+    expect(article.summaryJa?.split('\n')).toHaveLength(7);
+    expect(article.summaryJa).not.toContain('Article URL');
+  });
+
+  it('drops articles whose Japanese summary does not satisfy the trend page policy', async () => {
+    vi.mocked(fetchRssContext).mockResolvedValueOnce({
+      trendingKeywords: [{ word: 'AI', count: 3 }],
+      relatedArticles: [
+        {
+          title: 'Valid AI product workflow article',
+          link: 'https://example.com/valid',
+          url: 'https://example.com/valid',
+          published: '2026-05-17T00:00:00.000Z',
+          summary: 'Teams are adopting AI agents for product work.',
+          source: 'Hacker News',
+          keywords: ['AI', 'agent'],
+        },
+        {
+          title: 'Invalid English summary article',
+          link: 'https://example.com/invalid',
+          url: 'https://example.com/invalid',
+          published: '2026-05-17T00:00:00.000Z',
+          summary: 'Article URL: https://example.com/original Points: 12',
+          source: 'Hacker News',
+          keywords: ['AI'],
+        },
+      ],
+    });
+    const client = createMockClient('{}');
+    vi.mocked(client.send)
+      .mockResolvedValueOnce(JSON.stringify([
+        {
+          index: 0,
+          title: 'Valid AI product workflow article',
+          titleJa: 'AIがプロダクト業務の流れに入り込む動き',
+          summaryJa: validTrendSummary('AIプロダクト業務支援'),
+        },
+        {
+          index: 1,
+          title: 'Invalid English summary article',
+          titleJa: '英語要約が残る記事',
+          summaryJa: 'This is still an English one-line summary with https://example.com',
+        },
+      ]))
+      .mockResolvedValueOnce(JSON.stringify({
+        index: 0,
+        summary: 'AI支援がプロダクト業務に広がっています。',
+      }));
+    const agent = new EntrepreneurAgent(client);
+
+    const result = await agent.scanTrends();
+
+    expect(result.rssContext.relatedArticles).toHaveLength(1);
+    expect(result.rssContext.relatedArticles[0].url).toBe('https://example.com/valid');
+    expect(result.rssContext.summaryErrors).toHaveLength(1);
+    expect(result.sourceSummary.warnings?.[0]).toContain('1件');
+  });
+
+  it('fails the trend scan when every RSS article fails summarization', async () => {
+    vi.mocked(fetchRssContext).mockResolvedValueOnce({
+      trendingKeywords: [{ word: 'AI', count: 3 }],
+      relatedArticles: [{
+        title: 'English article without Japanese conversion',
+        link: 'https://example.com/no-ja',
+        url: 'https://example.com/no-ja',
+        published: '2026-05-17T00:00:00.000Z',
+        summary: 'Teams are adopting AI agents.',
+        source: 'Hacker News',
+        keywords: ['AI'],
+      }],
+    });
+    const client = createMockClient(JSON.stringify([{
+      index: 0,
+      title: 'English article without Japanese conversion',
+      titleJa: 'English article without Japanese conversion',
+      summaryJa: 'Short English summary.',
+    }]));
+    const agent = new EntrepreneurAgent(client);
+
+    await expect(agent.scanTrends()).rejects.toMatchObject({
+      name: 'RssSourceUnavailableError',
+      details: expect.objectContaining({
+        operation: 'trend_summary',
+        summaryFailureCount: 1,
+      }),
+    });
   });
 
   it('generates ideas with RSS enrichment and trusted evidence URLs', async () => {

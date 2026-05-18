@@ -1,4 +1,4 @@
-import type { RssContext } from '../services/mcp-client';
+import type { RssContext } from '../services/rss-client';
 import type { IdeaCandidate } from './idea-candidate';
 
 export interface IdeaGenerationInput {

@@ -6,6 +6,14 @@ export interface RssSourceUnavailableDetails {
   skippedPreviouslyUsedRssCount?: number;
   sourceNames?: string[];
   sourceErrors?: { source: string; message: string }[];
+  summaryErrors?: {
+    index: number;
+    title: string;
+    source: string;
+    message: string;
+    url?: string;
+  }[];
+  summaryFailureCount?: number;
 }
 
 export class RssSourceUnavailableError extends Error {

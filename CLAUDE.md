@@ -11,13 +11,13 @@ Nginx (静的配信 + SSEリバプロ)
   ↓ proxy_pass
 Backend (Express, port 3001, PM2管理)
   ↓
-AI Engine (LLM API + MCP RSS scout)
+AI Engine (LLM API + direct RSS reader)
 ```
 
 npm workspaces の monorepo:
 - `frontend/` — React 18 + Vite + TypeScript
 - `backend/` — Express + Zod + PM2 + SSE streaming
-- `ai-engine/` — Anthropic SDK + MCP SDK + エージェント群
+- `ai-engine/` — Anthropic SDK + RSS取得 + エージェント群
 
 ## 開発
 
@@ -46,10 +46,19 @@ npm run lint                   # 全ワークスペースlint
 | `ADMIN_API_TOKEN` | No | 管理操作用トークン |
 | `IDEA_CACHE_FILE` | No | 永続キャッシュファイルパス |
 | `IDEA_WARMUP_ON_START` | No | 起動時ウォームアップ (デフォルト true) |
+| `RSS_FEEDS` | No | RSSソースJSON配列。未指定なら既定の主要テックRSS |
 | `CORS_ORIGIN` | No | 本番では必須 |
 | `SMTP_*` | No | RSS障害通知メール |
 
 ## キーとなる挙動
+
+### プロンプト管理
+- LLMプロンプトの正本は `ai-engine/src/prompts/catalog.yaml` に置く。
+- YAMLには `id`、`version`、`inputs`、`rules`、`output_format`、`messages` を定義し、長い本文はblock scalarのMarkdown/自然文として管理する。
+- TypeScript側は `renderPromptRole()` でYAMLを読み込み、検証、素材選択、JSON化、1パスの変数展開だけを担当する。
+- コード内に長いプロンプト文言を再定義しない。実行時データ、認可が必要な情報、秘密情報の選別はコード側で行う。
+- `secret` と `forbidden` の入力は最終プロンプトへレンダリングしない。YAMLに秘密情報や環境変数値を混ぜない。
+- `npm run build --workspace ai-engine` は `dist/prompts/catalog.yaml` をコピーするため、配布時もYAMLカタログを同梱する。
 
 ### バッチスケジューラ
 - JST 0, 4, 8, 12, 16, 20時 に自動生成 (1日6回)

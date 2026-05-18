@@ -314,6 +314,47 @@ async function notifyRssSourceFailure(error: unknown, fallbackOperation: string)
   }
 }
 
+function trendSourceNames(result: TrendScanOutput): string[] {
+  const articleSources = result.rssContext.relatedArticles
+    .map((article) => article.source)
+    .filter(Boolean);
+  const failedSources = result.rssContext.sourceErrors
+    ?.map((error) => error.source)
+    .filter(Boolean) ?? [];
+  const summarySources = result.rssContext.summaryErrors
+    ?.map((error) => error.source)
+    .filter(Boolean) ?? [];
+  return [...new Set([...articleSources, ...failedSources, ...summarySources])];
+}
+
+async function notifyTrendSummaryFailures(result: TrendScanOutput): Promise<void> {
+  const summaryErrors = result.rssContext.summaryErrors ?? [];
+  if (summaryErrors.length === 0) return;
+
+  try {
+    await notifyAdminOfRssFailure({
+      operation: 'trend_summary',
+      errorMessage: `RSS記事の要約生成または日本語変換に失敗した${summaryErrors.length}件を除外しました。`,
+      occurredAt: new Date().toISOString(),
+      details: {
+        operation: 'trend_summary',
+        focusKeywords: result.focusKeywords,
+        rssArticleCount: result.rssContext.relatedArticles.length,
+        trendingKeywordCount: result.rssContext.trendingKeywords.length,
+        sourceNames: trendSourceNames(result),
+        sourceErrors: result.rssContext.sourceErrors,
+        summaryErrors,
+        summaryFailureCount: summaryErrors.length,
+      },
+      ideaCacheGeneratedAt: batches[0]?.data.generatedAt ?? null,
+      trendCacheGeneratedAt: latestTrend()?.data.generatedAt ?? null,
+    });
+  } catch (notifyError) {
+    const message = notifyError instanceof Error ? notifyError.message : String(notifyError);
+    console.warn(`[AdminNotifier] Failed to send RSS summary alert: ${message}`);
+  }
+}
+
 // --- Public getters ---
 
 export function getCachedIdeas(): IdeaGenerationOutput | null {
@@ -594,6 +635,7 @@ export async function scanAndCacheTrends(
       ].slice(0, MAX_TREND_HISTORY);
 
       persistCache();
+      await notifyTrendSummaryFailures(result);
       return result;
     } catch (error) {
       await notifyRssSourceFailure(error, 'trend_scan');
