@@ -1,0 +1,482 @@
+import { XMLParser } from 'fast-xml-parser';
+
+export interface RssTrendItem {
+  word: string;
+  count: number;
+}
+
+export interface RssArticle {
+  title: string;
+  titleJa?: string;
+  link: string;
+  url?: string;
+  published: string;
+  publishedAt?: string;
+  summary: string;
+  summaryJa?: string;
+  description?: string;
+  source: string;
+  keywords?: string[];
+}
+
+export interface RssSourceError {
+  source: string;
+  message: string;
+}
+
+export interface RssSummaryError {
+  index: number;
+  title: string;
+  source: string;
+  message: string;
+  url?: string;
+}
+
+export interface RssContext {
+  trendingKeywords: RssTrendItem[];
+  relatedArticles: RssArticle[];
+  sourceErrors?: RssSourceError[];
+  summaryErrors?: RssSummaryError[];
+}
+
+const DEFAULT_RSS_FETCH_TIMEOUT_MS = 8000;
+const DEFAULT_ARTICLE_FETCH_TIMEOUT_MS = 5000;
+const DEFAULT_MAX_RELATED_ARTICLES = 18;
+const DEFAULT_SOURCE_FIRST_PASS_LIMIT = 1;
+const MIN_USEFUL_SUMMARY_LENGTH = 280;
+
+interface PublicFeed {
+  name: string;
+  url: string;
+}
+
+type ParsedXml = Record<string, unknown>;
+type FeedFetchResult = { articles: RssArticle[]; error?: RssSourceError };
+
+const DEFAULT_RSS_FEEDS: PublicFeed[] = [
+  { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
+  { name: 'TechCrunch', url: 'https://techcrunch.com/feed/' },
+  { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
+  { name: 'DEV Community', url: 'https://dev.to/feed' },
+  { name: 'Zenn', url: 'https://zenn.dev/feed' },
+  { name: 'Qiita Popular', url: 'https://qiita.com/popular-items/feed' },
+];
+
+const STOP_WORDS = new Set([
+  'https', 'http', 'www', 'com', 'with', 'from', 'that', 'this', 'your', 'you',
+  'for', 'and', 'the', 'are', 'was', 'were', 'into', 'about', 'using', 'how',
+  'what', 'why', 'new', 'news', 'more', 'after', 'over', 'under', 'their',
+  'they', 'will', 'can', 'has', 'have', 'had', 'not', 'but', 'all',
+]);
+
+function asArray<T>(value: T | T[] | undefined): T[] {
+  if (value === undefined) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function configuredFeeds(): PublicFeed[] {
+  const raw = process.env.RSS_FEEDS?.trim();
+  if (!raw) return DEFAULT_RSS_FEEDS;
+
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) throw new Error('RSS_FEEDS must be a JSON array');
+    const feeds = parsed
+      .map((item): PublicFeed | null => {
+        if (!item || typeof item !== 'object') return null;
+        const record = item as Record<string, unknown>;
+        const name = typeof record.name === 'string' ? record.name.trim() : '';
+        const url = typeof record.url === 'string' ? record.url.trim() : '';
+        return name && url ? { name, url } : null;
+      })
+      .filter((feed): feed is PublicFeed => Boolean(feed));
+
+    if (feeds.length === 0) throw new Error('RSS_FEEDS did not contain usable feeds');
+    return feeds;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[RSS] Invalid RSS_FEEDS configuration: ${message}. Using default feeds.`);
+    return DEFAULT_RSS_FEEDS;
+  }
+}
+
+function textValue(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => textValue(item))
+      .filter(Boolean)
+      .join(' ');
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const directText = textValue(obj['#text']) || textValue(obj._text) || textValue(obj.href);
+    if (directText) return directText;
+
+    return Object.entries(obj)
+      .filter(([key]) => !key.startsWith('@') && key !== 'type' && key !== 'rel')
+      .map(([, nested]) => textValue(nested))
+      .filter(Boolean)
+      .join(' ');
+  }
+  return '';
+}
+
+function cleanText(value: string): string {
+  return value
+    .replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripFeedMetadata(value: string): string {
+  return value
+    .replace(/\bArticle URL:\s*\S+/gi, ' ')
+    .replace(/\bComments URL:\s*\S+/gi, ' ')
+    .replace(/\bPoints:\s*\d+/gi, ' ')
+    .replace(/#\s*Comments:\s*\d+/gi, ' ')
+    .replace(/\bRead the full story at\s+[^.。]+[.。]?/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractMetadataArticleUrl(value: string): string {
+  const cleaned = cleanText(value);
+  const match = /\bArticle URL:\s*(https?:\/\/\S+)/i.exec(cleaned);
+  if (!match) return '';
+  return match[1].replace(/[),.;]+$/g, '');
+}
+
+function containsFeedMetadata(value: string): boolean {
+  return /\bArticle URL:|\bComments URL:|\bPoints:|#\s*Comments:/i.test(value);
+}
+
+function longestText(...values: string[]): string {
+  return values
+    .map(cleanText)
+    .map(stripFeedMetadata)
+    .sort((a, b) => b.length - a.length)[0] ?? '';
+}
+
+function htmlAttributeValue(tag: string, attribute: string): string {
+  const match = new RegExp(`${attribute}=["']([^"']+)["']`, 'i').exec(tag);
+  return match?.[1] ?? '';
+}
+
+function extractHtmlExcerpt(html: string): string {
+  const metaDescriptions = [...html.matchAll(/<meta\b[^>]*>/gi)]
+    .map(([tag]) => {
+      const name = htmlAttributeValue(tag, 'name').toLowerCase();
+      const property = htmlAttributeValue(tag, 'property').toLowerCase();
+      if (!['description', 'og:description', 'twitter:description'].includes(name || property)) return '';
+      return htmlAttributeValue(tag, 'content');
+    })
+    .filter(Boolean);
+
+  const readableHtml = html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript\b[\s\S]*?<\/noscript>/gi, ' ');
+  const articleMatch = /<article\b[^>]*>([\s\S]*?)<\/article>/i.exec(readableHtml);
+  const body = articleMatch?.[1] ?? readableHtml;
+  const paragraphs = [...body.matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)]
+    .map(([, paragraph]) => cleanText(paragraph))
+    .filter((paragraph) => paragraph.length >= 40)
+    .slice(0, 10);
+
+  return longestText(
+    metaDescriptions.join(' '),
+    paragraphs.join(' '),
+  );
+}
+
+async function fetchArticleExcerpt(article: RssArticle): Promise<string> {
+  const targetUrl = article.url || article.link;
+  if (!/^https?:\/\//i.test(targetUrl)) return '';
+
+  const controller = new AbortController();
+  const timeoutMs = parsePositiveInt(process.env.RSS_ARTICLE_FETCH_TIMEOUT_MS, DEFAULT_ARTICLE_FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(targetUrl, {
+      headers: { 'User-Agent': 'builder-agent-chain/0.1 article excerpt reader' },
+      signal: controller.signal,
+    });
+    if (!response.ok) return '';
+
+    const contentType = response.headers?.get('content-type') ?? '';
+    if (contentType && !/text\/html|application\/xhtml\+xml/i.test(contentType)) return '';
+
+    return extractHtmlExcerpt(await response.text());
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function needsArticleExcerpt(article: RssArticle): boolean {
+  if (containsFeedMetadata(article.summary) || containsFeedMetadata(article.description ?? '')) return true;
+  if (article.source.toLowerCase().includes('hacker news')) return true;
+  return article.summary.length < MIN_USEFUL_SUMMARY_LENGTH;
+}
+
+async function enrichArticleSummaries(articles: RssArticle[], keywords: string[]): Promise<RssArticle[]> {
+  const shouldFetchExcerpts = process.env.RSS_FETCH_ARTICLE_EXCERPTS !== 'false';
+  if (!shouldFetchExcerpts) return articles;
+
+  return Promise.all(articles.map(async (article) => {
+    if (!needsArticleExcerpt(article)) return article;
+
+    const excerpt = await fetchArticleExcerpt(article);
+    if (excerpt.length <= article.summary.length) return article;
+
+    const summary = excerpt.slice(0, 5000);
+    return {
+      ...article,
+      summary,
+      description: summary,
+      keywords: extractKeywords(`${article.title} ${summary}`, keywords),
+    };
+  }));
+}
+
+function parseDate(value: string): string {
+  if (!value) return '';
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? value : new Date(time).toISOString();
+}
+
+function extractAtomLink(link: unknown): string {
+  const links = asArray(link);
+  for (const item of links) {
+    if (typeof item === 'string') return item;
+    if (item && typeof item === 'object') {
+      const obj = item as Record<string, unknown>;
+      const rel = textValue(obj.rel);
+      const href = textValue(obj.href);
+      if (href && (!rel || rel === 'alternate')) return href;
+    }
+  }
+  return '';
+}
+
+function articleKey(article: RssArticle): string {
+  return (article.link || article.url || article.title).trim().toLowerCase();
+}
+
+function extractKeywords(text: string, seedKeywords: string[]): string[] {
+  const lower = text.toLowerCase();
+  const counts = new Map<string, number>();
+
+  for (const keyword of seedKeywords) {
+    if (keyword && lower.includes(keyword.toLowerCase())) {
+      counts.set(keyword, (counts.get(keyword) ?? 0) + 3);
+    }
+  }
+
+  const matches = text.match(/[A-Za-z][A-Za-z0-9+#.-]{2,}|[ぁ-んァ-ヶ一-龯ー]{2,}/g) ?? [];
+  for (const match of matches) {
+    const normalized = match.trim();
+    const key = normalized.toLowerCase();
+    if (STOP_WORDS.has(key) || normalized.length > 32) continue;
+    counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([word]) => word);
+}
+
+function parseFeed(xml: string, source: string, seedKeywords: string[]): RssArticle[] {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '',
+    textNodeName: '#text',
+    cdataPropName: '#text',
+  });
+  const parsed = parser.parse(xml) as ParsedXml;
+
+  const rss = parsed.rss as Record<string, unknown> | undefined;
+  const channel = rss?.channel as Record<string, unknown> | undefined;
+  const rssItems = asArray(channel?.item as Record<string, unknown> | Record<string, unknown>[] | undefined);
+
+  const feed = parsed.feed as Record<string, unknown> | undefined;
+  const atomEntries = asArray(feed?.entry as Record<string, unknown> | Record<string, unknown>[] | undefined);
+
+  const rawItems = rssItems.length > 0 ? rssItems : atomEntries;
+  return rawItems
+    .map((item) => {
+      const title = cleanText(textValue(item.title));
+      const link = cleanText(rssItems.length > 0 ? textValue(item.link) : extractAtomLink(item.link));
+      const published = parseDate(cleanText(textValue(item.pubDate) || textValue(item.published) || textValue(item.updated)));
+      const rawSummaryParts = [
+        textValue(item.description) || '',
+        textValue(item.summary) || '',
+        textValue(item.content) || '',
+        textValue(item['content:encoded']) || '',
+      ];
+      const articleUrl = rawSummaryParts.map(extractMetadataArticleUrl).find(Boolean) || link;
+      const summary = longestText(
+        ...rawSummaryParts
+      );
+      const keywords = extractKeywords(`${title} ${summary}`, seedKeywords);
+
+      return {
+        title,
+        link,
+        url: articleUrl,
+        published,
+        publishedAt: published,
+        summary,
+        description: summary,
+        source,
+        keywords,
+      };
+    })
+    .filter((article) => article.title && article.link);
+}
+
+async function fetchFeed(feed: PublicFeed, keywords: string[]): Promise<FeedFetchResult> {
+  const controller = new AbortController();
+  const timeoutMs = parsePositiveInt(process.env.RSS_FETCH_TIMEOUT_MS, DEFAULT_RSS_FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(feed.url, {
+      headers: { 'User-Agent': 'builder-agent-chain/0.1 RSS reader' },
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+    const xml = await response.text();
+    const articles = parseFeed(xml, feed.name, keywords);
+    if (articles.length === 0) throw new Error('No valid RSS articles found');
+    return { articles };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(`[RSS] Feed failed (${feed.name}): ${msg}`);
+    return { articles: [], error: { source: feed.name, message: msg } };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function buildTrendingKeywords(articles: RssArticle[], seedKeywords: string[]): RssTrendItem[] {
+  const counts = new Map<string, number>();
+  for (const article of articles) {
+    for (const keyword of article.keywords ?? []) {
+      counts.set(keyword, (counts.get(keyword) ?? 0) + 1);
+    }
+    const text = `${article.title} ${article.summary}`.toLowerCase();
+    for (const keyword of seedKeywords) {
+      if (text.includes(keyword.toLowerCase())) {
+        counts.set(keyword, (counts.get(keyword) ?? 0) + 2);
+      }
+    }
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([word, count]) => ({ word, count }));
+}
+
+function rankArticles(articles: RssArticle[], keywords: string[], feeds: PublicFeed[]): RssArticle[] {
+  const seen = new Set<string>();
+  const deduped = articles.filter((article) => {
+    const key = articleKey(article);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const ranked = deduped
+    .map((article) => {
+      const text = `${article.title} ${article.summary} ${(article.keywords ?? []).join(' ')}`.toLowerCase();
+      const keywordScore = keywords.reduce((score, keyword) => (
+        text.includes(keyword.toLowerCase()) ? score + 10 : score
+      ), 0);
+      const publishedTime = Date.parse(article.published);
+      const recencyScore = Number.isNaN(publishedTime) ? 0 : Math.max(0, 7 - ((Date.now() - publishedTime) / 86_400_000));
+      return { article, score: keywordScore + recencyScore };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const sourceOrder = [
+    ...feeds.map((feed) => feed.name).filter((source) => ranked.some((item) => item.article.source === source)),
+    ...new Set(ranked.map(({ article }) => article.source).filter((source) => !feeds.some((feed) => feed.name === source))),
+  ].filter(Boolean);
+  const selected: RssArticle[] = [];
+  const selectedUrls = new Set<string>();
+  const sourceCounts = new Map<string, number>();
+  const maxArticles = parsePositiveInt(process.env.RSS_MAX_RELATED_ARTICLES, DEFAULT_MAX_RELATED_ARTICLES);
+  const firstPassLimit = parsePositiveInt(process.env.RSS_SOURCE_FIRST_PASS_LIMIT, DEFAULT_SOURCE_FIRST_PASS_LIMIT);
+  const rankedBySource = new Map<string, RssArticle[]>();
+
+  for (const { article } of ranked) {
+    const sourceArticles = rankedBySource.get(article.source) ?? [];
+    sourceArticles.push(article);
+    rankedBySource.set(article.source, sourceArticles);
+  }
+
+  const addArticle = (article: RssArticle): void => {
+    if (selected.length >= maxArticles) return;
+    const key = articleKey(article);
+    if (selectedUrls.has(key)) return;
+    const currentCount = sourceCounts.get(article.source) ?? 0;
+    selected.push(article);
+    selectedUrls.add(key);
+    sourceCounts.set(article.source, currentCount + 1);
+  };
+
+  for (let index = 0; index < firstPassLimit && selected.length < maxArticles; index += 1) {
+    for (const source of sourceOrder) {
+      const article = rankedBySource.get(source)?.[index];
+      if (article) addArticle(article);
+    }
+  }
+
+  for (const { article } of ranked) {
+    addArticle(article);
+  }
+
+  return selected;
+}
+
+export async function fetchRssContext(keywords: string[]): Promise<RssContext> {
+  const feeds = configuredFeeds();
+  const results = await Promise.all(
+    feeds.map((feed) => fetchFeed(feed, keywords)),
+  );
+
+  const articles = results.flatMap((result) => result.articles);
+  const sourceErrors = results
+    .map((result) => result.error)
+    .filter((error): error is RssSourceError => Boolean(error));
+  const relatedArticles = await enrichArticleSummaries(rankArticles(articles, keywords, feeds), keywords);
+  const trendingKeywords = buildTrendingKeywords(relatedArticles, keywords);
+  const sourceCount = new Set(relatedArticles.map((article) => article.source).filter(Boolean)).size;
+  const data = {
+    trendingKeywords,
+    relatedArticles,
+    ...(sourceErrors.length > 0 ? { sourceErrors } : {}),
+  };
+
+  console.log(`[RSS] Direct RSS: ${relatedArticles.length} articles across ${sourceCount} sources, ${trendingKeywords.length} keywords`);
+  return data;
+}

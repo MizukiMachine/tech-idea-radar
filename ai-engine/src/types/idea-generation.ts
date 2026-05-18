@@ -1,4 +1,4 @@
-import type { RssContext } from '../services/mcp-client';
+import type { RssContext } from '../services/rss-client';
 import type { IdeaCandidate } from './idea-candidate';
 
 export interface IdeaGenerationInput {
@@ -34,9 +34,19 @@ export interface IdeaGenerationOutput {
   };
 }
 
+export interface FeaturedTrend {
+  title: string;
+  titleJa?: string;
+  url: string;
+  source: string;
+  published?: string;
+  summary: string;
+}
+
 export interface TrendScanOutput {
   rssContext: RssContext;
   focusKeywords: string[];
+  featuredTrend?: FeaturedTrend;
   generatedAt: string;
   sourceSummary: IdeaGenerationOutput['sourceSummary'];
 }

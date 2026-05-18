@@ -1,7 +1,6 @@
 import { LLMClient } from '../services/llm-client';
-import { PromptBuilder } from '../services/prompt-builder';
+import { renderPromptRole } from '../services/prompt-catalog';
 import { DEFAULT_MAX_TOKENS } from '../config/constants';
-import { FILTER_SYSTEM_PROMPT, FILTER_USER_TEMPLATE } from '../prompts/filter';
 import type { SemanticFilterInput, SemanticFilterOutput } from '../types/semantic-filter';
 import { BaseAgent } from './base-agent';
 
@@ -14,13 +13,13 @@ export class FilterAgent extends BaseAgent<SemanticFilterInput, SemanticFilterOu
   }
 
   get systemPrompt(): string {
-    return FILTER_SYSTEM_PROMPT;
+    return renderPromptRole('semantic_filter', 'system');
   }
 
   buildUserPrompt(input: SemanticFilterInput): string {
-    return PromptBuilder.build(FILTER_USER_TEMPLATE, {
+    return renderPromptRole('semantic_filter', 'user', {
       query: input.query,
-      candidates: JSON.stringify(input.candidates, null, 2),
+      candidates: input.candidates,
     });
   }
 }

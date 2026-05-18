@@ -3,9 +3,9 @@ import './IdeaCard.css';
 
 const CARD_ICONS = ['AI', 'PR', 'DB', 'UX', 'API', 'SaaS', 'Ops', 'Sc', 'Dev', 'Web', 'Doc', 'Rev', 'Fit', 'CMS', 'BI'];
 const ICON_COLORS = [
-    '#ef4444', '#f97316', '#eab308', '#22c55e', '#06b6d4',
-    '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#6366f1',
-    '#d946ef', '#f43f5e', '#0ea5e9', '#84cc16', '#a855f7',
+    '#ef4444', '#f97316', '#eab308', '#22c55e', '#0f766e',
+    '#6fae2e', '#8b5cf6', '#ec4899', '#14b8a6', '#7c3aed',
+    '#d946ef', '#f43f5e', '#65a30d', '#84cc16', '#a855f7',
 ];
 
 function getIconForIdea(id: string, index: number) {

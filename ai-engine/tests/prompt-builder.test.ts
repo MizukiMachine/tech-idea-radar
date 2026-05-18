@@ -41,4 +41,19 @@ describe('PromptBuilder', () => {
     const result = PromptBuilder.build('{json}', { json: '{"nested": true}' });
     expect(result).toBe('{"nested": true}');
   });
+
+  it('supports policy-style placeholders', () => {
+    const result = PromptBuilder.build('${a} and {{b}}', { a: 'X', b: 'Y' }, { strict: true });
+    expect(result).toBe('X and Y');
+  });
+
+  it('throws for missing variables in strict mode', () => {
+    expect(() => PromptBuilder.build('${a} ${b}', { a: 'X' }, { strict: true }))
+      .toThrow('Missing prompt variables: b');
+  });
+
+  it('expands variables in one pass', () => {
+    const result = PromptBuilder.build('${a} ${b}', { a: '${b}', b: 'value' }, { strict: true });
+    expect(result).toBe('${b} value');
+  });
 });

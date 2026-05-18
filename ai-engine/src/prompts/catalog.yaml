@@ -1,0 +1,276 @@
+id: ai_engine.prompt_catalog
+version: 1
+description: >
+  AI Build Radar の LLM プロンプトカタログ。
+  長いプロンプト本文と出力契約を YAML で管理し、実行時データの選択と差し込みはコード側で行う。
+
+prompts:
+  idea_generation:
+    id: ai_engine.idea_generation
+    version: 1
+    description: RSSトレンドを根拠にプロダクト仮説をJSON配列で生成する。
+    inputs:
+      - name: rss_context
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+      - name: focus_keywords
+        type: string
+        required: true
+        sensitivity: public
+        render_as: inline
+      - name: requested_idea_count
+        type: string
+        required: true
+        sensitivity: public
+        render_as: inline
+    rules:
+      - JSON配列のみを出力すること。説明文やMarkdownは一切不要。
+      - 各要素は指定されたJSON形式に厳密に従うこと。
+      - 指定された生成件数を必ず満たすこと。件数に届かない場合は探索範囲を広げてでも埋めること。
+      - 多様性を保つため、同じアプローチや似たターゲットのアイデアを重複させないこと。
+      - 多様なプロダクトタイプを含めること。例としてB2Cアプリ、B2B SaaS、開発ツール、ブラウザ拡張機能など。
+      - 小さな実装で完結する案に限定しないこと。
+      - LLMを活用すれば少人数でも大きな構想を進められる前提で、市場機会として筋の良い案を含めること。
+    output_format: |
+      {
+        "id": "uuid形式の一意ID",
+        "title": "プロダクト名（簡潔・魅力的）",
+        "tagline": "1行のキャッチコピー",
+        "description": "2〜3文の説明",
+        "tags": ["カテゴリ配列（B2C", "B2B", "SaaS", "AI", "dev-tools" 等）],
+        "productType": "プロダクトタイプ（例: B2Cアプリ、B2B SaaS、開発ツール）",
+        "targetUsers": "ターゲットユーザーの簡潔な説明",
+        "coreProblem": "解決するペインポイント",
+        "differentiation": "差別化要因",
+        "sources": {
+          "rssKeywords": ["関連RSSキーワード"],
+          "evidenceUrls": [
+            { "title": "RSS記事タイトル", "url": "https://...", "type": "rss" }
+          ]
+        },
+        "generatedAt": "ISO 8601形式のタイムスタンプ"
+      }
+    data_policy:
+      - RSS記事が提供されない場合は生成対象外であり、一般知識だけで補完しないこと。
+      - 同じRSS記事や同じ課題から表現だけを変えた水増し案を作らないこと。
+      - RSS記事のURLが入力に含まれる場合は、各アイデアの根拠として入力内の関連RSS URLだけをsources.evidenceUrlsに最大1件入れること。
+      - sources.evidenceUrlsには、そのアイデアのcoreProblemやtagsと直接関連するRSS記事だけを入れること。
+      - URLが入力に含まれない場合はsources.evidenceUrlsを空配列にすること。架空URLは絶対に作らないこと。
+      - 日本市場とグローバル市場の両方を考慮すること。
+    messages:
+      - role: system
+        content: |
+          あなたは市場機会スキャナーです。提供されたトレンドデータをもとに、技術者やプロダクト開発者が検証を始められるプロダクト仮説を提案します。
+
+          ## 出力ルール
+          ${rules}
+
+          ## 各アイデアのJSON形式
+          ```json
+          ${output_format}
+          ```
+
+          ## 重要
+          ${data_policy}
+      - role: user
+        content: |
+          ## トレンドデータ
+
+          ### RSSコンテキスト
+          ```json
+          ${rss_context}
+          ```
+
+          ### フォーカスキーワード
+          ${focus_keywords}
+
+          ### 今回の生成件数
+          最大 ${requested_idea_count} 件
+
+          ---
+
+          上記のRSS記事とトレンドデータをもとに、技術者やプロダクト開発者が検証を始められる魅力的なプロダクト仮説を最大 ${requested_idea_count} 件提案してください。
+          JSON配列のみを出力してください。
+
+  semantic_filter:
+    id: ai_engine.semantic_filter
+    version: 1
+    description: ユーザーの検索クエリを意味的に理解し、アイデア候補を関連度順に並べ替える。
+    inputs:
+      - name: query
+        type: string
+        required: true
+        sensitivity: user_provided
+        render_as: inline
+      - name: candidates
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+    rules:
+      - 以下のJSON形式のみを出力すること。説明文やMarkdownは不要。
+      - 必ず元の候補のIdeaCandidateオブジェクトを変更せずに含めること。
+    output_format: |
+      {
+        "filteredCandidates": [元の候補オブジェクトを関連性順に並べた配列],
+        "filterReasoning": "なぜこの並び順になったかの簡潔な説明（日本語1〜2文）",
+        "matchCriteria": ["クエリのどの側面をマッチングに使ったかの配列"]
+      }
+    match_criteria:
+      - タイトル、説明、タグ、ターゲットユーザー、解決する問題、プロダクトタイプを横断的に検討する。
+      - クエリの意図を推測すること。例として「副業」は収入系、独立系、リスク低いもの。
+      - 完全一致だけでなく、意味的な関連性も考慮する。
+      - クエリに否定的な意味が含まれる場合は除外する。例として「AI以外」はAIタグを除外。
+    messages:
+      - role: system
+        content: |
+          あなたはアイデアフィルタリングアシスタントです。ユーザーの検索クエリを意味的に理解し、アイデア候補リストを関連性の高い順に再ランク付けします。
+
+          ## 出力ルール
+          ${rules}
+
+          ## 出力形式
+          ```json
+          ${output_format}
+          ```
+
+          ## マッチング基準
+          ${match_criteria}
+      - role: user
+        content: |
+          ## ユーザーの検索クエリ
+          ${query}
+
+          ## アイデア候補リスト
+          ```json
+          ${candidates}
+          ```
+
+          ---
+
+          ユーザーのクエリ「${query}」に基づいて、上記のアイデア候補を意味的にフィルタリング・再ランク付けしてください。
+          関連性の高いものから順に並べてください。JSONのみ出力してください。
+
+  rss_article_summary:
+    id: ai_engine.rss_article_summary
+    version: 1
+    description: RSS記事のタイトルと抜粋だけを根拠に、トレンド一覧用の日本語タイトルと要約を生成する。
+    inputs:
+      - name: articles
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+    rules:
+      - summaryJaは、読者が元記事を読まなくても記事の流れと重要点を把握できるように、5〜7項目の箇条書きにすること。
+      - summaryJa全体は700〜1200字程度を目安にすること。
+      - 各項目は必ず「・」で始め、項目ごとに必ず改行すること。1項目は90〜180字程度にすること。
+      - 箇条書き各項目の末尾には「。」や「.」などの句点を付けないこと。
+      - 起承転結が伝わる順番にすること。背景/問題提起、何が起きたか、具体例や根拠、課題や転換点、技術者やプロダクト担当者への示唆。
+      - 入力抜粋が短い場合でも、読み取れる範囲で、背景・主な論点・具体例・影響を分けること。
+      - 入力にない事実を補完せず、不明な点は断定しないこと。
+      - 「はじめに:」「概要:」「要約:」などの見出し語で始めないこと。
+      - 文末に「...」「…」を付けないこと。
+      - Article URL、Comments URL、Points、# Comments、URL文字列などRSSフィードのメタ情報はsummaryJaに絶対に含めないこと。
+      - 「解説しています」だけで終わる薄い要約にせず、何が起きていて、開発者やプロダクト担当者に何が示唆されるかを具体的に含めること。
+      - 入力にない事実、数値、固有名詞は足さないこと。
+      - 英語タイトルには自然な日本語titleJaを付け、日本語タイトルはtitleJaを原文と同じにすること。
+      - 出力のindexは入力のindexと同じ数値を必ず入れること。
+      - JSON以外は出力しないこと。
+    output_format: |
+      [
+        {
+          "index": 0,
+          "title": "原文タイトル",
+          "titleJa": "日本語タイトル",
+          "summaryJa": "日本語の要約"
+        }
+      ]
+    messages:
+      - role: system
+        content: |
+          あなたは技術ニュースの編集者です。
+          RSS記事のタイトルと抜粋だけを根拠に、トレンド一覧で読むための日本語要約を作ります。
+
+          ## 要約ルール
+          ${rules}
+
+          ## 出力形式
+          ```json
+          ${output_format}
+          ```
+      - role: user
+        content: |
+          次のRSS記事を一覧用に要約してください。
+
+          ## RSS記事
+          ```json
+          ${articles}
+          ```
+
+  featured_idea_selection:
+    id: ai_engine.featured_idea_selection
+    version: 1
+    description: 生成済みアイデア候補から注目アイデアを1件選ぶ。
+    inputs:
+      - name: idea_summaries
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+    rules:
+      - 最も実現可能性が高く、市場ニーズに合致し、技術的優位性がある「一番面白い」アイデアを1つ選ぶこと。
+      - 選択理由は不要。
+      - 選んだアイデアのindex番号のみを返すこと。
+    output_format: |
+      {"index": <number>}
+    messages:
+      - role: system
+        content: |
+          あなたはプロダクト開発の専門家です。
+
+          ## 選定ルール
+          ${rules}
+
+          ## 出力形式
+          JSONのみ: ${output_format}
+      - role: user
+        content: |
+          ## アイデア候補
+          ```json
+          ${idea_summaries}
+          ```
+
+  featured_trend_selection:
+    id: ai_engine.featured_trend_selection
+    version: 1
+    description: RSS記事候補からプロダクト仮説の起点になる注目トレンドを1件選ぶ。
+    inputs:
+      - name: trend_summaries
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+    rules:
+      - エンジニアがプロダクト仮説を考えるうえで最も気になるトレンドを1つ選ぶこと。
+      - 選定した記事の要点を、日本語で60字以内の自然なサマリーにすること。
+    output_format: |
+      {"index": <number>, "summary": "<summary>"}
+    messages:
+      - role: system
+        content: |
+          あなたは技術トレンドを読むプロダクト編集者です。
+
+          ## 選定ルール
+          ${rules}
+
+          ## 出力形式
+          JSONのみ: ${output_format}
+      - role: user
+        content: |
+          ## RSS記事候補
+          ```json
+          ${trend_summaries}
+          ```

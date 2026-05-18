@@ -37,11 +37,14 @@
 - `IDEA_SOURCE_HISTORY_LIMIT=240`: アイデアの根拠として使ったRSS記事URLの保持上限。次回生成では同じ記事を材料から外す
 - `IDEA_WARMUP_ON_START=true`: サーバー起動時にキャッシュが空/期限切れならバックグラウンド生成
 - `IDEA_BACKGROUND_REFRESH_HOURS=12`: 指定した時間ごとに、表示中のキャッシュを残したままバックグラウンド再生成（未設定/0なら定期更新なし）
+- `RSS_FEEDS='[{"name":"Hacker News","url":"https://hnrss.org/frontpage"}]'`: RSSソースのJSON配列。未指定なら既定の主要テックRSSを直接取得
+- `RSS_MAX_RELATED_ARTICLES=18`: トレンドページとアイデア生成に渡すRSS記事数の上限
+- `RSS_FETCH_TIMEOUT_MS=8000`: RSSソース1件あたりの取得タイムアウト
 - `CORS_ORIGIN=https://your-site.example.com`: APIを別ドメインで公開する場合、ブラウザからの許可元をカンマ区切りで指定
 - `SMTP_HOST=smtp.example.com`: RSS取得失敗時の管理者メール通知に使うSMTPホスト
 - `SMTP_PORT=587`: SMTPポート。465の場合は通常 `SMTP_SECURE=true`
 - `SMTP_SECURE=false`: SMTP接続でTLSを最初から使うか
 - `SMTP_USER=...` / `SMTP_PASS=...`: SMTP認証情報
 - `ADMIN_ALERT_EMAIL_FROM=alerts@example.com`: 通知メールのFrom。未指定なら `SMTP_USER` またはローカル既定値
-- `ADMIN_ALERT_EMAIL_TO=admin@example.com`: RSS取得失敗通知の送信先
+- `ADMIN_ALERT_EMAIL_TO=admin@example.com`: RSS取得失敗・RSS要約失敗通知の送信先
 - `ADMIN_ALERT_COOLDOWN_MINUTES=60`: 同種のRSS失敗通知を抑制する時間

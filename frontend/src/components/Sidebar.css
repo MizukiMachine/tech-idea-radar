@@ -92,15 +92,15 @@
 }
 
 .sidebar__tag--active {
-    background: var(--accent-blue);
-    color: #fff;
-    border-color: var(--accent-blue);
+    background: var(--accent-primary-active);
+    color: var(--accent-primary-hover);
+    border-color: var(--accent-primary-border);
     box-shadow: var(--shadow-glow);
 }
 
 .sidebar__tag--active:hover {
-    border-color: #1A54DF;
-    color: #fff;
+    border-color: var(--accent-primary-hover);
+    color: var(--accent-primary-hover);
 }
 
 /* Checkbox group */
@@ -123,7 +123,7 @@
 .sidebar__checkbox-label input[type="checkbox"] {
     width: 18px;
     height: 18px;
-    accent-color: var(--accent-blue);
+    accent-color: var(--accent-primary);
     cursor: pointer;
     border-radius: 4px;
 }

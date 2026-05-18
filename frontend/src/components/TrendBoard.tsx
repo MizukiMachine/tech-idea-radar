@@ -3,15 +3,21 @@ import type { RssArticle, TrendScan, TrendHistoryEntry } from '../api/ai';
 import './TrendBoard.css';
 
 const SOURCE_STYLE: Record<string, { color: string; bg: string }> = {
-  'Hacker News': { color: '#FF6600', bg: 'rgba(255,102,0,0.08)' },
-  'TechCrunch': { color: '#0A9E01', bg: 'rgba(10,158,1,0.08)' },
-  'The Verge': { color: '#E5127D', bg: 'rgba(229,18,125,0.08)' },
-  'DEV Community': { color: '#3B49DF', bg: 'rgba(59,73,223,0.08)' },
-  'Zenn': { color: '#3EA8FF', bg: 'rgba(62,168,255,0.08)' },
-  'Qiita Popular': { color: '#55C500', bg: 'rgba(85,197,0,0.08)' },
-  'Qiita': { color: '#55C500', bg: 'rgba(85,197,0,0.08)' },
+  'Hacker News': { color: '#C67A3A', bg: 'rgba(198,122,58,0.045)' },
+  'TechCrunch': { color: '#8A7A3E', bg: 'rgba(138,122,62,0.045)' },
+  'The Verge': { color: '#BA6C94', bg: 'rgba(186,108,148,0.045)' },
+  'DEV Community': { color: '#6B73B8', bg: 'rgba(107,115,184,0.045)' },
+  'Zenn': { color: '#6099BD', bg: 'rgba(96,153,189,0.045)' },
+  'Qiita Popular': { color: '#76A852', bg: 'rgba(118,168,82,0.045)' },
+  'Qiita': { color: '#76A852', bg: 'rgba(118,168,82,0.045)' },
 };
-const FALLBACK_SOURCE = { color: '#6B7280', bg: 'rgba(107,112,128,0.08)' };
+const FALLBACK_SOURCE = { color: '#7B8491', bg: 'rgba(123,132,145,0.045)' };
+const MIN_SUMMARY_ITEMS = 5;
+const MAX_SUMMARY_ITEMS = 7;
+const MIN_SUMMARY_CHARS = 700;
+const MAX_SUMMARY_CHARS = 1200;
+const MIN_SUMMARY_ITEM_CHARS = 90;
+const MAX_SUMMARY_ITEM_CHARS = 180;
 
 function sourceStyle(source: string | undefined) {
   return SOURCE_STYLE[source ?? ''] ?? FALLBACK_SOURCE;
@@ -35,11 +41,9 @@ function formatTimelineLabel(scannedAt: string): string {
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
   if (diffHours < 1) return '今';
   if (diffHours < 24) return `${diffHours}時間前`;
-  if (diffDays < 7) return `${diffDays}日前`;
   return date.toLocaleString('ja-JP', {
     month: '2-digit',
     day: '2-digit',
@@ -48,16 +52,91 @@ function formatTimelineLabel(scannedAt: string): string {
   });
 }
 
+function containsJapanese(text: string): boolean {
+  return /[ぁ-んァ-ヶ一-龯]/.test(text);
+}
+
+function containsFeedMetadataOrUrl(text: string): boolean {
+  return /\bArticle URL:|\bComments URL:|\bPoints:|#\s*Comments:|\bhttps?:\/\/\S+|\bwww\.\S+/i.test(text);
+}
+
 function articleUrl(article: RssArticle): string {
   return article.url || article.link;
 }
 
 function articleSummary(article: RssArticle): string {
   const displayTitle = article.titleJa || article.title;
-  return article.summaryJa
-    || article.summary
-    || article.description
-    || `「${displayTitle}」に関する記事です。詳細は元記事で確認してください。`;
+  const summary = article.summaryJa || '';
+  const normalized = summary
+    .replace(/^(?:はじめに|概要|要約|導入|introduction)\s*[：:]\s*/i, '')
+    .replace(/\bArticle URL:\s*\S+/gi, '')
+    .replace(/\bComments URL:\s*\S+/gi, '')
+    .replace(/\bPoints:\s*\d+/gi, '')
+    .replace(/#\s*Comments:\s*\d+/gi, '')
+    .replace(/\bhttps?:\/\/\S+|\bwww\.\S+/gi, '')
+    .replace(/\s*(?:\.{3,}|…|続きを読む|read more)\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) return `「${displayTitle}」に関する記事です。詳細は元記事で確認してください。`;
+  if (article.summaryJa || normalized.length <= 680) return normalized;
+
+  const sentences = normalized.match(/[^。.!?！？]+[。.!?！？]/g) ?? [];
+  const compact = sentences.reduce((acc, sentence) => (
+    `${acc}${sentence}`.length <= 680 ? `${acc}${sentence}` : acc
+  ), '');
+  return compact || `${normalized.slice(0, 678).trim()}。`;
+}
+
+function isDisplayableArticle(article: RssArticle): boolean {
+  const title = article.titleJa || article.title;
+  const summary = articleSummary(article);
+  if (!containsJapanese(title) || !containsJapanese(summary)) return false;
+  if (containsFeedMetadataOrUrl(summary)) return false;
+
+  const policySummary = article.summaryJa?.trim() ?? '';
+  if (!policySummary) return summary.length >= 20;
+  if (containsFeedMetadataOrUrl(policySummary)) return false;
+
+  const items = policySummary
+    .replace(/\r\n/g, '\n')
+    .replace(/\s+・/g, '\n・')
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => (/^・\s*/.test(line)
+      ? line.replace(/^・\s*/, '').replace(/[。．.]$/u, '').trim()
+      : ''));
+
+  if (items.length < MIN_SUMMARY_ITEMS || items.length > MAX_SUMMARY_ITEMS) return summary.length >= 40;
+  if (items.some((item) => !item)) return summary.length >= 40;
+  if (items.some((item) => item.length < MIN_SUMMARY_ITEM_CHARS || item.length > MAX_SUMMARY_ITEM_CHARS)) {
+    return summary.length >= 40;
+  }
+
+  const totalChars = items.join('').length;
+  return (totalChars >= MIN_SUMMARY_CHARS && totalChars <= MAX_SUMMARY_CHARS) || summary.length >= 40;
+}
+
+function articleSummaryLines(article: RssArticle): string[] {
+  return articleSummary(article)
+    .replace(/\s+・/g, '\n・')
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function articleSummaryItems(article: RssArticle): { text: string; bullet: boolean }[] {
+  return articleSummaryLines(article).map((line) => {
+    const bullet = /^・\s*/.test(line);
+    const text = bullet
+      ? line.replace(/^・\s*/, '').replace(/[。．.]$/u, '').trim()
+      : line;
+    return {
+      text,
+      bullet,
+    };
+  });
 }
 
 interface TrendBoardProps {
@@ -77,11 +156,11 @@ export default function TrendBoard({
   activeTrendIndex,
   onSelectTrend,
 }: TrendBoardProps): JSX.Element {
-  const [expandedArticleUrl, setExpandedArticleUrl] = useState<string | null>(null);
-  const rssArticles = trends?.rssContext.relatedArticles ?? [];
+  const [expandedArticleUrls, setExpandedArticleUrls] = useState<Set<string>>(() => new Set());
+  const rssArticles = (trends?.rssContext.relatedArticles ?? []).filter(isDisplayableArticle);
   const keywords = trends?.rssContext.trendingKeywords ?? [];
   const sourceCount = new Set(rssArticles.map((a) => a.source).filter(Boolean)).size;
-  const translatedCount = rssArticles.filter((a) => a.titleJa || a.summaryJa).length;
+  const summarizedCount = rssArticles.filter((a) => a.titleJa || a.summaryJa).length;
 
   const maxKeywordCount = keywords.length > 0
     ? Math.max(...keywords.map((k) => k.count))
@@ -108,8 +187,8 @@ export default function TrendBoard({
             <span className="tb-metric__label">メディア</span>
           </div>
           <div className="tb-metric">
-            <span className="tb-metric__value">{translatedCount}</span>
-            <span className="tb-metric__label">日本語化</span>
+            <span className="tb-metric__value">{summarizedCount}</span>
+            <span className="tb-metric__label">要約済み</span>
           </div>
           <div className="tb-metric">
             <span className="tb-metric__value tb-metric__value--sm">
@@ -165,10 +244,15 @@ export default function TrendBoard({
                   <FeaturedArticle
                     key={articleUrl(article)}
                     article={article}
-                    expanded={expandedArticleUrl === articleUrl(article)}
+                    expanded={expandedArticleUrls.has(articleUrl(article))}
                     onToggle={() => {
                       const url = articleUrl(article);
-                      setExpandedArticleUrl((c) => (c === url ? null : url));
+                      setExpandedArticleUrls((current) => {
+                        const next = new Set(current);
+                        if (next.has(url)) next.delete(url);
+                        else next.add(url);
+                        return next;
+                      });
                     }}
                   />
                 ))}
@@ -276,17 +360,17 @@ function FeaturedArticle({
 }): JSX.Element {
   const displayTitle = article.titleJa || article.title;
   const style = sourceStyle(article.source);
+  const summaryItems = articleSummaryItems(article);
+  const summaryIsList = summaryItems.some((item) => item.bullet);
 
   return (
     <article
       className="tb-featured"
-      style={{ '--source-color': style.color } as React.CSSProperties}
+      style={{ '--source-color': style.color, '--source-bg': style.bg } as React.CSSProperties}
     >
       <div className="tb-featured__source">
-        <span
-          className="tb-featured__source-badge"
-          style={{ background: style.bg, color: style.color }}
-        >
+        <span className="tb-featured__source-badge">
+          <span className="tb-featured__source-dot" />
           {article.source || 'RSS'}
         </span>
         <time className="tb-featured__date">
@@ -312,7 +396,17 @@ function FeaturedArticle({
       </div>
       {expanded && (
         <div className="tb-featured__summary">
-          <p>{articleSummary(article)}</p>
+          {summaryIsList ? (
+            <ul className="tb-featured__summary-list">
+              {summaryItems.map((item, index) => (
+                <li key={`${index}-${item.text}`}>{item.text}</li>
+              ))}
+            </ul>
+          ) : (
+            summaryItems.map((item, index) => (
+              <p key={`${index}-${item.text}`}>{item.text}</p>
+            ))
+          )}
         </div>
       )}
     </article>

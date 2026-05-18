@@ -6,9 +6,11 @@ export { FilterAgent } from './agents/filter-agent';
 // Services
 export { LLMClient } from './services/llm-client';
 export { PromptBuilder } from './services/prompt-builder';
+export { listPromptTemplateKeys, renderPromptRole } from './services/prompt-catalog';
 export { ResponseParser } from './services/response-parser';
 export { validateObject } from './services/output-validator';
-export { McpClient, fetchRssContext } from './services/mcp-client';
+export { fetchRssContext } from './services/rss-client';
+export type { RssArticle, RssContext, RssSourceError, RssSummaryError, RssTrendItem } from './services/rss-client';
 export { RssSourceUnavailableError, isRssSourceUnavailableError } from './errors';
 export type { RssSourceUnavailableDetails } from './errors';
 

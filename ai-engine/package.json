@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-prompts.mjs",
     "dev": "tsc --watch",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -15,8 +15,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.1",
-    "@modelcontextprotocol/sdk": "^1.29.0",
-    "fast-xml-parser": "^5.8.0"
+    "fast-xml-parser": "^5.8.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.7",

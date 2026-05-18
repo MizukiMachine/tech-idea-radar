@@ -79,10 +79,33 @@ function formatSourceErrors(errors: { source: string; message: string }[] | unde
   return errors.map((error) => `${error.source}: ${error.message}`).join('\n');
 }
 
+function formatSummaryErrors(errors: RssSourceUnavailableDetails['summaryErrors']): string {
+  if (!errors || errors.length === 0) return '-';
+  return errors
+    .slice(0, 20)
+    .map((error) => {
+      const url = error.url ? ` (${error.url})` : '';
+      return `#${error.index} ${error.source}: ${error.title}${url} - ${error.message}`;
+    })
+    .join('\n');
+}
+
+function alertTitle(alert: RssFailureAlert): string {
+  return alert.operation.includes('summary')
+    ? 'RSS要約失敗'
+    : 'RSS取得失敗';
+}
+
+function alertLead(alert: RssFailureAlert): string {
+  return alert.operation.includes('summary')
+    ? 'Builder Agent Chain のRSS記事要約または日本語変換に失敗したため、該当記事をトレンド表示から除外しました。'
+    : 'Builder Agent Chain のRSS取得に失敗したため、LLMアイデア生成を停止しました。';
+}
+
 function buildAlertText(alert: RssFailureAlert): string {
   const details = alert.details ?? {};
   return [
-    'Builder Agent Chain のRSS取得に失敗したため、LLMアイデア生成を停止しました。',
+    alertLead(alert),
     '',
     `発生時刻: ${alert.occurredAt}`,
     `処理: ${alert.operation}`,
@@ -91,12 +114,16 @@ function buildAlertText(alert: RssFailureAlert): string {
     `RSS記事数: ${details.rssArticleCount ?? '-'}`,
     `注目キーワード数: ${details.trendingKeywordCount ?? '-'}`,
     `除外済み使用RSS数: ${details.skippedPreviouslyUsedRssCount ?? '-'}`,
+    `要約失敗数: ${details.summaryFailureCount ?? '-'}`,
     `取得元: ${formatList(details.sourceNames)}`,
     `取得元エラー:\n${formatSourceErrors(details.sourceErrors)}`,
+    `要約エラー:\n${formatSummaryErrors(details.summaryErrors)}`,
     `アイデアキャッシュ生成日時: ${alert.ideaCacheGeneratedAt ?? '-'}`,
     `トレンドキャッシュ生成日時: ${alert.trendCacheGeneratedAt ?? '-'}`,
     '',
-    '対応してください: RSSフィード、MCP RSS scout、ネットワーク、認証/レート制限、対象フィードの仕様変更を確認してください。',
+    alert.operation.includes('summary')
+      ? '対応してください: 要約プロンプト、LLMレスポンス形式、対象記事本文、メタ情報混入、英日変換の失敗を確認してください。'
+      : '対応してください: RSSフィード、ネットワーク、認証/レート制限、対象フィードの仕様変更を確認してください。',
   ].join('\n');
 }
 
@@ -108,6 +135,7 @@ function alertKey(alert: RssFailureAlert): string {
     details.rssArticleCount ?? 0,
     details.trendingKeywordCount ?? 0,
     details.skippedPreviouslyUsedRssCount ?? 0,
+    details.summaryFailureCount ?? 0,
   ].join(':');
 }
 
@@ -140,7 +168,7 @@ export async function notifyAdminOfRssFailure(alert: RssFailureAlert): Promise<v
       await transporter.sendMail({
         from: config.from,
         to: config.to,
-        subject: `[Builder Agent Chain] RSS取得失敗: ${alert.operation}`,
+        subject: `[Builder Agent Chain] ${alertTitle(alert)}: ${alert.operation}`,
         text: buildAlertText(alert),
       });
     } catch (error) {
@@ -163,11 +191,12 @@ function buildWebhookPayload(alert: RssFailureAlert, webhookUrl: string): Record
   const isDiscord = webhookUrl.includes('discord.com');
 
   const text = [
-    `**[Builder Agent Chain] RSS取得失敗: ${alert.operation}**`,
+    `**[Builder Agent Chain] ${alertTitle(alert)}: ${alert.operation}**`,
     `発生時刻: ${alert.occurredAt}`,
     `エラー: ${alert.errorMessage}`,
     `RSS記事数: ${details.rssArticleCount ?? '-'}`,
     `注目キーワード数: ${details.trendingKeywordCount ?? '-'}`,
+    `要約失敗数: ${details.summaryFailureCount ?? '-'}`,
     `アイデアキャッシュ生成日時: ${alert.ideaCacheGeneratedAt ?? '-'}`,
     `トレンドキャッシュ生成日時: ${alert.trendCacheGeneratedAt ?? '-'}`,
   ].join('\n');
