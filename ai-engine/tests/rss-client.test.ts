@@ -124,7 +124,54 @@ describe('fetchRssContext', () => {
     ]));
   });
 
-  it('keeps one article per source before filling the rest by score without a source penalty', async () => {
+  it('uses ten built-in feeds with only Zenn and Qiita as Japanese sources', async () => {
+    delete process.env.RSS_FEEDS;
+    process.env.RSS_FETCH_ARTICLE_EXCERPTS = 'false';
+
+    const fetchMock = vi.fn(async (input: unknown) => {
+      const sourceKey = String(input).replace(/^https?:\/\//, '').replace(/[^a-z0-9]+/gi, '-');
+      const items = Array.from({ length: 3 }, (_, index) => `
+        <item>
+          <title>AI developer platform signal ${sourceKey} ${index + 1}</title>
+          <link>${String(input).replace(/\/$/, '')}/article-${index + 1}</link>
+          <pubDate>Sun, 17 May 2026 1${index}:00:00 GMT</pubDate>
+          <description>AI developer workflow automation and product platform updates for engineering teams.</description>
+        </item>
+      `).join('');
+
+      return {
+        ok: true,
+        statusText: 'OK',
+        text: async () => `<?xml version="1.0"?><rss version="2.0"><channel>${items}</channel></rss>`,
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { fetchRssContext } = await import('../src/services/rss-client');
+    const result = await fetchRssContext(['AI', 'developer']);
+    const sources = new Set(result.relatedArticles.map((article) => article.source));
+
+    expect(fetchMock.mock.calls.length).toBe(10);
+    expect(result.relatedArticles).toHaveLength(18);
+    expect(sources.size).toBe(10);
+    expect([...sources]).toEqual(expect.arrayContaining([
+      'Hacker News',
+      'GitHub Blog',
+      'Stack Overflow Blog',
+      'Product Hunt',
+      'Zenn',
+      'Qiita Popular',
+    ]));
+    expect([...sources]).not.toEqual(expect.arrayContaining([
+      'DEV Community',
+      'The Verge',
+      'Ars Technica',
+      'Lobsters',
+      'MIT Technology Review',
+    ]));
+  });
+
+  it('keeps one article per source before filling by source-balanced score rounds', async () => {
     process.env.RSS_FEEDS = JSON.stringify(
       Array.from({ length: 6 }, (_, index) => ({
         name: `Source ${index + 1}`,
@@ -162,9 +209,9 @@ describe('fetchRssContext', () => {
 
     expect(result.relatedArticles).toHaveLength(18);
     expect(Object.keys(counts)).toHaveLength(6);
-    expect(counts['Source 1']).toBe(12);
+    expect(counts['Source 1']).toBe(3);
     for (let index = 2; index <= 6; index += 1) {
-      expect(counts[`Source ${index}`]).toBeGreaterThanOrEqual(1);
+      expect(counts[`Source ${index}`]).toBe(3);
     }
   });
 
