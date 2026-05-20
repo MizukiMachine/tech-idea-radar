@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import type { RssArticle, RssArticleSummaryPolicy, TrendScan, TrendHistoryEntry } from '../api/ai';
 import './TrendBoard.css';
 
@@ -124,6 +124,16 @@ function isDisplayableArticle(article: RssArticle, policy: RssArticleSummaryPoli
   return totalChars >= policy.minTotalChars && totalChars <= policy.maxTotalChars;
 }
 
+function hasLegacySummary(article: RssArticle): boolean {
+  const summary = article.summaryJa?.trim() ?? '';
+  return Boolean(
+    summary
+    && containsJapanese(summary)
+    && !containsFeedMetadataOrUrl(summary)
+    && articleUrl(article),
+  );
+}
+
 function articleSummaryLines(article: RssArticle): string[] {
   return articleSummary(article)
     .replace(/\s+・/g, '\n・')
@@ -145,6 +155,13 @@ function articleSummaryItems(article: RssArticle): { text: string; bullet: boole
   });
 }
 
+type TrendArticleLayout = 'card';
+
+interface SourceRow {
+  source: string;
+  count: number;
+}
+
 interface TrendBoardProps {
   trends: TrendScan | null;
   loading: boolean;
@@ -164,49 +181,68 @@ export default function TrendBoard({
 }: TrendBoardProps): JSX.Element {
   const [expandedArticleUrls, setExpandedArticleUrls] = useState<Set<string>>(() => new Set());
   const [page, setPage] = useState(0);
-  const PAGE_SIZE = 15;
+  const PAGE_SIZE = 16;
   const summaryPolicy = trends?.summaryPolicy;
-  const rssArticles = summaryPolicy
+  const usesLegacySummaryContract = trends?.summaryPolicySource === 'default';
+  const relatedArticles = trends?.rssContext.relatedArticles ?? [];
+  const policyDisplayableArticles = summaryPolicy
     ? (trends?.rssContext.relatedArticles ?? []).filter((article) => isDisplayableArticle(article, summaryPolicy))
     : [];
+  const displayableArticles = usesLegacySummaryContract ? [] : policyDisplayableArticles;
+  const fallbackArticles = displayableArticles.length > 0
+    ? []
+    : relatedArticles.filter((article) => {
+      const title = article.titleJa?.trim() || (containsJapanese(article.title) ? article.title.trim() : '');
+      return Boolean(title && articleUrl(article));
+    });
+  const rssArticles = displayableArticles.length > 0 ? displayableArticles : fallbackArticles;
+  const summaryArticleUrls = new Set(
+    (usesLegacySummaryContract
+      ? rssArticles.filter(hasLegacySummary)
+      : displayableArticles
+    ).map((article) => articleUrl(article)),
+  );
   const keywords = trends?.rssContext.trendingKeywords ?? [];
   const sourceCount = new Set(rssArticles.map((a) => a.source).filter(Boolean)).size;
-  const summarizedCount = rssArticles.filter((a) => a.titleJa || a.summaryJa).length;
+  const summarizedCount = summaryArticleUrls.size;
 
   const maxKeywordCount = keywords.length > 0
     ? Math.max(...keywords.map((k) => k.count))
     : 1;
+  const sourceRows = Object.entries(
+    rssArticles.reduce<Record<string, number>>((acc, article) => {
+      const source = article.source || 'RSS';
+      acc[source] = (acc[source] || 0) + 1;
+      return acc;
+    }, {}),
+  )
+    .sort((a, b) => b[1] - a[1])
+    .map(([source, count]) => ({ source, count }));
+  const visibleArticles = rssArticles.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  const handleToggleArticle = (article: RssArticle) => {
+    const url = articleUrl(article);
+    setExpandedArticleUrls((current) => {
+      const next = new Set(current);
+      if (next.has(url)) next.delete(url);
+      else next.add(url);
+      return next;
+    });
+  };
 
   return (
     <section className="trend-board">
-      {/* Hero header */}
-      <div className="tb-hero">
-        <div className="tb-hero__inner">
-          <div className="tb-hero__badge">SIGNAL SCAN</div>
-          <h2 className="tb-hero__title">tech系開発シグナル</h2>
-          <p className="tb-hero__subtitle">
-            海外メディアを中心にトレンドをキャッチ
-          </p>
+      <div className="tb-header">
+        <div className="tb-header__copy">
+          <span className="tb-header__eyebrow">RSSフィード</span>
+          <h2>tech系開発シグナル</h2>
+          <p>海外メディアと開発者向けフィードから、アイデア生成の根拠になる記事とキーワードを確認できます。</p>
         </div>
-        <div className="tb-hero__metrics">
-          <div className="tb-metric">
-            <span className="tb-metric__value">{rssArticles.length}</span>
-            <span className="tb-metric__label">RSS記事</span>
-          </div>
-          <div className="tb-metric">
-            <span className="tb-metric__value">{sourceCount}</span>
-            <span className="tb-metric__label">メディア</span>
-          </div>
-          <div className="tb-metric">
-            <span className="tb-metric__value">{summarizedCount}</span>
-            <span className="tb-metric__label">要約済み</span>
-          </div>
-          <div className="tb-metric">
-            <span className="tb-metric__value tb-metric__value--sm">
-              {formatDate(trends?.generatedAt)}
-            </span>
-            <span className="tb-metric__label">最終取得</span>
-          </div>
+        <div className="tb-header__metrics">
+          <TrendMetric label="RSS記事" value={rssArticles.length} />
+          <TrendMetric label="メディア" value={sourceCount} />
+          <TrendMetric label="要約済み" value={summarizedCount} />
+          <TrendMetric label="最終取得" value={formatDate(trends?.generatedAt)} compact />
         </div>
       </div>
 
@@ -243,97 +279,171 @@ export default function TrendBoard({
       )}
 
       {trends && rssArticles.length > 0 && (
-        <div className="tb-layout">
-          <div className="tb-main">
-            <section className="tb-feed">
-              <div className="tb-feed__header">
-                <h3>RSSフィード</h3>
-                <span className="tb-feed__count">{rssArticles.length}件</span>
-              </div>
-              <div className="tb-feed__list">
-                {rssArticles.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE).map((article) => (
-                  <FeaturedArticle
-                    key={articleUrl(article)}
-                    article={article}
-                    expanded={expandedArticleUrls.has(articleUrl(article))}
-                    onToggle={() => {
-                      const url = articleUrl(article);
-                      setExpandedArticleUrls((current) => {
-                        const next = new Set(current);
-                        if (next.has(url)) next.delete(url);
-                        else next.add(url);
-                        return next;
-                      });
-                    }}
-                  />
-                ))}
-              </div>
-              {rssArticles.length > PAGE_SIZE && (
-                <Pagination
-                  total={rssArticles.length}
-                  pageSize={PAGE_SIZE}
-                  current={page}
-                  onChange={setPage}
-                />
-              )}
-            </section>
-          </div>
-
-          <aside className="tb-sidebar">
-            <div className="tb-keywords-panel">
-              <h3 className="tb-keywords-panel__title">注目キーワード</h3>
-              <div className="tb-keywords">
-                {keywords.slice(0, 20).map((keyword) => (
-                  <span
-                    key={keyword.word}
-                    className="tb-keyword"
-                    style={{
-                      fontSize: `${0.75 + (keyword.count / maxKeywordCount) * 0.55}rem`,
-                      opacity: 0.55 + (keyword.count / maxKeywordCount) * 0.45,
-                    }}
-                  >
-                    {keyword.word}
-                    <strong className="tb-keyword__count">{keyword.count}</strong>
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* Sources breakdown */}
-            <div className="tb-sources-panel">
-              <h3 className="tb-sources-panel__title">ソース別</h3>
-              {Object.entries(
-                rssArticles.reduce<Record<string, number>>((acc, a) => {
-                  const s = a.source || 'RSS';
-                  acc[s] = (acc[s] || 0) + 1;
-                  return acc;
-                }, {}),
-              )
-                .sort((a, b) => b[1] - a[1])
-                .map(([source, count]) => (
-                  <div key={source} className="tb-source-row">
-                    <span
-                      className="tb-source-row__dot"
-                      style={{ background: sourceStyle(source).color }}
-                    />
-                    <span className="tb-source-row__name">{source}</span>
-                    <span className="tb-source-row__bar-wrap">
-                      <span
-                        className="tb-source-row__bar"
-                        style={{
-                          width: `${(count / rssArticles.length) * 100}%`,
-                          background: sourceStyle(source).color,
-                        }}
-                      />
-                    </span>
-                    <span className="tb-source-row__count">{count}</span>
-                  </div>
-                ))}
-            </div>
-          </aside>
-        </div>
+        <TrendCardsLayout
+          articles={rssArticles}
+          visibleArticles={visibleArticles}
+          expandedArticleUrls={expandedArticleUrls}
+          onToggleArticle={handleToggleArticle}
+          pageSize={PAGE_SIZE}
+          page={page}
+          onPageChange={setPage}
+          keywords={keywords}
+          maxKeywordCount={maxKeywordCount}
+          sourceRows={sourceRows}
+          summaryArticleUrls={summaryArticleUrls}
+        />
       )}
     </section>
+  );
+}
+
+function TrendMetric({
+  label,
+  value,
+  compact = false,
+}: {
+  label: string;
+  value: number | string;
+  compact?: boolean;
+}): JSX.Element {
+  return (
+    <div className="tb-metric">
+      <span className={`tb-metric__value ${compact ? 'tb-metric__value--sm' : ''}`}>{value}</span>
+      <span className="tb-metric__label">{label}</span>
+    </div>
+  );
+}
+
+interface TrendLayoutProps {
+  articles: RssArticle[];
+  visibleArticles: RssArticle[];
+  expandedArticleUrls: Set<string>;
+  onToggleArticle: (article: RssArticle) => void;
+  pageSize: number;
+  page: number;
+  onPageChange: (page: number) => void;
+  keywords: { word: string; count: number }[];
+  maxKeywordCount: number;
+  sourceRows: SourceRow[];
+  summaryArticleUrls: Set<string>;
+}
+
+function TrendCardsLayout({
+  articles,
+  visibleArticles,
+  expandedArticleUrls,
+  onToggleArticle,
+  pageSize,
+  page,
+  onPageChange,
+  keywords,
+  maxKeywordCount,
+  sourceRows,
+  summaryArticleUrls,
+}: TrendLayoutProps): JSX.Element {
+  return (
+    <div className="tb-layout tb-layout--cards">
+      <div className="tb-main">
+        <TrendFeedHeader count={articles.length} />
+        <div className="tb-article-grid">
+          {visibleArticles.map((article, index) => (
+            <TrendArticleCard
+              key={articleUrl(article)}
+              article={article}
+              layout="card"
+              rank={page * pageSize + index + 1}
+              expanded={expandedArticleUrls.has(articleUrl(article))}
+              summaryAvailable={summaryArticleUrls.has(articleUrl(article))}
+              onToggle={() => onToggleArticle(article)}
+            />
+          ))}
+        </div>
+        <Pagination
+          total={articles.length}
+          pageSize={pageSize}
+          current={page}
+          onChange={onPageChange}
+        />
+      </div>
+
+      <aside className="tb-sidebar">
+        <KeywordPanel keywords={keywords} maxKeywordCount={maxKeywordCount} />
+        <SourcePanel sourceRows={sourceRows} articleCount={articles.length} />
+      </aside>
+    </div>
+  );
+}
+
+function TrendFeedHeader({ count }: { count: number }): JSX.Element {
+  return (
+    <div className="tb-feed__header">
+      <h3>海外メディアを中心にトレンドをキャッチ</h3>
+      <span className="tb-feed__count">{count}件</span>
+    </div>
+  );
+}
+
+function KeywordPanel({
+  keywords,
+  maxKeywordCount,
+}: {
+  keywords: { word: string; count: number }[];
+  maxKeywordCount: number;
+}): JSX.Element {
+  return (
+    <div className="tb-panel tb-keywords-panel">
+      <h3 className="tb-panel__title">注目キーワード</h3>
+      <div className="tb-keywords">
+        {keywords.slice(0, 20).map((keyword) => (
+          <span
+            key={keyword.word}
+            className="tb-keyword"
+            style={{
+              fontSize: `${0.75 + (keyword.count / maxKeywordCount) * 0.4}rem`,
+              opacity: 0.62 + (keyword.count / maxKeywordCount) * 0.38,
+            }}
+          >
+            {keyword.word}
+            <strong className="tb-keyword__count">{keyword.count}</strong>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SourcePanel({
+  sourceRows,
+  articleCount,
+}: {
+  sourceRows: SourceRow[];
+  articleCount: number;
+}): JSX.Element {
+  return (
+    <div className="tb-panel tb-sources-panel">
+      <h3 className="tb-panel__title">ソース別</h3>
+      <div className="tb-source-list">
+        {sourceRows.map(({ source, count }) => (
+          <div key={source} className="tb-source-row">
+            <span
+              className="tb-source-row__dot"
+              style={{ background: sourceStyle(source).color }}
+            />
+            <span className="tb-source-row__name">{source}</span>
+            <span className="tb-source-row__bar-wrap">
+              <span
+                className="tb-source-row__bar"
+                style={{
+                  width: `${(count / articleCount) * 100}%`,
+                  background: sourceStyle(source).color,
+                }}
+              />
+            </span>
+            <span className="tb-source-row__count">{count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -366,16 +476,22 @@ function TimelineNavigator({ history, activeIndex, onSelectIndex }: TimelineNavi
   );
 }
 
-/* ── Featured article (first) ─────────────────────────── */
+/* ── Article card ─────────────────────────────────────── */
 
-function FeaturedArticle({
+function TrendArticleCard({
   article,
   expanded,
+  summaryAvailable,
   onToggle,
+  layout,
+  rank,
 }: {
   article: RssArticle;
   expanded: boolean;
+  summaryAvailable: boolean;
   onToggle: () => void;
+  layout: TrendArticleLayout;
+  rank: number;
 }): JSX.Element {
   const displayTitle = article.titleJa || article.title;
   const style = sourceStyle(article.source);
@@ -384,39 +500,47 @@ function FeaturedArticle({
 
   return (
     <article
-      className="tb-featured"
-      style={{ '--source-color': style.color, '--source-bg': style.bg } as React.CSSProperties}
+      className={`tb-article tb-article--${layout}`}
+      style={{ '--source-color': style.color, '--source-bg': style.bg } as CSSProperties}
     >
-      <div className="tb-featured__source">
-        <span className="tb-featured__source-badge">
-          <span className="tb-featured__source-dot" />
-          {article.source || 'RSS'}
-        </span>
-        <time className="tb-featured__date">
-          {formatDate(article.publishedAt || article.published)}
-        </time>
+      <span className="tb-article__rank">{String(rank).padStart(2, '0')}</span>
+      <div className="tb-article__body">
+        <div className="tb-article__meta">
+          <span className="tb-article__source">
+            <span className="tb-article__source-dot" />
+            {article.source || 'RSS'}
+          </span>
+          <time className="tb-article__date">
+            {formatDate(article.publishedAt || article.published)}
+          </time>
+        </div>
+        <h3 className="tb-article__title">{displayTitle}</h3>
+        <div className="tb-article__actions">
+          <a
+            href={articleUrl(article)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="tb-article__link"
+          >
+            元記事を読む
+            <span aria-hidden="true">↗</span>
+          </a>
+          {summaryAvailable && (
+            <button
+              type="button"
+              className="tb-article__summary-btn"
+              onClick={onToggle}
+              aria-expanded={expanded}
+            >
+              {expanded ? '要約を閉じる' : '要約を見る'}
+            </button>
+          )}
+        </div>
       </div>
-      <h3 className="tb-featured__title">{displayTitle}</h3>
-      <div className="tb-featured__actions">
-        <a
-          href={articleUrl(article)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="tb-featured__link"
-        >
-          元記事を読む
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M7 17L17 7M17 7H7M17 7V17" />
-          </svg>
-        </a>
-        <button type="button" className="tb-featured__summary-btn" onClick={onToggle}>
-          {expanded ? '要約を閉じる' : '要約を見る'}
-        </button>
-      </div>
-      {expanded && (
-        <div className="tb-featured__summary">
+      {summaryAvailable && expanded && (
+        <div className="tb-article__summary">
           {summaryIsList ? (
-            <ul className="tb-featured__summary-list">
+            <ul className="tb-article__summary-list">
               {summaryItems.map((item, index) => (
                 <li key={`${index}-${item.text}`}>{item.text}</li>
               ))}

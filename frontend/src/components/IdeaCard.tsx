@@ -58,9 +58,15 @@ export default function IdeaCard({ idea, index, viewMode = 'grid', selected = fa
                 <h3 className="idea-card__title">{idea.title}</h3>
             </div>
             <p className="idea-card__tagline">{idea.tagline}</p>
-            {idea.batchTime && (
-                <span className="idea-card__batch">生成 {formatGeneratedAtLabel(idea.batchTime)}</span>
-            )}
+            <div className="idea-card__meta">
+                <span className="idea-card__type">{idea.productType}</span>
+                {idea.tags.slice(0, 2).map((tag) => (
+                    <span key={tag} className="idea-card__tag">{tag}</span>
+                ))}
+                {idea.batchTime && (
+                    <span className="idea-card__batch">生成 {formatGeneratedAtLabel(idea.batchTime)}</span>
+                )}
+            </div>
         </button>
     );
 }

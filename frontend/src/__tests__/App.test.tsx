@@ -167,6 +167,72 @@ describe("App", () => {
     expect(screen.getByText(secondSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
   });
 
+  it("keeps legacy trend summaries clickable when the API omits the summary policy", async () => {
+    const legacySummary = "旧形式の日本語要約です。箇条書きポリシー導入前のキャッシュでも、受信時に契約を補完しつつ既存の要約本文は確認できるようにします。";
+    const legacyTrendScan = {
+      ...trends,
+      rssContext: {
+        ...trends.rssContext,
+        relatedArticles: [
+          {
+            ...trends.rssContext.relatedArticles[0],
+            summaryJa: legacySummary,
+          },
+          {
+            ...trends.rssContext.relatedArticles[1],
+            summaryJa: "This English legacy summary includes https://example.com and must not create a summary button.",
+          },
+          {
+            title: "Hidden English-only legacy article",
+            titleJa: undefined,
+            link: "https://example.com/hidden-legacy",
+            url: "https://example.com/hidden-legacy",
+            published: generatedAt,
+            publishedAt: generatedAt,
+            summary: "Hidden from fallback articles because it has no Japanese title.",
+            summaryJa: "これは表示対象外の記事に残っている旧形式の日本語要約です。要約本文があっても記事カード自体が表示されない場合、要約済み件数には含めません。",
+            source: "Legacy RSS",
+            keywords: ["legacy"],
+          },
+        ],
+      },
+    } as Record<string, unknown>;
+    delete legacyTrendScan.summaryPolicy;
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = legacyTrendScan;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
+
+    await waitFor(() => expect(screen.getByText("RSSフィード")).toBeTruthy());
+    expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
+    expect(screen.getByText("開発ワークフローの自動化が進む")).toBeTruthy();
+    expect(screen.queryByText("Hidden English-only legacy article")).toBeNull();
+    const summaryMetric = [...document.querySelectorAll(".tb-metric")]
+      .find((node) => node.textContent?.includes("要約済み"));
+    expect(summaryMetric?.textContent).toContain("1");
+
+    const buttons = screen.getAllByRole("button", { name: "要約を見る" });
+    expect(buttons).toHaveLength(1);
+    fireEvent.click(buttons[0]);
+    expect(screen.getByText(legacySummary)).toBeTruthy();
+  });
+
   it("hides trend articles whose generated Japanese summary fails the display policy", async () => {
     const invalidTrends = {
       ...trends,
@@ -223,7 +289,7 @@ describe("App", () => {
 
   it("renders right panel cards on the ideas view", async () => {
     render(<App />);
-    await waitFor(() => expect(screen.getByText("選択中のアイデア")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/注目のアイデア/)).toBeTruthy());
     await waitFor(() => expect(screen.getByText("注目のトレンド")).toBeTruthy());
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
   });

@@ -77,4 +77,31 @@ describe("trend history persistent cache", () => {
     expect(cache.getCachedTrendByIndex(0)?.summaryPolicy).toEqual(RSS_ARTICLE_SUMMARY_POLICY);
     expect(cache.getCachedTrends()?.rssContext.relatedArticles[0]?.title).toBe("Agent tooling expands");
   });
+
+  it("hydrates legacy trend history entries that are missing the summary policy", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-legacy-trends-"));
+    const cacheFile = path.join(tmpDir, "idea-cache.json");
+    const generatedAt = "2026-05-17T00:00:00.000Z";
+    const legacyTrendScan = trendScan(generatedAt) as Record<string, unknown>;
+    delete legacyTrendScan.summaryPolicy;
+
+    fs.writeFileSync(cacheFile, JSON.stringify({
+      version: 3,
+      updatedAt: generatedAt,
+      batches: [],
+      trendHistory: [{
+        scannedAt: generatedAt,
+        data: legacyTrendScan,
+      }],
+    }));
+
+    vi.resetModules();
+    delete process.env.IDEA_CACHE_DISABLED;
+    process.env.IDEA_CACHE_FILE = cacheFile;
+
+    const cache = await import("../src/services/idea-cache");
+
+    expect(cache.getCachedTrends()?.summaryPolicy).toEqual(RSS_ARTICLE_SUMMARY_POLICY);
+    expect(cache.getCachedTrendByIndex(0)?.summaryPolicy).toEqual(RSS_ARTICLE_SUMMARY_POLICY);
+  });
 });

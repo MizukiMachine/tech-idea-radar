@@ -15,7 +15,6 @@ import {
   type RssArticle,
 } from './api/ai';
 import Sidebar from './components/Sidebar';
-import TabFilter from './components/TabFilter';
 import IdeaCard from './components/IdeaCard';
 import RightPanel from './components/RightPanel';
 import IdeaDetailModal from './components/IdeaDetailModal';
@@ -67,21 +66,6 @@ function isSameIdea(a: IdeaCandidate | null, b: IdeaCandidate): boolean {
   return a.id === b.id
     && a.generatedAt === b.generatedAt
     && (a.batchTime ?? '') === (b.batchTime ?? '');
-}
-
-function matchesTab(idea: IdeaCandidate, tab: string): boolean {
-  if (tab === 'すべて') return true;
-  const text = ideaText(idea);
-  const tabKeywords: Record<string, string[]> = {
-    SaaS: ['SaaS', 'サブスク', 'B2B'],
-    AI: ['AI', '機械学習', 'LLM', '生成', '自動化'],
-    プロダクト仮説: ['仮説', '検証', 'プロダクト', '市場', '課題'],
-    業務効率化: ['業務', '効率', '自動化', '管理'],
-    データ: ['データ', '分析', '可視化', 'レポート'],
-    学習: ['学習', '教育', '研修', 'ナレッジ'],
-    'API・ツール': ['API', 'ツール', '開発者', 'SDK'],
-  };
-  return (tabKeywords[tab] ?? [tab]).some((keyword) => text.includes(keyword));
 }
 
 function matchesCategory(idea: IdeaCandidate, category: string): boolean {
@@ -178,7 +162,6 @@ function App(): JSX.Element {
   const [ideasMeta, setIdeasMeta] = useState<IdeasMeta | null>(null);
   const [activeCategory, setActiveCategory] = useState('すべて');
   const [activeInterests, setActiveInterests] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState('すべて');
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [selectedIdea, setSelectedIdea] = useState<IdeaCandidate | null>(null);
   const [modalIdea, setModalIdea] = useState<IdeaCandidate | null>(null);
@@ -338,13 +321,23 @@ function App(): JSX.Element {
         });
         if (!hasInterestMatch) return false;
       }
-      return matchesTab(idea, activeTab);
+      return true;
     });
 
   const hasIdeas = ideas.length > 0;
   const showDashboard = loading || hasIdeas;
   const showSetupState = !loading && !hasIdeas;
   const showIdeaCommandBar = activeView === 'ideas' && (hasIdeas || !publicReadonlyMode);
+  const cacheStatusLabel = ideasMeta?.cache.status === 'cached'
+    ? 'キャッシュ利用中'
+    : ideasMeta?.cache.status === 'stale'
+      ? '更新候補あり'
+      : 'データ準備中';
+  const sourceCountLabel = sourceSummary
+    ? `RSS ${sourceSummary.rssItemCount}件`
+    : trends?.rssContext.relatedArticles.length
+      ? `RSS ${trends.rssContext.relatedArticles.length}件`
+      : 'RSS確認中';
   const handleIdeaSelect = useCallback((idea: IdeaCandidate) => {
     setSelectedIdea(idea);
     setModalIdea(idea);
@@ -355,6 +348,7 @@ function App(): JSX.Element {
       <header className="app-header">
         <div className="app-header__top">
           <div className="app-header__brand">
+            <span className="app-header__mark" aria-hidden="true">Lu</span>
             <div>
               <h1>Lume</h1>
               <p>作るものが決まっていないエンジニアへ</p>
@@ -366,6 +360,7 @@ function App(): JSX.Element {
               type="button"
               className={`workspace-tabs__item ${activeView === 'ideas' ? 'workspace-tabs__item--active' : ''}`}
               onClick={handleOpenIdeas}
+              aria-pressed={activeView === 'ideas'}
             >
               アイデア
               {hasIdeas && <span>{ideas.length}</span>}
@@ -374,10 +369,16 @@ function App(): JSX.Element {
               type="button"
               className={`workspace-tabs__item ${activeView === 'trends' ? 'workspace-tabs__item--active' : ''}`}
               onClick={() => setActiveView('trends')}
+              aria-pressed={activeView === 'trends'}
             >
               トレンド
             </button>
           </nav>
+
+          <div className="app-header__status" aria-label="データ状態">
+            <span>{cacheStatusLabel}</span>
+            <strong>{sourceCountLabel}</strong>
+          </div>
         </div>
 
         {showIdeaCommandBar && (
@@ -464,13 +465,32 @@ function App(): JSX.Element {
 
                 <section className="main-content">
                   {hasIdeas && (
-                    <TabFilter
-                      activeTab={activeTab}
-                      viewMode={viewMode}
-                      onTabChange={setActiveTab}
-                      onViewChange={setViewMode}
-                      resultCount={displayedIdeas.length}
-                    />
+                    <div className="idea-results-toolbar">
+                      <div className="idea-results-toolbar__summary">
+                        <h3>アイデア一覧</h3>
+                        <span>{displayedIdeas.length}件</span>
+                      </div>
+                      <div className="idea-results-toolbar__view-toggle" aria-label="表示形式">
+                        <button
+                          type="button"
+                          className={`idea-results-toolbar__view-btn ${viewMode === 'grid' ? 'idea-results-toolbar__view-btn--active' : ''}`}
+                          onClick={() => setViewMode('grid')}
+                          aria-label="グリッド表示"
+                          aria-pressed={viewMode === 'grid'}
+                        >
+                          ▦
+                        </button>
+                        <button
+                          type="button"
+                          className={`idea-results-toolbar__view-btn ${viewMode === 'list' ? 'idea-results-toolbar__view-btn--active' : ''}`}
+                          onClick={() => setViewMode('list')}
+                          aria-label="リスト表示"
+                          aria-pressed={viewMode === 'list'}
+                        >
+                          ☰
+                        </button>
+                      </div>
+                    </div>
                   )}
 
                   {loading && ideas.length === 0 && (
@@ -499,7 +519,7 @@ function App(): JSX.Element {
                   {hasIdeas && !loading && displayedIdeas.length === 0 && (
                     <div className="empty-state">
                       <h2>条件に合うアイデアがありません</h2>
-                      <p>検索語、タブ、左側のフィルターを緩めると候補が戻ります。</p>
+                      <p>検索語や左側のフィルターを緩めると候補が戻ります。</p>
                     </div>
                   )}
                 </section>
