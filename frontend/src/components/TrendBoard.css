@@ -2,7 +2,7 @@
 .trend-board {
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: 20px;
   min-width: 0;
 }
 
@@ -11,7 +11,7 @@
   align-items: flex-end;
   justify-content: space-between;
   gap: 24px;
-  padding: 2px 0 20px;
+  padding: 4px 0 18px;
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -21,7 +21,7 @@
 
 .tb-header__eyebrow {
   display: inline-block;
-  margin-bottom: 8px;
+  margin-bottom: 7px;
   color: var(--accent-primary-hover);
   font-size: 11px;
   font-weight: 800;
@@ -49,8 +49,8 @@
 .tb-header__metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(76px, 1fr));
-  gap: 8px;
-  width: min(440px, 100%);
+  gap: 7px;
+  width: min(468px, 100%);
   flex: 0 0 auto;
 }
 
@@ -58,7 +58,7 @@
   display: flex;
   flex-direction: column;
   justify-content: center;
-  min-height: 66px;
+  min-height: 64px;
   padding: 10px 12px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
@@ -199,13 +199,13 @@
 /* ===== Layouts ===== */
 .tb-layout {
   display: grid;
-  gap: 24px;
+  gap: 20px;
   align-items: start;
   min-width: 0;
 }
 
 .tb-layout--cards {
-  grid-template-columns: minmax(0, 1fr) 280px;
+  grid-template-columns: minmax(0, 1fr) 292px;
 }
 
 .tb-main,
@@ -221,7 +221,7 @@
 
 .tb-sidebar {
   position: sticky;
-  top: 24px;
+  top: 18px;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -238,8 +238,8 @@
 .tb-feed__header h3 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 16px;
+  font-weight: 800;
 }
 
 .tb-feed__count {
@@ -254,9 +254,10 @@
 }
 
 .tb-article-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
 }
 
 /* ===== Article Card ===== */
@@ -264,6 +265,8 @@
   position: relative;
   display: grid;
   min-width: 0;
+  flex: 1 1 calc(50% - 5px);
+  max-width: calc(50% - 5px);
   border: 1px solid var(--border-color);
   border-left: 4px solid var(--source-color, var(--accent-primary));
   border-radius: 8px;
@@ -281,7 +284,7 @@
 .tb-article--card {
   grid-template-columns: minmax(0, 1fr);
   align-content: start;
-  min-height: 196px;
+  min-height: 198px;
   padding: 16px;
 }
 
@@ -357,7 +360,7 @@
   margin: 0;
   color: var(--text-primary);
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 800;
   line-height: 1.55;
   letter-spacing: 0;
   overflow-wrap: anywhere;
@@ -464,7 +467,7 @@
 /* ===== Side Panels ===== */
 .tb-panel {
   min-width: 0;
-  padding: 18px;
+  padding: 16px;
   border: 1px solid var(--border-color);
   border-radius: 8px;
   background: var(--bg-card);
@@ -514,7 +517,7 @@
 
 .tb-source-row {
   display: grid;
-  grid-template-columns: auto minmax(72px, 1fr) minmax(56px, 1fr) auto;
+  grid-template-columns: auto minmax(76px, 1fr) minmax(52px, 0.7fr) auto;
   align-items: center;
   gap: 9px;
   min-width: 0;
@@ -632,16 +635,17 @@
 }
 
 @media (max-width: 900px) {
-  .tb-article-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   .tb-header__metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .tb-sidebar {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .tb-article {
+    flex-basis: 100%;
+    max-width: 100%;
   }
 }
 
@@ -660,6 +664,7 @@
 
   .tb-article--card {
     padding: 14px;
+    min-height: 0;
   }
 
   .tb-article--card .tb-article__body {

@@ -233,6 +233,11 @@ export default function TrendBoard({
   return (
     <section className="trend-board">
       <div className="tb-header">
+        <div className="tb-header__copy">
+          <span className="tb-header__eyebrow">RSSフィード</span>
+          <h2>tech系開発シグナル</h2>
+          <p>海外メディアと開発者向けフィードから、アイデア生成の根拠になる記事とキーワードを確認できます。</p>
+        </div>
         <div className="tb-header__metrics">
           <TrendMetric label="RSS記事" value={rssArticles.length} />
           <TrendMetric label="メディア" value={sourceCount} />
@@ -521,7 +526,12 @@ function TrendArticleCard({
             <span aria-hidden="true">↗</span>
           </a>
           {summaryAvailable && (
-            <button type="button" className="tb-article__summary-btn" onClick={onToggle}>
+            <button
+              type="button"
+              className="tb-article__summary-btn"
+              onClick={onToggle}
+              aria-expanded={expanded}
+            >
               {expanded ? '要約を閉じる' : '要約を見る'}
             </button>
           )}
