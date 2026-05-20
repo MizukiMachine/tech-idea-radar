@@ -328,6 +328,16 @@ function App(): JSX.Element {
   const showDashboard = loading || hasIdeas;
   const showSetupState = !loading && !hasIdeas;
   const showIdeaCommandBar = activeView === 'ideas' && (hasIdeas || !publicReadonlyMode);
+  const cacheStatusLabel = ideasMeta?.cache.status === 'cached'
+    ? 'キャッシュ利用中'
+    : ideasMeta?.cache.status === 'stale'
+      ? '更新候補あり'
+      : 'データ準備中';
+  const sourceCountLabel = sourceSummary
+    ? `RSS ${sourceSummary.rssItemCount}件`
+    : trends?.rssContext.relatedArticles.length
+      ? `RSS ${trends.rssContext.relatedArticles.length}件`
+      : 'RSS確認中';
   const handleIdeaSelect = useCallback((idea: IdeaCandidate) => {
     setSelectedIdea(idea);
     setModalIdea(idea);
@@ -338,6 +348,7 @@ function App(): JSX.Element {
       <header className="app-header">
         <div className="app-header__top">
           <div className="app-header__brand">
+            <span className="app-header__mark" aria-hidden="true">Lu</span>
             <div>
               <h1>Lume</h1>
               <p>作るものが決まっていないエンジニアへ</p>
@@ -349,6 +360,7 @@ function App(): JSX.Element {
               type="button"
               className={`workspace-tabs__item ${activeView === 'ideas' ? 'workspace-tabs__item--active' : ''}`}
               onClick={handleOpenIdeas}
+              aria-pressed={activeView === 'ideas'}
             >
               アイデア
               {hasIdeas && <span>{ideas.length}</span>}
@@ -357,10 +369,16 @@ function App(): JSX.Element {
               type="button"
               className={`workspace-tabs__item ${activeView === 'trends' ? 'workspace-tabs__item--active' : ''}`}
               onClick={() => setActiveView('trends')}
+              aria-pressed={activeView === 'trends'}
             >
               トレンド
             </button>
           </nav>
+
+          <div className="app-header__status" aria-label="データ状態">
+            <span>{cacheStatusLabel}</span>
+            <strong>{sourceCountLabel}</strong>
+          </div>
         </div>
 
         {showIdeaCommandBar && (
@@ -458,6 +476,7 @@ function App(): JSX.Element {
                           className={`idea-results-toolbar__view-btn ${viewMode === 'grid' ? 'idea-results-toolbar__view-btn--active' : ''}`}
                           onClick={() => setViewMode('grid')}
                           aria-label="グリッド表示"
+                          aria-pressed={viewMode === 'grid'}
                         >
                           ▦
                         </button>
@@ -466,6 +485,7 @@ function App(): JSX.Element {
                           className={`idea-results-toolbar__view-btn ${viewMode === 'list' ? 'idea-results-toolbar__view-btn--active' : ''}`}
                           onClick={() => setViewMode('list')}
                           aria-label="リスト表示"
+                          aria-pressed={viewMode === 'list'}
                         >
                           ☰
                         </button>
