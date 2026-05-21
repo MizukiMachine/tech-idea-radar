@@ -11,6 +11,7 @@ export { ResponseParser } from './services/response-parser';
 export { validateObject } from './services/output-validator';
 export { fetchRssContext } from './services/rss-client';
 export type { RssArticle, RssContext, RssSourceError, RssSummaryError, RssTrendItem } from './services/rss-client';
+export type { RssTopicArticle, RssTopicCluster, RssTopicStatus } from './services/rss-observation';
 export { RssSourceUnavailableError, isRssSourceUnavailableError } from './errors';
 export type { RssSourceUnavailableDetails } from './errors';
 

@@ -92,7 +92,41 @@ export interface RssArticle {
   summaryJa?: string;
   description?: string;
   source: string;
+  sourceUrl?: string;
   keywords?: string[];
+  topicKey?: string;
+  topicStatus?: RssTopicStatus;
+  firstSeenAt?: string;
+  lastSeenAt?: string;
+  topicArticleCount?: number;
+  topicSourceCount?: number;
+}
+
+export type RssTopicStatus = 'new' | 'spiking' | 'continuing' | 'stale';
+
+export interface RssTopicArticle {
+  title: string;
+  link?: string;
+  url?: string;
+  source: string;
+  publishedAt?: string;
+  firstSeenAt: string;
+  summary?: string;
+}
+
+export interface RssTopicCluster {
+  topic: string;
+  label: string;
+  status: RssTopicStatus;
+  score: number;
+  articleCount: number;
+  sourceCount: number;
+  sources: string[];
+  firstSeenAt: string;
+  lastSeenAt: string;
+  recentCount: number;
+  previousCount: number;
+  representativeArticles: RssTopicArticle[];
 }
 
 export interface RssSourceError {
@@ -142,8 +176,10 @@ export interface TrendScan {
   rssContext: {
     trendingKeywords: RssTrendItem[];
     relatedArticles: RssArticle[];
+    topicClusters?: RssTopicCluster[];
     sourceErrors?: RssSourceError[];
     summaryErrors?: RssSummaryError[];
+    observationWarning?: string;
   };
   focusKeywords: string[];
   featuredTrend?: FeaturedTrend;
