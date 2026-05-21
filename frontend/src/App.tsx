@@ -1,5 +1,7 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { IdeaCandidate } from './types/idea-candidate';
+import { buildIdeaTrendSignal, ideaTrendSignalKey } from './utils/idea-trend-signal';
+import { topicStatusRank } from './utils/trend-status';
 import {
   fetchIdeas,
   fetchIdeasMeta,
@@ -23,6 +25,13 @@ import './App.css';
 
 type ViewMode = 'grid' | 'list';
 type WorkspaceView = 'trends' | 'ideas';
+type IdeaSort = 'generated' | 'trend' | 'evidence';
+
+const IDEA_SORTS: { id: IdeaSort; label: string; requiresTrend?: boolean }[] = [
+  { id: 'generated', label: '生成順' },
+  { id: 'trend', label: 'トレンド優先', requiresTrend: true },
+  { id: 'evidence', label: '根拠多い順' },
+];
 
 const INTEREST_KEYWORDS: Record<string, string[]> = {
   business: ['業務', '効率', 'SaaS', 'B2B', '自動化', '管理', '営業', '経理', 'バックオフィス'],
@@ -54,6 +63,8 @@ function ideaText(idea: IdeaCandidate): string {
     idea.coreProblem,
     idea.differentiation,
     ...idea.tags,
+    ...idea.sources.rssKeywords,
+    ...(idea.sources.evidenceUrls ?? []).map((source) => source.title),
   ].join(' ');
 }
 
@@ -66,6 +77,10 @@ function isSameIdea(a: IdeaCandidate | null, b: IdeaCandidate): boolean {
   return a.id === b.id
     && a.generatedAt === b.generatedAt
     && (a.batchTime ?? '') === (b.batchTime ?? '');
+}
+
+function ideaEvidenceCount(idea: IdeaCandidate): number {
+  return idea.sources.evidenceUrls?.length ?? 0;
 }
 
 function matchesCategory(idea: IdeaCandidate, category: string): boolean {
@@ -163,6 +178,7 @@ function App(): JSX.Element {
   const [activeCategory, setActiveCategory] = useState('すべて');
   const [activeInterests, setActiveInterests] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [ideaSort, setIdeaSort] = useState<IdeaSort>('generated');
   const [selectedIdea, setSelectedIdea] = useState<IdeaCandidate | null>(null);
   const [modalIdea, setModalIdea] = useState<IdeaCandidate | null>(null);
   const [activeBatch, setActiveBatch] = useState<string | null>(null);
@@ -308,7 +324,15 @@ function App(): JSX.Element {
   }, []);
 
   const sourceIdeas = ideas;
-  const displayedIdeas = sourceIdeas.filter((idea) => {
+  const trendSignalByIdea = useMemo(() => {
+    const signals = new Map<string, ReturnType<typeof buildIdeaTrendSignal>>();
+    for (const idea of sourceIdeas) {
+      signals.set(ideaTrendSignalKey(idea), buildIdeaTrendSignal(idea, trends));
+    }
+    return signals;
+  }, [sourceIdeas, trends]);
+  const hasTrendSignals = [...trendSignalByIdea.values()].some((signal) => signal && signal.status !== 'stale');
+  const filteredIdeas = sourceIdeas.filter((idea) => {
       if (activeBatch && idea.batchTime !== activeBatch) return false;
       const text = ideaText(idea);
       const normalizedSearch = searchQuery.trim().toLowerCase();
@@ -322,6 +346,21 @@ function App(): JSX.Element {
         if (!hasInterestMatch) return false;
       }
       return true;
+    });
+  const displayedIdeas = ideaSort === 'generated'
+    ? filteredIdeas
+    : [...filteredIdeas].sort((a, b) => {
+      const aSignal = trendSignalByIdea.get(ideaTrendSignalKey(a));
+      const bSignal = trendSignalByIdea.get(ideaTrendSignalKey(b));
+      if (ideaSort === 'trend') {
+        return topicStatusRank(bSignal?.status) - topicStatusRank(aSignal?.status)
+          || (bSignal?.sourceCount ?? 0) - (aSignal?.sourceCount ?? 0)
+          || (bSignal?.articleCount ?? 0) - (aSignal?.articleCount ?? 0)
+          || ideaEvidenceCount(b) - ideaEvidenceCount(a);
+      }
+      return ideaEvidenceCount(b) - ideaEvidenceCount(a)
+        || (bSignal?.evidenceCount ?? 0) - (aSignal?.evidenceCount ?? 0)
+        || (bSignal?.articleCount ?? 0) - (aSignal?.articleCount ?? 0);
     });
 
   const hasIdeas = ideas.length > 0;
@@ -470,25 +509,44 @@ function App(): JSX.Element {
                         <h3>アイデア一覧</h3>
                         <span>{displayedIdeas.length}件</span>
                       </div>
-                      <div className="idea-results-toolbar__view-toggle" aria-label="表示形式">
-                        <button
-                          type="button"
-                          className={`idea-results-toolbar__view-btn ${viewMode === 'grid' ? 'idea-results-toolbar__view-btn--active' : ''}`}
-                          onClick={() => setViewMode('grid')}
-                          aria-label="グリッド表示"
-                          aria-pressed={viewMode === 'grid'}
-                        >
-                          ▦
-                        </button>
-                        <button
-                          type="button"
-                          className={`idea-results-toolbar__view-btn ${viewMode === 'list' ? 'idea-results-toolbar__view-btn--active' : ''}`}
-                          onClick={() => setViewMode('list')}
-                          aria-label="リスト表示"
-                          aria-pressed={viewMode === 'list'}
-                        >
-                          ☰
-                        </button>
+                      <div className="idea-results-toolbar__controls">
+                        <div className="idea-results-toolbar__sort" aria-label="並び順">
+                          {IDEA_SORTS.map((sort) => (
+                            <button
+                              key={sort.id}
+                              type="button"
+                              className={`idea-results-toolbar__sort-btn ${ideaSort === sort.id ? 'idea-results-toolbar__sort-btn--active' : ''}`}
+                              onClick={() => setIdeaSort(sort.id)}
+                              aria-pressed={ideaSort === sort.id}
+                              disabled={Boolean(sort.requiresTrend && !hasTrendSignals)}
+                              title={sort.requiresTrend && !hasTrendSignals
+                                ? '観測トピックを含むトレンドデータで有効になります'
+                                : sort.label}
+                            >
+                              {sort.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="idea-results-toolbar__view-toggle" aria-label="表示形式">
+                          <button
+                            type="button"
+                            className={`idea-results-toolbar__view-btn ${viewMode === 'grid' ? 'idea-results-toolbar__view-btn--active' : ''}`}
+                            onClick={() => setViewMode('grid')}
+                            aria-label="グリッド表示"
+                            aria-pressed={viewMode === 'grid'}
+                          >
+                            ▦
+                          </button>
+                          <button
+                            type="button"
+                            className={`idea-results-toolbar__view-btn ${viewMode === 'list' ? 'idea-results-toolbar__view-btn--active' : ''}`}
+                            onClick={() => setViewMode('list')}
+                            aria-label="リスト表示"
+                            aria-pressed={viewMode === 'list'}
+                          >
+                            ☰
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -510,6 +568,7 @@ function App(): JSX.Element {
                           index={index}
                           viewMode={viewMode}
                           selected={isSameIdea(selectedIdea, idea)}
+                          trendSignal={trendSignalByIdea.get(ideaTrendSignalKey(idea)) ?? null}
                           onSelect={handleIdeaSelect}
                         />
                       ))}
@@ -538,7 +597,13 @@ function App(): JSX.Element {
           </>
         )}
       </main>
-      {modalIdea && <IdeaDetailModal idea={modalIdea} onClose={() => setModalIdea(null)} />}
+      {modalIdea && (
+        <IdeaDetailModal
+          idea={modalIdea}
+          trendSignal={trendSignalByIdea.get(ideaTrendSignalKey(modalIdea)) ?? null}
+          onClose={() => setModalIdea(null)}
+        />
+      )}
     </div>
   );
 }

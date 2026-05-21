@@ -37,7 +37,16 @@ const idea = {
   targetUsers: "小規模な SRE チーム",
   coreProblem: "障害対応の知見が散らばる",
   differentiation: "運用トレンドを根拠に提案する",
-  sources: { rssKeywords: ["AI"], evidenceUrls: [] },
+  sources: {
+    rssKeywords: ["AI", "agent"],
+    evidenceUrls: [
+      {
+        title: "AI agent tools are moving into product workflows",
+        url: "https://example.com/article",
+        type: "rss" as const,
+      },
+    ],
+  },
   generatedAt,
 };
 const meta = {
@@ -82,6 +91,12 @@ const trends = {
         summaryJa: firstSummary,
         source: "Example RSS",
         keywords: ["AI", "agent"],
+        topicKey: "ai agent workflows",
+        topicStatus: "spiking",
+        firstSeenAt: generatedAt,
+        lastSeenAt: generatedAt,
+        topicArticleCount: 2,
+        topicSourceCount: 2,
       },
       {
         title: "Developer workflows get more automated",
@@ -94,6 +109,45 @@ const trends = {
         summaryJa: secondSummary,
         source: "TechCrunch",
         keywords: ["automation"],
+        topicKey: "ai agent workflows",
+        topicStatus: "spiking",
+        firstSeenAt: generatedAt,
+        lastSeenAt: generatedAt,
+        topicArticleCount: 2,
+        topicSourceCount: 2,
+      },
+    ],
+    topicClusters: [
+      {
+        topic: "ai agent workflows",
+        label: "AIエージェント導入",
+        status: "spiking",
+        score: 68,
+        articleCount: 2,
+        sourceCount: 2,
+        sources: ["Example RSS", "TechCrunch"],
+        firstSeenAt: generatedAt,
+        lastSeenAt: generatedAt,
+        recentCount: 2,
+        previousCount: 0,
+        representativeArticles: [
+          {
+            title: "AI agent tools are moving into product workflows",
+            url: "https://example.com/article",
+            source: "Example RSS",
+            publishedAt: generatedAt,
+            firstSeenAt: generatedAt,
+            summary: "Teams are adopting agent tools for product work.",
+          },
+          {
+            title: "Developer workflows get more automated",
+            url: "https://example.com/article-2",
+            source: "TechCrunch",
+            publishedAt: generatedAt,
+            firstSeenAt: generatedAt,
+            summary: "Developer teams automate routine workflow tasks.",
+          },
+        ],
       },
     ],
   },
@@ -157,14 +211,107 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
     await waitFor(() => expect(screen.getByText("tech系開発シグナル")).toBeTruthy());
     expect(screen.getByText("RSSフィード")).toBeTruthy();
+    expect(screen.getByText("トピックレーダー")).toBeTruthy();
+    expect(screen.getByText("AIエージェント導入")).toBeTruthy();
+    expect(screen.getAllByText("急増トピック").length).toBeGreaterThan(0);
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
-    expect(screen.queryByText("AI agent tools are moving into product workflows")).toBeNull();
     const buttons = screen.getAllByRole("button", { name: "要約を見る" });
     fireEvent.click(buttons[0]);
     expect(screen.getByText(firstSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
     fireEvent.click(buttons[1]);
     expect(screen.getByText(firstSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
     expect(screen.getByText(secondSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
+  });
+
+  it("shows trend evidence on idea cards and detail modal", async () => {
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByText("急増トレンド")).toBeTruthy());
+    const ideaCard = screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" });
+    expect(ideaCard.textContent).not.toContain("B2B SaaS");
+    expect(ideaCard.textContent).not.toContain("2ソース");
+    expect(ideaCard.textContent).not.toContain("根拠RSS");
+    expect(ideaCard.textContent).toContain("登場メディア 2箇所 / 関連記事 2件");
+
+    fireEvent.click(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" }));
+    await waitFor(() => expect(screen.getByText("トレンド根拠")).toBeTruthy());
+    expect(screen.getByText("AIエージェント導入")).toBeTruthy();
+    expect(screen.getByText((_, node) => node?.textContent === "観測規模 2媒体 / 2記事")).toBeTruthy();
+    expect(screen.queryByText((_, node) => node?.textContent === "このアイデアの根拠 RSS 1件")).toBeNull();
+  });
+
+  it("hides stale RSS evidence from idea cards", async () => {
+    const staleTrends = {
+      ...trends,
+      rssContext: {
+        ...trends.rssContext,
+        topicClusters: [],
+        relatedArticles: trends.rssContext.relatedArticles.map((article) => ({
+          ...article,
+          topicStatus: "stale",
+          topicArticleCount: 1,
+          topicSourceCount: 1,
+        })),
+      },
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = staleTrends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" })).toBeTruthy());
+    expect(screen.queryByText("RSS根拠あり")).toBeNull();
+    expect(screen.queryByText("停滞トレンド")).toBeNull();
+    expect(screen.queryByText("根拠RSS 1件")).toBeNull();
+    expect((screen.getByRole("button", { name: "トレンド優先" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("sorts ideas by RSS evidence count", async () => {
+    const noEvidenceIdea = {
+      ...idea,
+      id: "idea-no-evidence",
+      title: "No Evidence Idea",
+      sources: { rssKeywords: ["other"], evidenceUrls: [] },
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [noEvidenceIdea, idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    await waitFor(() => expect(document.querySelector(".idea-grid .idea-card__title")?.textContent).toBe("No Evidence Idea"));
+    expect(document.querySelector(".idea-grid .idea-card__title")?.textContent).toBe("No Evidence Idea");
+
+    fireEvent.click(screen.getByRole("button", { name: "根拠多い順" }));
+    expect(document.querySelector(".idea-grid .idea-card__title")?.textContent).toBe("AI Ops Memo");
   });
 
   it("keeps legacy trend summaries clickable when the API omits the summary policy", async () => {
