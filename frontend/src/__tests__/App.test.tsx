@@ -211,8 +211,14 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
     await waitFor(() => expect(screen.getByText("tech系開発シグナル")).toBeTruthy());
     expect(screen.getByText("RSSフィード")).toBeTruthy();
-    expect(screen.getByText("トピックレーダー")).toBeTruthy();
-    expect(screen.getByText("AIエージェント導入")).toBeTruthy();
+    expect(screen.queryByText("動いているトピック")).toBeNull();
+    expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy();
+    const spikingFilter = screen.getByRole("button", { name: "急増 2" });
+    expect(spikingFilter).toBeTruthy();
+    fireEvent.click(spikingFilter);
+    expect(screen.getByText("急増の記事")).toBeTruthy();
+    expect(screen.getByText("2/2件")).toBeTruthy();
+    expect(screen.queryByText(/score/i)).toBeNull();
     expect(screen.getAllByText("急増トピック").length).toBeGreaterThan(0);
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     const buttons = screen.getAllByRole("button", { name: "要約を見る" });
