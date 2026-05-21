@@ -26,6 +26,8 @@ const MAX_EVIDENCE_URLS = 1;
 const MAX_SUMMARIZED_RSS_ARTICLES = 18;
 const RSS_SUMMARY_BATCH_SIZE = 4;
 const RSS_SUMMARY_MAX_TOKENS = 7000;
+const RSS_TOPIC_CLUSTERING_MAX_TOKENS = 3000;
+const RSS_TOPIC_CLUSTERING_MIN_CONFIDENCE = 0.55;
 const MIN_RSS_EVIDENCE_SCORE = 4;
 const FEED_METADATA_PATTERN = /\bArticle URL:|\bComments URL:|\bPoints:|#\s*Comments:/i;
 const URL_TEXT_PATTERN = /\bhttps?:\/\/\S+|\bwww\.\S+/i;
@@ -36,6 +38,34 @@ const GENERIC_EVIDENCE_TERMS = new Set([
   'スキル', '欲しい', '不便', '困ってる', '改善', '問題', '課題', '自動化',
   '文章を', '章を書', 'を書く',
 ]);
+
+type RssTopicCluster = NonNullable<RssContext['topicClusters']>[number];
+type RssTopicStatus = NonNullable<RssArticle['topicStatus']>;
+
+interface LlmTopicGroup {
+  topic: string;
+  label: string;
+  articleIndexes: number[];
+  confidence: number;
+}
+
+interface TopicGroupInput {
+  topic: string;
+  label: string;
+  articleIndexes: number[];
+  confidence?: number;
+  status?: RssTopicStatus;
+}
+
+interface TopicAggregate {
+  articleCount: number;
+  sources: string[];
+  firstSeenAtMs: number;
+  lastSeenAtMs: number;
+  recentCount: number;
+  previousCount: number;
+  representativeArticles: RssTopicCluster['representativeArticles'];
+}
 
 function sourceNames(rssContext: RssContext): string[] {
   const articleSources = rssContext.relatedArticles.map((article) => article.source).filter(Boolean);
@@ -201,6 +231,379 @@ function chunkArray<T>(items: T[], size: number): T[][] {
     chunks.push(items.slice(index, index + size));
   }
   return chunks;
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function topicWindowHours(): number {
+  return parsePositiveInt(process.env.RSS_TOPIC_WINDOW_HOURS, 24);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object');
+}
+
+function articleTime(article: RssArticle): number {
+  const published = Date.parse(article.publishedAt ?? article.published);
+  const firstSeen = article.firstSeenAt ? Date.parse(article.firstSeenAt) : Number.NaN;
+  if (Number.isFinite(published) && Number.isFinite(firstSeen)) return Math.max(published, firstSeen);
+  if (Number.isFinite(published)) return published;
+  if (Number.isFinite(firstSeen)) return firstSeen;
+  return Date.now();
+}
+
+function articleFirstSeenTime(article: RssArticle): number {
+  const firstSeen = article.firstSeenAt ? Date.parse(article.firstSeenAt) : Number.NaN;
+  return Number.isFinite(firstSeen) ? firstSeen : articleTime(article);
+}
+
+function articleLastSeenTime(article: RssArticle): number {
+  const lastSeen = article.lastSeenAt ? Date.parse(article.lastSeenAt) : Number.NaN;
+  return Number.isFinite(lastSeen) ? lastSeen : articleTime(article);
+}
+
+function topicStatusRank(status: RssTopicStatus | undefined): number {
+  if (status === 'spiking') return 3;
+  if (status === 'new') return 2;
+  if (status === 'continuing') return 1;
+  if (status === 'stale') return 0;
+  return -1;
+}
+
+function topicStatusBoost(status: RssTopicStatus): number {
+  if (status === 'spiking') return 30;
+  if (status === 'new') return 20;
+  if (status === 'continuing') return 8;
+  return 0;
+}
+
+function strongestTopicStatus(articles: RssArticle[]): RssTopicStatus | undefined {
+  return articles
+    .map((article) => article.topicStatus)
+    .filter((status): status is RssTopicStatus => Boolean(status) && status !== 'stale')
+    .sort((a, b) => topicStatusRank(b) - topicStatusRank(a))[0];
+}
+
+function classifyTopicFromArticles(
+  articles: RssArticle[],
+  recentCount: number,
+  previousCount: number,
+  sourceCount: number,
+  recentCutoff: number,
+): RssTopicStatus {
+  if (recentCount === 0) return 'stale';
+  const firstSeenAt = Math.min(...articles.map(articleFirstSeenTime));
+  if (firstSeenAt >= recentCutoff) return 'new';
+  if (sourceCount >= 2 && recentCount >= 2 && (previousCount === 0 || recentCount >= previousCount * 2)) {
+    return 'spiking';
+  }
+  return 'continuing';
+}
+
+function classifyTopicFromAggregate(
+  aggregate: TopicAggregate,
+  sourceCount: number,
+  recentCutoff: number,
+): RssTopicStatus {
+  if (aggregate.recentCount === 0) return 'stale';
+  if (aggregate.firstSeenAtMs >= recentCutoff) return 'new';
+  if (
+    sourceCount >= 2
+    && aggregate.recentCount >= 2
+    && (aggregate.previousCount === 0 || aggregate.recentCount >= aggregate.previousCount * 2)
+  ) {
+    return 'spiking';
+  }
+  return 'continuing';
+}
+
+function normalizeTopicId(value: string, fallback: string): string {
+  const normalized = value
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/[^\p{L}\p{N}#+.\-\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
+  return normalized || fallback;
+}
+
+function toRepresentativeArticle(article: RssArticle): RssTopicCluster['representativeArticles'][number] {
+  return {
+    title: article.titleJa || article.title,
+    link: article.link,
+    url: article.url,
+    source: article.source,
+    publishedAt: article.publishedAt ?? article.published,
+    firstSeenAt: article.firstSeenAt ?? new Date(articleFirstSeenTime(article)).toISOString(),
+    summary: article.summaryJa ?? article.summary,
+  };
+}
+
+function representativeArticleKey(article: RssTopicCluster['representativeArticles'][number]): string {
+  return article.url || article.link || `${article.source}:${article.title}:${article.publishedAt ?? article.firstSeenAt}`;
+}
+
+function observedAggregateFromFallbacks(
+  articles: RssArticle[],
+  fallbackClusters: RssTopicCluster[],
+  recentCutoff: number,
+  previousCutoff: number,
+): TopicAggregate | null {
+  if (fallbackClusters.length === 0) return null;
+
+  const sources = new Set<string>();
+  const coveredTopics = new Set(fallbackClusters.map((cluster) => cluster.topic));
+  let articleCount = 0;
+  let recentCount = 0;
+  let previousCount = 0;
+  let firstSeenAtMs = Number.POSITIVE_INFINITY;
+  let lastSeenAtMs = Number.NEGATIVE_INFINITY;
+  const representatives = new Map<string, RssTopicCluster['representativeArticles'][number]>();
+
+  for (const cluster of fallbackClusters) {
+    articleCount += cluster.articleCount;
+    recentCount += cluster.recentCount;
+    previousCount += cluster.previousCount;
+    cluster.sources.forEach((source) => sources.add(source));
+
+    const firstSeen = Date.parse(cluster.firstSeenAt);
+    const lastSeen = Date.parse(cluster.lastSeenAt);
+    if (Number.isFinite(firstSeen)) firstSeenAtMs = Math.min(firstSeenAtMs, firstSeen);
+    if (Number.isFinite(lastSeen)) lastSeenAtMs = Math.max(lastSeenAtMs, lastSeen);
+
+    for (const article of cluster.representativeArticles) {
+      representatives.set(representativeArticleKey(article), article);
+    }
+  }
+
+  for (const article of articles) {
+    if (article.source) sources.add(article.source);
+    if (!article.topicKey || !coveredTopics.has(article.topicKey)) {
+      articleCount += 1;
+      const time = articleTime(article);
+      if (time >= recentCutoff) recentCount += 1;
+      if (time >= previousCutoff && time < recentCutoff) previousCount += 1;
+
+      firstSeenAtMs = Math.min(firstSeenAtMs, articleFirstSeenTime(article));
+      lastSeenAtMs = Math.max(lastSeenAtMs, articleLastSeenTime(article));
+    }
+
+    const representative = toRepresentativeArticle(article);
+    representatives.set(representativeArticleKey(representative), representative);
+  }
+
+  if (!Number.isFinite(firstSeenAtMs)) firstSeenAtMs = Math.min(...articles.map(articleFirstSeenTime));
+  if (!Number.isFinite(lastSeenAtMs)) lastSeenAtMs = Math.max(...articles.map(articleLastSeenTime));
+
+  return {
+    articleCount: Math.max(articleCount, articles.length),
+    sources: [...sources].sort(),
+    firstSeenAtMs,
+    lastSeenAtMs,
+    recentCount,
+    previousCount,
+    representativeArticles: [...representatives.values()],
+  };
+}
+
+function buildTopicCluster(
+  group: TopicGroupInput,
+  articles: RssArticle[],
+  fallbackClusters: RssTopicCluster[] = [],
+): RssTopicCluster {
+  const now = Date.now();
+  const windowMs = topicWindowHours() * 60 * 60 * 1000;
+  const recentCutoff = now - windowMs;
+  const previousCutoff = now - windowMs * 2;
+  const sorted = [...articles].sort((a, b) => articleTime(b) - articleTime(a));
+  const aggregate = observedAggregateFromFallbacks(articles, fallbackClusters, recentCutoff, previousCutoff);
+  const sources = aggregate?.sources ?? [...new Set(articles.map((article) => article.source).filter(Boolean))].sort();
+  const recentCount = articles.filter((article) => articleTime(article) >= recentCutoff).length;
+  const previousCount = articles.filter((article) => {
+    const time = articleTime(article);
+    return time >= previousCutoff && time < recentCutoff;
+  }).length;
+  const status = group.status
+    ?? strongestTopicStatus(articles)
+    ?? (aggregate
+      ? classifyTopicFromAggregate(aggregate, sources.length, recentCutoff)
+      : classifyTopicFromArticles(articles, recentCount, previousCount, sources.length, recentCutoff));
+  const confidenceBoost = Math.round((group.confidence ?? 0) * 10);
+  const representativeArticles = aggregate?.representativeArticles ?? sorted.map(toRepresentativeArticle);
+
+  return {
+    topic: normalizeTopicId(group.topic, fallbackClusters[0]?.topic ?? sorted[0]?.topicKey ?? sorted[0]?.title ?? 'topic'),
+    label: group.label || fallbackClusters[0]?.label || sorted[0]?.titleJa || sorted[0]?.title || group.topic,
+    status,
+    score: (aggregate?.articleCount ?? articles.length) * 10 + sources.length * 8 + topicStatusBoost(status) + confidenceBoost,
+    articleCount: aggregate?.articleCount ?? articles.length,
+    sourceCount: sources.length,
+    sources,
+    firstSeenAt: new Date(aggregate?.firstSeenAtMs ?? Math.min(...articles.map(articleFirstSeenTime))).toISOString(),
+    lastSeenAt: new Date(aggregate?.lastSeenAtMs ?? Math.max(...articles.map(articleLastSeenTime))).toISOString(),
+    recentCount: aggregate?.recentCount ?? recentCount,
+    previousCount: aggregate?.previousCount ?? previousCount,
+    representativeArticles: representativeArticles.slice(0, 3),
+  };
+}
+
+function applyTopicGroups(rssContext: RssContext, groups: TopicGroupInput[]): RssContext {
+  const articles = rssContext.relatedArticles;
+  if (articles.length === 0 || groups.length === 0) return rssContext;
+
+  const existingByTopic = new Map((rssContext.topicClusters ?? []).map((cluster) => [cluster.topic, cluster]));
+  const usedIndexes = new Set<number>();
+  const normalizedGroups: TopicGroupInput[] = [];
+
+  for (const group of groups) {
+    const indexes = [...new Set(group.articleIndexes)]
+      .filter((index) => Number.isInteger(index) && index >= 0 && index < articles.length && !usedIndexes.has(index));
+    if (indexes.length === 0) continue;
+    indexes.forEach((index) => usedIndexes.add(index));
+    normalizedGroups.push({ ...group, articleIndexes: indexes });
+  }
+
+  const unassignedByTopic = new Map<string, TopicGroupInput>();
+  for (let index = 0; index < articles.length; index += 1) {
+    if (usedIndexes.has(index)) continue;
+    const article = articles[index];
+    const topic = article.topicKey || article.title;
+    const existingGroup = unassignedByTopic.get(topic);
+    if (existingGroup) {
+      existingGroup.articleIndexes.push(index);
+      continue;
+    }
+
+    const existingCluster = existingByTopic.get(topic);
+    unassignedByTopic.set(topic, {
+      topic,
+      label: existingCluster?.label ?? article.titleJa ?? article.title,
+      articleIndexes: [index],
+      confidence: 1,
+      status: article.topicStatus === 'stale' ? undefined : article.topicStatus,
+    });
+  }
+
+  normalizedGroups.push(...unassignedByTopic.values());
+
+  const originalTopicUsageCounts = new Map<string, number>();
+  for (const group of normalizedGroups) {
+    const groupTopics = new Set(
+      group.articleIndexes
+        .map((index) => articles[index]?.topicKey)
+        .filter((topic): topic is string => Boolean(topic)),
+    );
+    for (const topic of groupTopics) {
+      originalTopicUsageCounts.set(topic, (originalTopicUsageCounts.get(topic) ?? 0) + 1);
+    }
+  }
+
+  const clusterEntries = normalizedGroups
+    .map((group) => {
+      const groupArticles = group.articleIndexes.map((index) => articles[index]).filter(Boolean);
+      const fallbackClusters = new Map<string, RssTopicCluster>();
+      for (const article of groupArticles) {
+        const topic = article.topicKey;
+        if (!topic || originalTopicUsageCounts.get(topic) !== 1) continue;
+        const cluster = existingByTopic.get(topic);
+        if (cluster) fallbackClusters.set(cluster.topic, cluster);
+      }
+
+      const cluster = buildTopicCluster(group, groupArticles, [...fallbackClusters.values()]);
+      return { group, cluster };
+    })
+    .sort((a, b) => b.cluster.score - a.cluster.score || b.cluster.recentCount - a.cluster.recentCount);
+
+  const clusters = clusterEntries.map(({ cluster }) => cluster);
+
+  const clusterByIndex = new Map<number, RssTopicCluster>();
+  for (const { group, cluster } of clusterEntries) {
+    for (const index of group.articleIndexes) clusterByIndex.set(index, cluster);
+  }
+
+  return {
+    ...rssContext,
+    topicClusters: clusters,
+    relatedArticles: articles.map((article, index) => {
+      const cluster = clusterByIndex.get(index);
+      if (!cluster) return article;
+      return {
+        ...article,
+        topicKey: cluster.topic,
+        topicStatus: cluster.status,
+        topicArticleCount: cluster.articleCount,
+        topicSourceCount: cluster.sourceCount,
+      };
+    }),
+  };
+}
+
+function reconcileTopicClustersWithArticles(rssContext: RssContext): RssContext {
+  if (!rssContext.topicClusters?.length) return rssContext;
+  const groupsByTopic = new Map<string, number[]>();
+
+  rssContext.relatedArticles.forEach((article, index) => {
+    if (!article.topicKey) return;
+    const indexes = groupsByTopic.get(article.topicKey) ?? [];
+    indexes.push(index);
+    groupsByTopic.set(article.topicKey, indexes);
+  });
+
+  if (groupsByTopic.size === 0) return rssContext;
+
+  const existingByTopic = new Map(rssContext.topicClusters.map((cluster) => [cluster.topic, cluster]));
+  const groups: TopicGroupInput[] = [...groupsByTopic.entries()].map(([topic, articleIndexes]) => {
+    const existing = existingByTopic.get(topic);
+    return {
+      topic,
+      label: existing?.label ?? rssContext.relatedArticles[articleIndexes[0]]?.title ?? topic,
+      articleIndexes,
+      confidence: 1,
+      status: existing?.status === 'stale' ? undefined : existing?.status,
+    };
+  });
+
+  return applyTopicGroups(rssContext, groups);
+}
+
+function normalizeLlmTopicGroups(raw: unknown, articleCount: number): LlmTopicGroup[] {
+  if (!Array.isArray(raw)) return [];
+  const used = new Set<number>();
+  const groups: LlmTopicGroup[] = [];
+
+  for (const item of raw) {
+    if (!isRecord(item) || !Array.isArray(item.articleIndexes)) continue;
+    const rawConfidence = item.confidence;
+    const parsedConfidence = typeof rawConfidence === 'number'
+      ? rawConfidence
+      : typeof rawConfidence === 'string'
+        ? Number(rawConfidence)
+        : Number.NaN;
+    const confidence = Number.isFinite(parsedConfidence)
+      ? Math.max(0, Math.min(1, parsedConfidence))
+      : undefined;
+    const indexes = [...new Set(item.articleIndexes)]
+      .filter((index): index is number => Number.isInteger(index) && index >= 0 && index < articleCount && !used.has(index));
+    if (indexes.length === 0) continue;
+    if (indexes.length > 1 && (confidence === undefined || confidence < RSS_TOPIC_CLUSTERING_MIN_CONFIDENCE)) continue;
+    indexes.forEach((index) => used.add(index));
+
+    const topic = typeof item.topic === 'string' ? item.topic : '';
+    const label = typeof item.label === 'string' ? item.label.trim() : '';
+    groups.push({
+      topic: normalizeTopicId(topic, `topic-${groups.length + 1}`),
+      label: label || normalizeTopicId(topic, `トピック${groups.length + 1}`),
+      articleIndexes: indexes,
+      confidence: confidence ?? 1,
+    });
+  }
+
+  return groups;
 }
 
 function normalizeCandidates(raw: unknown): IdeaCandidate[] {
@@ -403,6 +806,56 @@ export class EntrepreneurAgent {
     this.filterAgent = new FilterAgent(llm);
   }
 
+  private async refineRssTopicClusters(rssContext: RssContext, focusKeywords: string[]): Promise<RssContext> {
+    if (process.env.RSS_TOPIC_LLM_ENABLED === 'false') return rssContext;
+    if (!rssContext.topicClusters?.length || rssContext.relatedArticles.length < 2) return rssContext;
+
+    const articles = rssContext.relatedArticles.map((article, index) => ({
+      index,
+      title: article.titleJa || article.title,
+      source: article.source,
+      publishedAt: article.publishedAt ?? article.published,
+      summary: normalizeArticleSummary(article.summaryJa ?? article.summary).slice(0, 700),
+      keywords: article.keywords ?? [],
+      heuristicTopic: article.topicKey,
+    }));
+    const existingTopics = rssContext.topicClusters.slice(0, 20).map((topic) => ({
+      topic: topic.topic,
+      label: topic.label,
+      articleCount: topic.articleCount,
+      sourceCount: topic.sourceCount,
+      representativeArticles: topic.representativeArticles.map((article) => ({
+        title: article.title,
+        source: article.source,
+      })),
+    }));
+    const variables = {
+      articles,
+      existing_topics: existingTopics,
+      focus_keywords: focusKeywords.join(', '),
+    };
+
+    try {
+      const raw = await this.llm.send(
+        renderPromptRole('rss_topic_clustering', 'system', variables),
+        renderPromptRole('rss_topic_clustering', 'user', variables),
+        RSS_TOPIC_CLUSTERING_MAX_TOKENS,
+      );
+      const parsed = ResponseParser.parse<unknown>(raw);
+      const groups = normalizeLlmTopicGroups(parsed, rssContext.relatedArticles.length);
+      if (groups.length === 0) {
+        console.warn('[TrendScan] LLM topic clustering returned no usable groups; using heuristic topics');
+        return rssContext;
+      }
+      console.log(`[TrendScan] LLM topic clustering produced ${groups.length} groups`);
+      return applyTopicGroups(rssContext, groups);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[TrendScan] LLM topic clustering failed: ${message}`);
+      return rssContext;
+    }
+  }
+
   private async summarizeRssArticles(rssContext: RssContext, focusKeywords: string[]): Promise<RssContext> {
     const targets: RssSummaryTarget[] = rssContext.relatedArticles
       .map((article, index) => ({ article, index }))
@@ -521,12 +974,12 @@ export class EntrepreneurAgent {
       );
     }
 
-    return {
+    return reconcileTopicClustersWithArticles({
       ...rssContext,
       trendingKeywords: rebuildTrendingKeywords(summarizedArticles, rssContext.trendingKeywords),
       relatedArticles: summarizedArticles,
       ...(errors.length > 0 ? { summaryErrors: errors } : {}),
-    };
+    });
   }
 
   private async scanTrendContext(
@@ -536,7 +989,10 @@ export class EntrepreneurAgent {
     const keywords = [...new Set(focusKeywords.map((keyword) => keyword.trim()).filter(Boolean))];
     const effectiveKeywords = keywords.length > 0 ? keywords : DEFAULT_KEYWORDS;
     onProgress?.('[Enrichment] RSS データ取得中...');
-    const rssContext = await fetchRssContext(effectiveKeywords.slice(0, 3));
+    const rssContext = await this.refineRssTopicClusters(
+      await fetchRssContext(effectiveKeywords.slice(0, 3)),
+      effectiveKeywords,
+    );
     const rssCount = rssContext.trendingKeywords.length + rssContext.relatedArticles.length;
     console.log(`[IdeaGeneration] Enrichment: RSS: ${rssCount} items`);
 

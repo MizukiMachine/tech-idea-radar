@@ -153,6 +153,70 @@ prompts:
           ユーザーのクエリ「${query}」に基づいて、上記のアイデア候補を意味的にフィルタリング・再ランク付けしてください。
           関連性の高いものから順に並べてください。JSONのみ出力してください。
 
+  rss_topic_clustering:
+    id: ai_engine.rss_topic_clustering
+    version: 1
+    description: RSS記事同士が同じ具体的な技術トピックに属するかを判定し、関連記事クラスタを作る。
+    inputs:
+      - name: articles
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+      - name: existing_topics
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+      - name: focus_keywords
+        type: string
+        required: true
+        sensitivity: public
+        render_as: inline
+    rules:
+      - JSON配列のみを出力すること。説明文やMarkdownは不要。
+      - articleIndexesには、入力articlesのindexだけを入れること。
+      - 1つの記事indexは最大1クラスタにだけ含めること。
+      - 同じ具体的なプロダクト、リリース、技術課題、開発手法、API、ツール、事件、標準、仕様について述べている記事だけを同じクラスタにすること。
+      - AI、developer、tool、SaaS、GitHub、AWSなどの広すぎる単語が共通するだけでは同じクラスタにしないこと。
+      - 類似していない記事を無理に束ねないこと。単独記事は1件だけのクラスタにしてよい。
+      - labelは日本語で短く、画面に表示して意味が通る名前にすること。
+    output_format: |
+      [
+        {
+          "topic": "英数字とハイフンまたは短い英語句の安定ID",
+          "label": "日本語の短いトピック名",
+          "articleIndexes": [0, 2],
+          "confidence": 0.0
+        }
+      ]
+    messages:
+      - role: system
+        content: |
+          あなたは技術RSS記事の関連記事判定器です。記事同士が同じ具体的な技術トピックを扱っているかだけを判断します。
+
+          ## 出力ルール
+          ${rules}
+
+          ## 出力形式
+          ```json
+          ${output_format}
+          ```
+      - role: user
+        content: |
+          ## フォーカスキーワード
+          ${focus_keywords}
+
+          ## 既存の機械的トピック候補
+          ```json
+          ${existing_topics}
+          ```
+
+          ## RSS記事
+          ```json
+          ${articles}
+          ```
+
   rss_article_summary:
     id: ai_engine.rss_article_summary
     version: 1

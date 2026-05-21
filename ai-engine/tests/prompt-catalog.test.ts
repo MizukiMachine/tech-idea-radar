@@ -10,6 +10,7 @@ describe('prompt catalog', () => {
     expect(listPromptTemplateKeys()).toEqual([
       'idea_generation',
       'semantic_filter',
+      'rss_topic_clustering',
       'rss_article_summary',
       'rss_article_summary_repair',
       'featured_idea_selection',
@@ -47,6 +48,32 @@ describe('prompt catalog', () => {
       idea_summaries: [],
       secret_token: 'do-not-render',
     })).toThrow('Undeclared prompt inputs for featured_idea_selection: secret_token');
+  });
+
+  it('renders the RSS topic clustering prompt with article indexes', () => {
+    const systemPrompt = renderPromptRole('rss_topic_clustering', 'system', {
+      articles: [],
+      existing_topics: [],
+      focus_keywords: 'AI, developer',
+    });
+    const userPrompt = renderPromptRole('rss_topic_clustering', 'user', {
+      articles: [
+        {
+          index: 0,
+          title: 'Take your local GitHub sessions anywhere',
+          source: 'GitHub Blog',
+          summary: 'Remote control for local coding sessions.',
+        },
+      ],
+      existing_topics: [{ topic: 'github sessions', articleCount: 1 }],
+      focus_keywords: 'AI, developer',
+    });
+
+    expect(systemPrompt).toContain('関連記事判定器');
+    expect(systemPrompt).toContain('articleIndexes');
+    expect(userPrompt).toContain('Take your local GitHub sessions anywhere');
+    expect(userPrompt).toContain('github sessions');
+    expect(userPrompt).not.toContain('${');
   });
 
   it('keeps the RSS summary publication policy in the managed prompt', () => {

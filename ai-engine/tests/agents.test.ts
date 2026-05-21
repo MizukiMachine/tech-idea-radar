@@ -173,6 +173,228 @@ describe('EntrepreneurAgent', () => {
     );
   });
 
+  it('uses the LLM to refine RSS related article clusters', async () => {
+    const firstSeenAt = '2026-05-21T00:00:00.000Z';
+    vi.mocked(fetchRssContext).mockResolvedValueOnce({
+      trendingKeywords: [{ word: 'GitHub', count: 3 }],
+      relatedArticles: [
+        {
+          title: 'Take your local GitHub sessions anywhere',
+          titleJa: 'ローカルのGitHubセッションをどこへでも持ち運ぶ',
+          link: 'https://example.com/github-sessions',
+          url: 'https://example.com/github-sessions',
+          published: firstSeenAt,
+          publishedAt: firstSeenAt,
+          summary: 'GitHub sessions can be controlled from different devices.',
+          summaryJa: validTrendSummary('GitHubセッション引き継ぎ'),
+          source: 'GitHub Blog',
+          keywords: ['GitHub', 'sessions'],
+          topicKey: 'take your',
+          topicStatus: 'new',
+          firstSeenAt,
+          lastSeenAt: firstSeenAt,
+          topicArticleCount: 1,
+          topicSourceCount: 1,
+        },
+        {
+          title: 'Remote coding sessions arrive for local development',
+          titleJa: 'ローカル開発セッションをリモートで引き継ぐ動き',
+          link: 'https://example.com/remote-sessions',
+          url: 'https://example.com/remote-sessions',
+          published: firstSeenAt,
+          publishedAt: firstSeenAt,
+          summary: 'Developers can resume local coding sessions from browsers and mobile devices.',
+          summaryJa: validTrendSummary('ローカル開発セッション引き継ぎ'),
+          source: 'Dev Blog',
+          keywords: ['coding', 'sessions'],
+          topicKey: 'remote coding',
+          topicStatus: 'new',
+          firstSeenAt,
+          lastSeenAt: firstSeenAt,
+          topicArticleCount: 1,
+          topicSourceCount: 1,
+        },
+      ],
+      topicClusters: [
+        {
+          topic: 'take your',
+          label: 'Take your local GitHub sessions anywhere',
+          status: 'new',
+          score: 42,
+          articleCount: 3,
+          sourceCount: 2,
+          sources: ['GitHub Blog', 'GitHub Changelog'],
+          firstSeenAt,
+          lastSeenAt: firstSeenAt,
+          recentCount: 3,
+          previousCount: 0,
+          representativeArticles: [
+            {
+              title: 'Take your local GitHub sessions anywhere',
+              link: 'https://example.com/github-sessions',
+              url: 'https://example.com/github-sessions',
+              source: 'GitHub Blog',
+              publishedAt: firstSeenAt,
+              firstSeenAt,
+              summary: 'GitHub sessions can be controlled from different devices.',
+            },
+          ],
+        },
+        {
+          topic: 'remote coding',
+          label: 'Remote coding sessions arrive for local development',
+          status: 'new',
+          score: 36,
+          articleCount: 2,
+          sourceCount: 1,
+          sources: ['Dev Blog'],
+          firstSeenAt,
+          lastSeenAt: firstSeenAt,
+          recentCount: 2,
+          previousCount: 0,
+          representativeArticles: [],
+        },
+      ],
+    });
+    const client = createMockClient('{}');
+    vi.mocked(client.send)
+      .mockResolvedValueOnce(JSON.stringify([
+        {
+          topic: 'github-session-handoff',
+          label: 'GitHubセッション引き継ぎ',
+          articleIndexes: [0, 1],
+          confidence: '0.88',
+        },
+      ]))
+      .mockResolvedValueOnce(JSON.stringify({
+        index: 0,
+        summary: 'GitHubセッション引き継ぎが開発ワークフローの注目点になっています。',
+      }));
+    const agent = new EntrepreneurAgent(client);
+
+    const result = await agent.scanTrends();
+    const cluster = result.rssContext.topicClusters?.[0];
+
+    expect(cluster).toEqual(expect.objectContaining({
+      topic: 'github-session-handoff',
+      label: 'GitHubセッション引き継ぎ',
+      articleCount: 5,
+      sourceCount: 3,
+    }));
+    expect(cluster?.sources).toEqual(['Dev Blog', 'GitHub Blog', 'GitHub Changelog']);
+    expect(result.rssContext.relatedArticles.map((article) => article.topicKey))
+      .toEqual(['github-session-handoff', 'github-session-handoff']);
+    expect(result.rssContext.relatedArticles.map((article) => article.topicArticleCount))
+      .toEqual([5, 5]);
+    expect(result.rssContext.relatedArticles.map((article) => article.topicSourceCount))
+      .toEqual([3, 3]);
+    expect(vi.mocked(client.send).mock.calls[0]?.[1]).toContain('RSS記事');
+  });
+
+  it('rejects multi-article LLM topic groups when confidence is missing or invalid', async () => {
+    const firstSeenAt = '2026-05-21T00:00:00.000Z';
+    vi.mocked(fetchRssContext).mockResolvedValueOnce({
+      trendingKeywords: [{ word: 'GitHub', count: 3 }],
+      relatedArticles: [
+        {
+          title: 'Take your local GitHub sessions anywhere',
+          titleJa: 'ローカルのGitHubセッションをどこへでも持ち運ぶ',
+          link: 'https://example.com/github-sessions',
+          url: 'https://example.com/github-sessions',
+          published: firstSeenAt,
+          publishedAt: firstSeenAt,
+          summary: 'GitHub sessions can be controlled from different devices.',
+          summaryJa: validTrendSummary('GitHubセッション引き継ぎ'),
+          source: 'GitHub Blog',
+          keywords: ['GitHub', 'sessions'],
+          topicKey: 'take your',
+          topicStatus: 'new',
+          firstSeenAt,
+          lastSeenAt: firstSeenAt,
+          topicArticleCount: 1,
+          topicSourceCount: 1,
+        },
+        {
+          title: 'Remote coding sessions arrive for local development',
+          titleJa: 'ローカル開発セッションをリモートで引き継ぐ動き',
+          link: 'https://example.com/remote-sessions',
+          url: 'https://example.com/remote-sessions',
+          published: firstSeenAt,
+          publishedAt: firstSeenAt,
+          summary: 'Developers can resume local coding sessions from browsers and mobile devices.',
+          summaryJa: validTrendSummary('ローカル開発セッション引き継ぎ'),
+          source: 'Dev Blog',
+          keywords: ['coding', 'sessions'],
+          topicKey: 'remote coding',
+          topicStatus: 'new',
+          firstSeenAt,
+          lastSeenAt: firstSeenAt,
+          topicArticleCount: 1,
+          topicSourceCount: 1,
+        },
+      ],
+      topicClusters: [
+        {
+          topic: 'take your',
+          label: 'Take your local GitHub sessions anywhere',
+          status: 'new',
+          score: 42,
+          articleCount: 1,
+          sourceCount: 1,
+          sources: ['GitHub Blog'],
+          firstSeenAt,
+          lastSeenAt: firstSeenAt,
+          recentCount: 1,
+          previousCount: 0,
+          representativeArticles: [],
+        },
+        {
+          topic: 'remote coding',
+          label: 'Remote coding sessions arrive for local development',
+          status: 'new',
+          score: 36,
+          articleCount: 1,
+          sourceCount: 1,
+          sources: ['Dev Blog'],
+          firstSeenAt,
+          lastSeenAt: firstSeenAt,
+          recentCount: 1,
+          previousCount: 0,
+          representativeArticles: [],
+        },
+      ],
+    });
+    const client = createMockClient('{}');
+    vi.mocked(client.send)
+      .mockResolvedValueOnce(JSON.stringify([
+        {
+          topic: 'github-session-handoff',
+          label: 'GitHubセッション引き継ぎ',
+          articleIndexes: [0, 1],
+        },
+        {
+          topic: 'github-session-handoff-invalid',
+          label: 'GitHubセッション引き継ぎ',
+          articleIndexes: [0, 1],
+          confidence: 'certain',
+        },
+      ]))
+      .mockResolvedValueOnce(JSON.stringify({
+        index: 0,
+        summary: 'GitHubセッション引き継ぎが開発ワークフローの注目点になっています。',
+      }));
+    const agent = new EntrepreneurAgent(client);
+
+    const result = await agent.scanTrends();
+
+    expect(result.rssContext.topicClusters?.map((cluster) => cluster.topic))
+      .not.toContain('github-session-handoff');
+    expect(result.rssContext.topicClusters?.map((cluster) => cluster.topic))
+      .not.toContain('github-session-handoff-invalid');
+    expect(result.rssContext.relatedArticles.map((article) => article.topicKey))
+      .toEqual(['take your', 'remote coding']);
+  });
+
   it('summarizes Japanese RSS excerpts instead of displaying raw feed text', async () => {
     vi.mocked(fetchRssContext).mockResolvedValueOnce({
       trendingKeywords: [{ word: 'AI', count: 3 }],
