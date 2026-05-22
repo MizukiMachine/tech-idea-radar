@@ -31,11 +31,6 @@
     border-color: var(--accent-primary-border);
 }
 
-.right-panel__card--trend {
-    background: #fffaf4;
-    border-color: #fed7aa;
-}
-
 .right-panel__card--compact {
     padding: 14px 16px;
 }
@@ -45,10 +40,6 @@
     font-weight: 800;
     color: var(--text-tertiary);
     margin-bottom: 9px;
-}
-
-.right-panel__card--trend .right-panel__card-badge {
-    color: #92400e;
 }
 
 .right-panel__card--highlight .right-panel__card-badge {
@@ -77,26 +68,6 @@
     padding: 3px 10px;
     border-radius: 6px;
     font-weight: 800;
-}
-
-.right-panel__card-action {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 34px;
-    margin-top: 12px;
-    padding: 0 13px;
-    border-radius: 8px;
-    border: 1px solid rgba(201, 107, 62, 0.28);
-    background: #fff;
-    color: #a6532d;
-    font-size: 12px;
-    font-weight: 800;
-}
-
-.right-panel__card-action:hover {
-    border-color: #c96b3e;
-    background: rgba(201, 107, 62, 0.08);
 }
 
 .right-panel__card--detail {
@@ -133,11 +104,6 @@
 .right-panel__card--highlight .right-panel__card-tag {
     background: var(--accent-primary-glow);
     color: var(--accent-primary-hover);
-}
-
-.right-panel__card--trend .right-panel__card-tag {
-    background: rgba(234, 88, 12, 0.1);
-    color: #ea580c;
 }
 
 /* Chart */
@@ -210,8 +176,9 @@
     line-height: 1.6;
 }
 
-@media (max-width: 1220px) {
+@media (max-width: 900px) {
     .right-panel {
-        display: none;
+        width: 100%;
+        min-width: 0;
     }
 }

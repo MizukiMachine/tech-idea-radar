@@ -23,6 +23,13 @@
     border-radius: 4px;
 }
 
+.sidebar--panel {
+    width: 100%;
+    min-width: 0;
+    position: static;
+    align-self: stretch;
+}
+
 .sidebar__section {
     margin-bottom: 24px;
 }
@@ -222,5 +229,9 @@
 @media (max-width: 1200px) {
     .sidebar {
         display: none;
+    }
+
+    .sidebar--panel {
+        display: block;
     }
 }

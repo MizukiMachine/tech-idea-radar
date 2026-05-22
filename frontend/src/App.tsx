@@ -10,8 +10,6 @@ import {
   type SourceSummary,
   type TrendScan,
   type TrendHistoryEntry,
-  type FeaturedTrend,
-  type RssArticle,
 } from './api/ai';
 import Sidebar from './components/Sidebar';
 import IdeaCard from './components/IdeaCard';
@@ -129,29 +127,6 @@ function userFacingError(message: string): string {
   return message;
 }
 
-function trendArticleUrl(article: RssArticle): string {
-  return article.url || article.link;
-}
-
-function trendSummary(article: RssArticle): string {
-  return article.summaryJa
-    || `${article.titleJa || article.title} に関するトレンドです。`;
-}
-
-function trendPreviewFromScan(scan: TrendScan): FeaturedTrend | null {
-  if (scan.featuredTrend) return scan.featuredTrend;
-  const article = scan.rssContext.relatedArticles[0];
-  if (!article) return null;
-  return {
-    title: article.title,
-    titleJa: article.titleJa,
-    url: trendArticleUrl(article),
-    source: article.source,
-    published: article.publishedAt ?? article.published,
-    summary: trendSummary(article),
-  };
-}
-
 function App(): JSX.Element {
   const [activeView, setActiveView] = useState<WorkspaceView>('ideas');
   const [trends, setTrends] = useState<TrendScan | null>(null);
@@ -160,7 +135,6 @@ function App(): JSX.Element {
   const [trendHistory, setTrendHistory] = useState<TrendHistoryEntry[]>([]);
   const [activeTrendIndex, setActiveTrendIndex] = useState<number>(0);
   const [trendSnapshotCache, setTrendSnapshotCache] = useState<Map<number, TrendScan>>(new Map());
-  const [featuredTrend, setFeaturedTrend] = useState<FeaturedTrend | null>(null);
   const [ideas, setIdeas] = useState<IdeaCandidate[]>([]);
   const [featuredIdea, setFeaturedIdea] = useState<IdeaCandidate | null>(null);
   const [loading, setLoading] = useState(true);
@@ -212,7 +186,6 @@ function App(): JSX.Element {
         const result = await fetchTrends();
         if (!cancelled) {
           setTrends(result);
-          setFeaturedTrend(trendPreviewFromScan(result));
           setTrendSnapshotCache(new Map([[0, result]]));
         }
       } catch {
@@ -244,7 +217,6 @@ function App(): JSX.Element {
         }
         if (!cancelled) {
           setTrends(trendsResult);
-          setFeaturedTrend(trendPreviewFromScan(trendsResult));
           setTrendHistory(historyResult.history);
           setActiveTrendIndex(0);
           setTrendSnapshotCache(new Map([[0, trendsResult]]));
@@ -282,7 +254,6 @@ function App(): JSX.Element {
       const snapshot = await fetchTrendSnapshot(index);
       setTrendSnapshotCache((prev) => new Map(prev).set(index, snapshot));
       setTrends(snapshot);
-      setFeaturedTrend(trendPreviewFromScan(snapshot));
       setActiveTrendIndex(index);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'スナップショット取得に失敗しました';
@@ -428,12 +399,7 @@ function App(): JSX.Element {
 
             {showDashboard && (
               <div className="dashboard">
-                {hasIdeas && (
-                  <Sidebar
-                    onCategoryFilter={setActiveCategory}
-                    onInterestChange={setActiveInterests}
-                  />
-                )}
+                {hasIdeas && <div className="dashboard__left-spacer" aria-hidden="true" />}
 
                 <section className="main-content">
                   {hasIdeas && (
@@ -530,7 +496,7 @@ function App(): JSX.Element {
                   {hasIdeas && !loading && displayedIdeas.length === 0 && (
                     <div className="empty-state">
                       <h2>条件に合うアイデアがありません</h2>
-                      <p>検索語や左側のフィルターを緩めると候補が戻ります。</p>
+                      <p>検索語や右側のフィルターを緩めると候補が戻ります。</p>
                     </div>
                   )}
                 </section>
@@ -539,8 +505,13 @@ function App(): JSX.Element {
                   <RightPanel
                     ideas={displayedIdeas}
                     featuredIdea={featuredIdea}
-                    featuredTrend={featuredTrend}
-                    onOpenTrends={() => setActiveView('trends')}
+                    filters={(
+                      <Sidebar
+                        variant="panel"
+                        onCategoryFilter={setActiveCategory}
+                        onInterestChange={setActiveInterests}
+                      />
+                    )}
                   />
                 )}
               </div>

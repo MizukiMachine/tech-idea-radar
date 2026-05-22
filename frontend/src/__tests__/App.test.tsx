@@ -514,11 +514,12 @@ describe("App", () => {
     expect(screen.getByPlaceholderText("キーワードで絞り込み")).toBeTruthy();
   });
 
-  it("renders right panel cards on the ideas view", async () => {
+  it("renders right panel summary and filters on the ideas view", async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText(/注目のアイデア/)).toBeTruthy());
-    await waitFor(() => expect(screen.getByText("注目のトレンド")).toBeTruthy());
-    expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
+    expect(screen.getByText("よく出るタグ")).toBeTruthy();
+    expect(screen.getByText("ジャンル・テーマ")).toBeTruthy();
+    expect(screen.queryByText("注目のトレンド")).toBeNull();
   });
 
   it("hides generation controls in public readonly mode", async () => {

@@ -24,11 +24,13 @@ const INTEREST_FIELDS = [
 interface SidebarProps {
     onCategoryFilter?: (category: string) => void;
     onInterestChange?: (interests: string[]) => void;
+    variant?: 'standalone' | 'panel';
 }
 
 export default function Sidebar({
     onCategoryFilter,
     onInterestChange,
+    variant = 'standalone',
 }: SidebarProps): JSX.Element {
     const [activeCategory, setActiveCategory] = useState('すべて');
     const [interests, setInterests] = useState<Record<string, boolean>>(
@@ -54,8 +56,10 @@ export default function Sidebar({
         onInterestChange?.([]);
     };
 
+    const Container = variant === 'panel' ? 'section' : 'aside';
+
     return (
-        <aside className="sidebar">
+        <Container className={`sidebar ${variant === 'panel' ? 'sidebar--panel' : ''}`} aria-label="アイデアフィルター">
             {/* Filter Header */}
             <div className="sidebar__section">
                 <div className="sidebar__section-header">
@@ -115,6 +119,6 @@ export default function Sidebar({
                     ))}
                 </div>
             </div>
-        </aside>
+        </Container>
     );
 }

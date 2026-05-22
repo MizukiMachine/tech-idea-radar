@@ -322,7 +322,7 @@ export default function TrendBoard({
         </div>
       )}
 
-      {trendHistory.length > 1 && (
+      {trendHistory.length > 1 && (!trends || rssArticles.length === 0) && (
         <TimelineNavigator
           history={trendHistory}
           activeIndex={activeTrendIndex}
@@ -330,17 +330,10 @@ export default function TrendBoard({
         />
       )}
 
-      {trends?.rssContext.observationWarning && (
+      {trends?.rssContext.observationWarning && rssArticles.length === 0 && (
         <div className="tb-observation-warning">
           <strong>観測履歴の保存に注意が必要です</strong>
           <span>{trends.rssContext.observationWarning}</span>
-        </div>
-      )}
-
-      {trends && rssArticles.length > 0 && topicClusters.length === 0 && (
-        <div className="tb-topic-unavailable">
-          <strong>観測トピックはこのトレンドデータに含まれていません</strong>
-          <span>RSS観測メタデータを含むスキャン結果になると、記事一覧を急増・新着・継続で絞り込めます。</span>
         </div>
       )}
 
@@ -366,6 +359,8 @@ export default function TrendBoard({
           onSearchChange={handleTrendSearch}
           onClearSearch={handleClearTrendSearch}
           trendGeneratedAt={trends?.generatedAt}
+          observationWarning={trends.rssContext.observationWarning}
+          showTopicUnavailable={topicClusters.length === 0}
         />
       )}
     </section>
@@ -393,6 +388,8 @@ interface TrendLayoutProps {
   onSearchChange: (value: string) => void;
   onClearSearch: () => void;
   trendGeneratedAt?: string;
+  observationWarning?: string;
+  showTopicUnavailable: boolean;
 }
 
 function TrendCardsLayout({
@@ -416,10 +413,30 @@ function TrendCardsLayout({
   onSearchChange,
   onClearSearch,
   trendGeneratedAt,
+  observationWarning,
+  showTopicUnavailable,
 }: TrendLayoutProps): JSX.Element {
   return (
     <div className="tb-layout tb-layout--cards">
+      <div className="tb-left-rail" aria-hidden="true" />
+
       <div className="tb-main">
+        {(observationWarning || showTopicUnavailable) && (
+          <div className="tb-feed-notices">
+            {observationWarning && (
+              <div className="tb-observation-warning">
+                <strong>観測履歴の保存に注意が必要です</strong>
+                <span>{observationWarning}</span>
+              </div>
+            )}
+            {showTopicUnavailable && (
+              <div className="tb-topic-unavailable">
+                <strong>観測トピックはこのトレンドデータに含まれていません</strong>
+                <span>RSS観測メタデータを含むスキャン結果になると、記事一覧を急増・新着・継続で絞り込めます。</span>
+              </div>
+            )}
+          </div>
+        )}
         <TrendFeedHeader
           count={articles.length}
           totalCount={allArticleCount}

@@ -1,5 +1,5 @@
+import type { ReactNode } from 'react';
 import type { IdeaCandidate } from '../types/idea-candidate';
-import type { FeaturedTrend } from '../api/ai';
 import './RightPanel.css';
 
 const TAG_COLORS = ['#1a1f36', '#6B8F2A', '#00B67A', '#FF9900', '#8B4DFF'];
@@ -26,15 +26,13 @@ function buildTagData(ideas: IdeaCandidate[]) {
 interface RightPanelProps {
     ideas: IdeaCandidate[];
     featuredIdea: IdeaCandidate | null;
-    featuredTrend: FeaturedTrend | null;
-    onOpenTrends: () => void;
+    filters?: ReactNode;
 }
 
 export default function RightPanel({
     ideas,
     featuredIdea,
-    featuredTrend,
-    onOpenTrends,
+    filters,
 }: RightPanelProps): JSX.Element {
     const tagData = buildTagData(ideas);
     const latestIdea = ideas[0];
@@ -51,22 +49,6 @@ export default function RightPanel({
                 {highlightIdea?.tags[0] && (
                     <span className="right-panel__card-tag">{highlightIdea.tags[0]}</span>
                 )}
-            </div>
-
-            <div className="right-panel__card right-panel__card--trend">
-                <div className="right-panel__card-badge">注目のトレンド</div>
-                <h3 className="right-panel__card-title">
-                    {featuredTrend?.titleJa ?? featuredTrend?.title ?? 'トレンドを確認'}
-                </h3>
-                <p className="right-panel__card-desc">
-                    {featuredTrend?.summary ?? '最新のRSSフィードから、次のアイデアにつながる動きを確認できます。'}
-                </p>
-                {featuredTrend?.source && (
-                    <span className="right-panel__card-tag">{featuredTrend.source}</span>
-                )}
-                <button type="button" className="right-panel__card-action" onClick={onOpenTrends}>
-                    トレンドを見る
-                </button>
             </div>
 
             <div className="right-panel__card">
@@ -92,6 +74,8 @@ export default function RightPanel({
                     <p className="right-panel__empty">表示中のアイデアにタグがありません。</p>
                 )}
             </div>
+
+            {filters}
         </aside>
     );
 }

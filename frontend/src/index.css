@@ -43,6 +43,7 @@
 
   --sidebar-width: 280px;
   --metrics-width: 320px;
+  --workspace-card-gap: 10px;
   --header-height: auto;
 
   font-family: "Inter", "Noto Sans JP", system-ui, -apple-system, sans-serif;

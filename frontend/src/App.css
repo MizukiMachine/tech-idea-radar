@@ -139,7 +139,13 @@
   max-width: 1700px;
   margin: 0 auto;
   width: 100%;
-  gap: 22px;
+  gap: var(--workspace-card-gap);
+}
+
+.dashboard__left-spacer {
+  width: 268px;
+  min-width: 268px;
+  flex: 0 0 268px;
 }
 
 .main-content {
@@ -565,7 +571,7 @@
 .idea-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: var(--workspace-card-gap);
   min-width: 0;
 }
 
@@ -597,7 +603,7 @@
   }
 
   .dashboard {
-    gap: 18px;
+    gap: var(--workspace-card-gap);
   }
 }
 
@@ -621,6 +627,10 @@
 
   .dashboard {
     flex-direction: column;
+  }
+
+  .dashboard__left-spacer {
+    display: none;
   }
 
   .idea-grid {
