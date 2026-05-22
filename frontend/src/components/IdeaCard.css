@@ -3,15 +3,15 @@
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    padding: 12px 14px;
+    padding: 16px;
     transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s, background 0.2s;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
     cursor: pointer;
     text-align: left;
     font: inherit;
-    min-height: 124px;
+    min-height: 136px;
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
@@ -30,11 +30,12 @@
 }
 
 .idea-card--list {
-    min-height: 0;
+    min-height: 64px;
+    padding: 14px 16px;
     display: grid;
     grid-template-columns: minmax(190px, 0.75fr) minmax(220px, 1.1fr) minmax(210px, 0.9fr);
     align-items: center;
-    gap: 12px;
+    gap: 16px;
 }
 
 .idea-card__header {

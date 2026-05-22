@@ -139,7 +139,7 @@
   max-width: 1700px;
   margin: 0 auto;
   width: 100%;
-  gap: var(--workspace-card-gap);
+  gap: var(--workspace-column-gap);
 }
 
 .dashboard__left-spacer {
@@ -153,7 +153,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 20px;
 }
 
 /* ===== Progress Bar ===== */
@@ -393,9 +393,9 @@
     "summary controls"
     "search controls";
   align-items: center;
-  gap: 8px 16px;
+  gap: 10px 16px;
   min-height: 42px;
-  padding: 0 2px 4px;
+  padding: 0 2px 6px;
   margin-bottom: 0;
   border-bottom: 1px solid rgba(221, 229, 239, 0.9);
 }
@@ -603,7 +603,19 @@
   }
 
   .dashboard {
-    gap: var(--workspace-card-gap);
+    gap: var(--workspace-column-gap);
+  }
+}
+
+@media (max-width: 1350px) {
+  .dashboard__left-spacer {
+    display: none;
+  }
+}
+
+@media (max-width: 1100px) {
+  .dashboard {
+    flex-direction: column;
   }
 }
 
@@ -623,14 +635,6 @@
     justify-self: stretch;
     transform: none;
     width: 100%;
-  }
-
-  .dashboard {
-    flex-direction: column;
-  }
-
-  .dashboard__left-spacer {
-    display: none;
   }
 
   .idea-grid {
