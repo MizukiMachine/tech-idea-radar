@@ -61,6 +61,7 @@ healthRouter.get("/", (_req, res) => {
       pid: process.pid,
       ppid: process.ppid,
       appInstance: process.env.NODE_APP_INSTANCE ?? null,
+      devStackId: process.env.BAC_DEV_STACK_ID ?? null,
     },
   });
 });

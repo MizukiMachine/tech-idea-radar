@@ -5,7 +5,7 @@
   "description": "React SPA for the Builder Agent Chain platform",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "node ../scripts/require-proxy-target.mjs && vite",
     "build": "tsc -b && vite build --configLoader runner",
     "preview": "vite preview",
     "lint": "eslint src --ext ts,tsx --max-warnings=0",

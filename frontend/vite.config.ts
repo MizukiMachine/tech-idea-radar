@@ -1,25 +1,33 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 
-const proxyTarget = process.env.VITE_PROXY_TARGET ?? "http://127.0.0.1:3001";
+export default defineConfig(({ command }) => {
+  const proxyTarget = process.env.VITE_PROXY_TARGET;
+  const isPreview = process.env.npm_lifecycle_event === "preview";
+  const requiresProxyTarget = command !== "build" && !isPreview;
 
-export default defineConfig({
-  plugins: [react()],
-  server: {
-    port: 5173,
-    strictPort: true,
-    proxy: {
-      "/api": {
-        target: proxyTarget,
-        changeOrigin: true,
-      },
-      "/health": {
-        target: proxyTarget,
-        changeOrigin: true,
-      },
+  if (requiresProxyTarget && !proxyTarget) {
+    throw new Error("VITE_PROXY_TARGET is required for the dev server. Use `npm run dev` from the repository root.");
+  }
+
+  return {
+    plugins: [react()],
+    server: {
+      port: 5173,
+      strictPort: true,
+      proxy: proxyTarget ? {
+        "/api": {
+          target: proxyTarget,
+          changeOrigin: true,
+        },
+        "/health": {
+          target: proxyTarget,
+          changeOrigin: true,
+        },
+      } : undefined,
     },
-  },
-  preview: {
-    port: 4173,
-  },
+    preview: {
+      port: 4173,
+    },
+  };
 });

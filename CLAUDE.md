@@ -23,10 +23,11 @@ npm workspaces の monorepo:
 
 ```bash
 npm install                    # 全ワークスペースの依存をインストール
-npm run backend:dev            # バックエンド開発サーバー (port 3001)
-npm run frontend:dev           # フロントエンド開発サーバー (port 5173, proxy → 3001)
-npm run frontend:dev:5180      # ポート5180で起動 (proxy → 3010)
-npm run backend:dev:3010       # ポート3010で起動
+npm run dev                    # フロント + バックエンドをセット起動し、proxy → 今回のbackendを検証
+npm run backend:dev            # npm run dev と同じセット起動
+npm run frontend:dev           # npm run dev と同じセット起動
+npm run frontend:dev:solo      # フロント単体起動。VITE_PROXY_TARGET の明示指定が必要
+npm run backend:dev:solo       # バックエンド単体起動
 npm run build                  # 全ワークスペースビルド
 npm run test                   # 全ワークスペーステスト (Vitest)
 npm run lint                   # 全ワークスペースlint
