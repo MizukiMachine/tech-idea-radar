@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LLMClient } from '../src/services/llm-client';
 import { IdeaGenerationAgent } from '../src/agents/idea-generation-agent';
 import { FilterAgent } from '../src/agents/filter-agent';
@@ -41,6 +41,12 @@ function createMockClient(response: string): LLMClient {
   return client;
 }
 
+function extractPromptRssContext(prompt: string): Record<string, unknown> {
+  const match = /### RSSコンテキスト\s+```json\s+([\s\S]*?)\s+```/.exec(prompt);
+  if (!match) throw new Error('RSS context block not found');
+  return JSON.parse(match[1]) as Record<string, unknown>;
+}
+
 function validTrendSummary(topic = 'AIエージェント導入'): string {
   return [
     `・${topic}の背景には、開発やプロダクト運営で調査、整理、連携が細かく分断され、既存ツールだけでは判断材料を十分に追い切れない状況がある。単なる効率化ではなく、情報の質と責任ある判断をどう保つかが論点になっており、チーム全体の運用課題として浮上している`,
@@ -66,6 +72,10 @@ beforeEach(() => {
       keywords: ['AI', 'SRE'],
     }],
   });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe('IdeaGenerationAgent', () => {
@@ -97,6 +107,70 @@ describe('IdeaGenerationAgent', () => {
     expect(prompt).toContain('### RSSコンテキスト');
     expect(prompt).toContain('### フォーカスキーワード');
     expect(prompt).toContain('最大 5 件');
+  });
+
+  it('compacts RSS context before sending the idea generation prompt', async () => {
+    vi.stubEnv('IDEA_GENERATION_RSS_ARTICLE_LIMIT', '8');
+    vi.stubEnv('IDEA_GENERATION_KEYWORD_LIMIT', '12');
+    const client = createMockClient(JSON.stringify([candidate]));
+    const agent = new IdeaGenerationAgent(client);
+    const longSummary = 'A'.repeat(900);
+
+    await agent.execute({
+      rssContext: {
+        trendingKeywords: Array.from({ length: 16 }, (_, index) => ({ word: `keyword-${index}`, count: 20 - index })),
+        relatedArticles: Array.from({ length: 12 }, (_, index) => ({
+          title: `Article ${index}`,
+          link: `https://example.com/article-${index}`,
+          url: `https://example.com/article-${index}`,
+          published: '2026-05-14T00:00:00.000Z',
+          summary: longSummary,
+          summaryJa: `・${longSummary}`,
+          description: longSummary,
+          source: 'Test RSS',
+          keywords: ['AI', 'SaaS', 'developer', 'workflow', 'agent', 'automation', 'extra'],
+          topicKey: `topic-${index}`,
+        })),
+        topicClusters: Array.from({ length: 12 }, (_, index) => ({
+          topic: `topic-${index}`,
+          label: `Topic ${index}`,
+          status: 'new',
+          score: 10,
+          articleCount: 1,
+          sourceCount: 1,
+          sources: ['Test RSS'],
+          firstSeenAt: '2026-05-14T00:00:00.000Z',
+          lastSeenAt: '2026-05-14T00:00:00.000Z',
+          recentCount: 1,
+          previousCount: 0,
+          representativeArticles: [{
+            title: `Article ${index}`,
+            url: `https://example.com/article-${index}`,
+            source: 'Test RSS',
+            firstSeenAt: '2026-05-14T00:00:00.000Z',
+            summary: longSummary,
+          }],
+        })),
+      },
+      focusKeywords: ['AI'],
+      requestedIdeaCount: 5,
+    });
+
+    const prompt = vi.mocked(client.send).mock.calls[0]?.[1] ?? '';
+    const tokens = vi.mocked(client.send).mock.calls[0]?.[2];
+    const context = extractPromptRssContext(prompt);
+    const articles = context.relatedArticles as Array<{ summary: string; summaryJa: string; description: string; keywords: string[] }>;
+    const keywords = context.trendingKeywords as unknown[];
+    const topics = context.topicClusters as unknown[];
+
+    expect(tokens).toBe(16_384);
+    expect(articles).toHaveLength(8);
+    expect(keywords).toHaveLength(12);
+    expect(topics).toHaveLength(8);
+    expect(articles[0].summary.length).toBeLessThanOrEqual(420);
+    expect(articles[0].summaryJa.length).toBeLessThanOrEqual(420);
+    expect(articles[0].description.length).toBeLessThanOrEqual(240);
+    expect(articles[0].keywords).toHaveLength(6);
   });
 
   it('refuses to call the LLM when RSS articles are unavailable', async () => {
@@ -563,6 +637,7 @@ describe('EntrepreneurAgent', () => {
     const result = await agent.generateIdeas((text) => progress.push(text));
 
     expect(fetchRssContext).toHaveBeenCalled();
+    expect(client.sendStream).toHaveBeenCalledOnce();
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0].sources.evidenceUrls).toEqual([
       { title: 'AI Ops article', url: 'https://example.com/ai-ops', type: 'rss' },

@@ -584,9 +584,10 @@ export async function generateAndCacheIdeas(
       const now = new Date();
       const batchTime = useScheduleSlot ? getCurrentBatchTimeJST(now) : getActualBatchTimeJST(now);
       const agent = new EntrepreneurAgent(getClient());
-      const result = trendScanOverride && !focusKeywords
+      const trendScanForIdeas = trendScanOverride ?? (!focusKeywords ? latestTrend()?.data : undefined);
+      const result = trendScanForIdeas && !focusKeywords
         ? await agent.generateIdeasFromTrendScan(
-          trendScanOverride,
+          withSummaryPolicy(trendScanForIdeas),
           onProgress,
           IDEA_GENERATION_BATCH_SIZE,
           batchTime,
