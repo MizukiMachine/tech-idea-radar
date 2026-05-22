@@ -418,8 +418,6 @@ function TrendCardsLayout({
 }: TrendLayoutProps): JSX.Element {
   return (
     <div className="tb-layout tb-layout--cards">
-      <div className="tb-left-rail" aria-hidden="true" />
-
       <div className="tb-main">
         {(observationWarning || showTopicUnavailable) && (
           <div className="tb-feed-notices">

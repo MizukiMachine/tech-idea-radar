@@ -133,19 +133,13 @@
   padding: 0 32px 56px;
 }
 
-/* ===== Dashboard 3-Column Layout ===== */
+/* ===== Dashboard Layout ===== */
 .dashboard {
   display: flex;
   max-width: 1700px;
   margin: 0 auto;
   width: 100%;
   gap: var(--workspace-column-gap);
-}
-
-.dashboard__left-spacer {
-  width: 268px;
-  min-width: 268px;
-  flex: 0 0 268px;
 }
 
 .main-content {
@@ -604,12 +598,6 @@
 
   .dashboard {
     gap: var(--workspace-column-gap);
-  }
-}
-
-@media (max-width: 1350px) {
-  .dashboard__left-spacer {
-    display: none;
   }
 }
 

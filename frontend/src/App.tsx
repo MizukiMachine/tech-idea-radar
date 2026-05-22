@@ -399,8 +399,6 @@ function App(): JSX.Element {
 
             {showDashboard && (
               <div className="dashboard">
-                {hasIdeas && <div className="dashboard__left-spacer" aria-hidden="true" />}
-
                 <section className="main-content">
                   {hasIdeas && (
                     <div className="idea-results-toolbar">
