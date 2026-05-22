@@ -55,9 +55,6 @@ export default function IdeaCard({
             {visibleTrendSignal && (
                 <div className={`idea-card__trend idea-card__trend--${visibleTrendSignal.status}`}>
                     <span className="idea-card__trend-badge">{topicStatusLabel(visibleTrendSignal.status)}トレンド</span>
-                    <span className="idea-card__trend-scope">
-                        登場メディア {visibleTrendSignal.sourceCount}箇所 / 関連記事 {visibleTrendSignal.articleCount}件
-                    </span>
                 </div>
             )}
         </button>

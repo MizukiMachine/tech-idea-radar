@@ -4,12 +4,10 @@ import { buildIdeaTrendSignal, ideaTrendSignalKey } from './utils/idea-trend-sig
 import { topicStatusRank } from './utils/trend-status';
 import {
   fetchIdeas,
-  fetchIdeasMeta,
   fetchTrends,
   fetchTrendHistory,
   fetchTrendSnapshot,
   type SourceSummary,
-  type IdeasMeta,
   type TrendScan,
   type TrendHistoryEntry,
   type FeaturedTrend,
@@ -147,16 +145,6 @@ function trendPreviewFromScan(scan: TrendScan): FeaturedTrend | null {
   };
 }
 
-function isIdeasMeta(value: unknown): value is IdeasMeta {
-  if (!value || typeof value !== 'object') return false;
-  const obj = value as Record<string, unknown>;
-  return typeof obj.instanceId === 'string'
-    && typeof obj.pid === 'number'
-    && typeof obj.startedAt === 'string'
-    && typeof obj.cache === 'object'
-    && obj.cache !== null;
-}
-
 function App(): JSX.Element {
   const [activeView, setActiveView] = useState<WorkspaceView>('ideas');
   const [trends, setTrends] = useState<TrendScan | null>(null);
@@ -173,34 +161,20 @@ function App(): JSX.Element {
   const error: string | null = null;
   const progressText: string | null = null;
   const [sourceSummary, setSourceSummary] = useState<SourceSummary | null>(null);
-  const [ideasMeta, setIdeasMeta] = useState<IdeasMeta | null>(null);
   const [activeCategory, setActiveCategory] = useState('すべて');
   const [activeInterests, setActiveInterests] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [ideaSort, setIdeaSort] = useState<IdeaSort>('generated');
   const [selectedIdea, setSelectedIdea] = useState<IdeaCandidate | null>(null);
   const [modalIdea, setModalIdea] = useState<IdeaCandidate | null>(null);
-  const refreshIdeasMeta = useCallback((retryUsage = false) => {
-    const update = () => {
-      void fetchIdeasMeta()
-        .then((meta) => { if (isIdeasMeta(meta)) setIdeasMeta(meta); })
-        .catch(() => undefined);
-    };
-    update();
-    if (retryUsage) window.setTimeout(update, 2000);
-  }, []);
-  const publicReadonlyMode = Boolean(ideasMeta?.env?.publicReadonlyMode);
 
-  // Load cached ideas/meta on mount. Fresh generation starts automatically when cache is disabled.
+  // Load cached ideas on mount. Fresh generation starts automatically when cache is disabled.
   useEffect(() => {
     let cancelled = false;
 
     async function loadIdeas() {
-      const metaPromise = fetchIdeasMeta().catch(() => null);
       try {
         const result = await fetchIdeas();
-        const meta = await metaPromise;
-        if (!cancelled && isIdeasMeta(meta)) setIdeasMeta(meta);
         if (!cancelled && result.candidates.length > 0) {
           setIdeas(result.candidates);
           setFeaturedIdea(result.featuredIdea ?? null);
@@ -209,8 +183,7 @@ function App(): JSX.Element {
           return;
         }
       } catch {
-        const meta = await metaPromise;
-        if (!cancelled && isIdeasMeta(meta)) setIdeasMeta(meta);
+        // Empty state below handles unavailable cached ideas.
       }
 
       if (!cancelled) setLoading(false);
@@ -220,7 +193,7 @@ function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [refreshIdeasMeta]);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -361,17 +334,6 @@ function App(): JSX.Element {
   const hasIdeas = ideas.length > 0;
   const showDashboard = loading || hasIdeas;
   const showSetupState = !loading && !hasIdeas;
-  const showIdeaCommandBar = activeView === 'ideas' && (hasIdeas || !publicReadonlyMode);
-  const cacheStatusLabel = ideasMeta?.cache.status === 'cached'
-    ? 'キャッシュ利用中'
-    : ideasMeta?.cache.status === 'stale'
-      ? '更新候補あり'
-      : 'データ準備中';
-  const sourceCountLabel = sourceSummary
-    ? `RSS ${sourceSummary.rssItemCount}件`
-    : trends?.rssContext.relatedArticles.length
-      ? `RSS ${trends.rssContext.relatedArticles.length}件`
-      : 'RSS確認中';
   const handleIdeaSelect = useCallback((idea: IdeaCandidate) => {
     setSelectedIdea(idea);
     setModalIdea(idea);
@@ -408,37 +370,7 @@ function App(): JSX.Element {
               トレンド
             </button>
           </nav>
-
-          <div className="app-header__status" aria-label="データ状態">
-            <span>{cacheStatusLabel}</span>
-            <strong>{sourceCountLabel}</strong>
-          </div>
         </div>
-
-        {showIdeaCommandBar && (
-          <div className="idea-command-bar">
-            <div className="idea-command-bar__search">
-              <span className="idea-command-bar__search-icon">⌕</span>
-              <input
-                type="text"
-                placeholder="キーワードで絞り込み（例: AI ツール、SaaS、副業）"
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                disabled={!hasIdeas}
-              />
-              {searchQuery && hasIdeas && (
-                <button
-                  type="button"
-                  className="idea-command-bar__clear"
-                  onClick={() => handleSearch('')}
-                  aria-label="検索条件をクリア"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          </div>
-        )}
       </header>
 
       <main className="workspace">
@@ -455,6 +387,12 @@ function App(): JSX.Element {
 
         {activeView === 'ideas' && (
           <>
+            <section className="idea-page-header" aria-labelledby="idea-page-title">
+              <div className="idea-page-header__copy">
+                <h2 id="idea-page-title">おすすめ開発アイデア</h2>
+              </div>
+            </section>
+
             {progressText && (
               <div className="progress-bar">
                 <span className="progress-bar__text">{progressText}</span>
@@ -500,6 +438,26 @@ function App(): JSX.Element {
                       <div className="idea-results-toolbar__summary">
                         <h3>アイデア一覧</h3>
                         <span>{displayedIdeas.length}件</span>
+                      </div>
+                      <div className="idea-results-toolbar__search">
+                        <span className="idea-results-toolbar__search-icon">⌕</span>
+                        <input
+                          type="text"
+                          placeholder="キーワードで絞り込み"
+                          value={searchQuery}
+                          onChange={(e) => handleSearch(e.target.value)}
+                          disabled={!hasIdeas}
+                        />
+                        {searchQuery && hasIdeas && (
+                          <button
+                            type="button"
+                            className="idea-results-toolbar__clear"
+                            onClick={() => handleSearch('')}
+                            aria-label="検索条件をクリア"
+                          >
+                            ×
+                          </button>
+                        )}
                       </div>
                       <div className="idea-results-toolbar__controls">
                         <div className="idea-results-toolbar__sort" aria-label="並び順">
@@ -580,7 +538,6 @@ function App(): JSX.Element {
                     ideas={displayedIdeas}
                     featuredIdea={featuredIdea}
                     featuredTrend={featuredTrend}
-                    selectedIdea={selectedIdea}
                     onOpenTrends={() => setActiveView('trends')}
                   />
                 )}

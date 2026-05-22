@@ -201,16 +201,23 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "Lume" })).toBeTruthy();
     await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
+    expect(screen.getByRole("heading", { name: "おすすめ開発アイデア" })).toBeTruthy();
+    expect(screen.queryByText("アイデア候補")).toBeNull();
+    expect(screen.queryByText("プロダクト仮説ボード")).toBeNull();
+    expect(screen.queryByText("技術トレンドをもとに、作る候補を比較")).toBeNull();
     expect(screen.queryByText("言語")).toBeNull();
     expect(screen.queryByText("短期開発向け")).toBeNull();
-    expect(screen.getByPlaceholderText("キーワードで絞り込み（例: AI ツール、SaaS、副業）")).toBeTruthy();
+    expect(screen.getByPlaceholderText("キーワードで絞り込み")).toBeTruthy();
   });
 
   it("renders RSS-only trends after switching tabs", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
-    await waitFor(() => expect(screen.getByText("tech系開発シグナル")).toBeTruthy());
-    expect(screen.getByText("RSSフィード")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("海外メディアトレンド")).toBeTruthy());
+    expect(screen.getByPlaceholderText("キーワードで絞り込み")).toBeTruthy();
+    expect(screen.queryByText("RSSフィード")).toBeNull();
+    expect(screen.queryByText("tech系開発シグナル")).toBeNull();
+    expect(screen.getByText("海外メディアを中心にトレンドをキャッチ")).toBeTruthy();
     expect(screen.queryByText("動いているトピック")).toBeNull();
     expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy();
     const spikingFilter = screen.getByRole("button", { name: "急増 2" });
@@ -219,7 +226,7 @@ describe("App", () => {
     expect(screen.getByText("急増の記事")).toBeTruthy();
     expect(screen.getByText("2/2件")).toBeTruthy();
     expect(screen.queryByText(/score/i)).toBeNull();
-    expect(screen.getAllByText("急増トピック").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("急増").length).toBeGreaterThan(0);
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     const buttons = screen.getAllByRole("button", { name: "要約を見る" });
     fireEvent.click(buttons[0]);
@@ -227,6 +234,20 @@ describe("App", () => {
     fireEvent.click(buttons[1]);
     expect(screen.getByText(firstSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
     expect(screen.getByText(secondSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
+  });
+
+  it("filters trend articles by keyword search", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
+
+    await waitFor(() => expect(screen.getByText("海外メディアトレンド")).toBeTruthy());
+    fireEvent.change(screen.getByPlaceholderText("キーワードで絞り込み"), {
+      target: { value: "TechCrunch" },
+    });
+
+    expect(screen.getByText("開発ワークフローの自動化が進む")).toBeTruthy();
+    expect(screen.queryByText("AIエージェントツールがプロダクト業務に広がる")).toBeNull();
+    expect(screen.getByText("1/2件")).toBeTruthy();
   });
 
   it("shows trend evidence on idea cards and detail modal", async () => {
@@ -237,7 +258,8 @@ describe("App", () => {
     expect(ideaCard.textContent).not.toContain("B2B SaaS");
     expect(ideaCard.textContent).not.toContain("2ソース");
     expect(ideaCard.textContent).not.toContain("根拠RSS");
-    expect(ideaCard.textContent).toContain("登場メディア 2箇所 / 関連記事 2件");
+    expect(ideaCard.textContent).not.toContain("登場メディア 2箇所 / 関連記事 2件");
+    expect(ideaCard.textContent).toContain("急増トレンド");
 
     fireEvent.click(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" }));
     await waitFor(() => expect(screen.getByText("トレンド根拠")).toBeTruthy());
@@ -372,13 +394,11 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
 
-    await waitFor(() => expect(screen.getByText("RSSフィード")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("海外メディアトレンド")).toBeTruthy());
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     expect(screen.getByText("開発ワークフローの自動化が進む")).toBeTruthy();
     expect(screen.queryByText("Hidden English-only legacy article")).toBeNull();
-    const summaryMetric = [...document.querySelectorAll(".tb-metric")]
-      .find((node) => node.textContent?.includes("要約済み"));
-    expect(summaryMetric?.textContent).toContain("1");
+    expect(document.querySelector(".tb-metric")).toBeNull();
 
     const buttons = screen.getAllByRole("button", { name: "要約を見る" });
     expect(buttons).toHaveLength(1);
@@ -429,7 +449,7 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
 
-    await waitFor(() => expect(screen.getByText("RSSフィード")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("海外メディアトレンド")).toBeTruthy());
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     expect(screen.queryByText("短すぎる要約が残った記事")).toBeNull();
   });
@@ -437,7 +457,7 @@ describe("App", () => {
   it("renders search input on the ideas view", async () => {
     render(<App />);
     await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
-    expect(screen.getByPlaceholderText("キーワードで絞り込み（例: AI ツール、SaaS、副業）")).toBeTruthy();
+    expect(screen.getByPlaceholderText("キーワードで絞り込み")).toBeTruthy();
   });
 
   it("renders right panel cards on the ideas view", async () => {
@@ -479,7 +499,7 @@ describe("App", () => {
     expect(screen.queryByRole("button", { name: "再生成" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
-    await waitFor(() => expect(screen.getByText("tech系開発シグナル")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("海外メディアトレンド")).toBeTruthy());
     expect(screen.queryByRole("button", { name: "再取得" })).toBeNull();
     expect(screen.queryByRole("button", { name: "案を見る" })).toBeNull();
     expect(screen.queryByRole("button", { name: "アイデアを見る" })).toBeNull();
@@ -489,7 +509,7 @@ describe("App", () => {
   it("fetches trend history when switching to trends view", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
-    await waitFor(() => expect(screen.getByText("tech系開発シグナル")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("海外メディアトレンド")).toBeTruthy());
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history"))).toBe(true);
   });
 
@@ -520,7 +540,7 @@ describe("App", () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: /^トレンド$/ }));
 
-    await waitFor(() => expect(screen.getByText("RSSフィード")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("海外メディアトレンド")).toBeTruthy());
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     expect(screen.queryByText("トレンド取得に失敗しました")).toBeNull();
   });

@@ -92,21 +92,11 @@
 .idea-card__trend {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 6px;
-    flex-wrap: wrap;
+    justify-content: flex-start;
     min-width: 0;
-    padding: 8px 9px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    background: var(--bg-input);
     color: var(--text-tertiary);
     font-size: 11px;
     font-weight: 800;
-}
-
-.idea-card--list .idea-card__trend {
-    justify-content: flex-start;
 }
 
 .idea-card__trend-badge {
@@ -118,18 +108,9 @@
     line-height: 1;
 }
 
-.idea-card__trend-scope {
-    margin-left: auto;
-    min-width: 0;
-    color: var(--text-tertiary);
-    line-height: 1.45;
-    text-align: right;
-    overflow-wrap: anywhere;
-}
-
 .idea-card__trend--spiking .idea-card__trend-badge {
-    background: var(--accent-red-glow);
-    color: var(--accent-red);
+    background: var(--accent-primary-soft);
+    color: var(--accent-primary-hover);
 }
 
 .idea-card__trend--new .idea-card__trend-badge {

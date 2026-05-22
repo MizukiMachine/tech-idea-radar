@@ -161,6 +161,25 @@ function articleSummaryItems(article: RssArticle): { text: string; bullet: boole
   });
 }
 
+function trendSearchText(article: RssArticle): string {
+  return [
+    article.title,
+    article.titleJa,
+    article.summary,
+    article.summaryJa,
+    article.source,
+    article.topicKey,
+    ...(article.keywords ?? []),
+  ].filter(Boolean).join(' ').toLowerCase();
+}
+
+function matchesTrendSearch(article: RssArticle, query: string): boolean {
+  const terms = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const text = trendSearchText(article);
+  return terms.every((term) => text.includes(term));
+}
+
 type TrendArticleLayout = 'card';
 type TopicFilter = 'all' | 'spiking' | 'new' | 'continuing';
 
@@ -195,6 +214,7 @@ export default function TrendBoard({
 }: TrendBoardProps): JSX.Element {
   const [expandedArticleUrls, setExpandedArticleUrls] = useState<Set<string>>(() => new Set());
   const [topicFilter, setTopicFilter] = useState<TopicFilter>('all');
+  const [trendSearchQuery, setTrendSearchQuery] = useState('');
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 16;
   const summaryPolicy = trends?.summaryPolicy;
@@ -219,21 +239,12 @@ export default function TrendBoard({
   );
   const keywords = trends?.rssContext.trendingKeywords ?? [];
   const topicClusters = (trends?.rssContext.topicClusters ?? []).filter((topic) => topic.status !== 'stale');
-  const hasObservedTopics = topicClusters.length > 0;
-  const topicClusterCounts: Record<TopicFilter, number> = {
-    all: topicClusters.length,
-    spiking: topicClusters.filter((topic) => topic.status === 'spiking').length,
-    new: topicClusters.filter((topic) => topic.status === 'new').length,
-    continuing: topicClusters.filter((topic) => topic.status === 'continuing').length,
-  };
   const articleStatusCounts: Record<TopicFilter, number> = {
     all: rssArticles.length,
     spiking: rssArticles.filter((article) => article.topicStatus === 'spiking').length,
     new: rssArticles.filter((article) => article.topicStatus === 'new').length,
     continuing: rssArticles.filter((article) => article.topicStatus === 'continuing').length,
   };
-  const sourceCount = new Set(rssArticles.map((a) => a.source).filter(Boolean)).size;
-  const summarizedCount = summaryArticleUrls.size;
 
   const maxKeywordCount = keywords.length > 0
     ? Math.max(...keywords.map((k) => k.count))
@@ -250,7 +261,8 @@ export default function TrendBoard({
   const statusFilteredArticles = topicFilter === 'all'
     ? rssArticles
     : rssArticles.filter((article) => article.topicStatus === topicFilter);
-  const visibleArticles = statusFilteredArticles.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const filteredArticles = statusFilteredArticles.filter((article) => matchesTrendSearch(article, trendSearchQuery));
+  const visibleArticles = filteredArticles.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   const handleToggleArticle = (article: RssArticle) => {
     const url = articleUrl(article);
@@ -272,29 +284,21 @@ export default function TrendBoard({
     setPage(0);
   };
 
+  const handleTrendSearch = (value: string) => {
+    setTrendSearchQuery(value);
+    setPage(0);
+  };
+
+  const handleClearTrendSearch = () => {
+    setTrendSearchQuery('');
+    setPage(0);
+  };
+
   return (
     <section className="trend-board">
       <div className="tb-header">
         <div className="tb-header__copy">
-          <span className="tb-header__eyebrow">RSSフィード</span>
-          <h2>tech系開発シグナル</h2>
-          <p>海外メディアを中心にトレンドをキャッチ</p>
-        </div>
-        <div className="tb-header__metrics">
-          <TrendMetric label="RSS記事" value={rssArticles.length} />
-          {hasObservedTopics ? (
-            <>
-              <TrendMetric label="観測トピック" value={topicClusterCounts.all} />
-              <TrendMetric label="急増" value={topicClusterCounts.spiking} />
-            </>
-          ) : (
-            <>
-              <TrendMetric label="メディア" value={sourceCount} />
-              <TrendMetric label="注目KW" value={keywords.length} />
-            </>
-          )}
-          <TrendMetric label="要約済み" value={summarizedCount} />
-          <TrendMetric label="最終取得" value={formatDate(trends?.generatedAt)} compact />
+          <h2>海外メディアトレンド</h2>
         </div>
       </div>
 
@@ -346,7 +350,7 @@ export default function TrendBoard({
 
       {trends && rssArticles.length > 0 && (
         <TrendCardsLayout
-          articles={statusFilteredArticles}
+          articles={filteredArticles}
           allArticleCount={rssArticles.length}
           visibleArticles={visibleArticles}
           expandedArticleUrls={expandedArticleUrls}
@@ -362,26 +366,12 @@ export default function TrendBoard({
           statusCounts={articleStatusCounts}
           onStatusFilterChange={handleTopicFilterChange}
           onClearFilter={handleClearFilter}
+          searchQuery={trendSearchQuery}
+          onSearchChange={handleTrendSearch}
+          onClearSearch={handleClearTrendSearch}
         />
       )}
     </section>
-  );
-}
-
-function TrendMetric({
-  label,
-  value,
-  compact = false,
-}: {
-  label: string;
-  value: number | string;
-  compact?: boolean;
-}): JSX.Element {
-  return (
-    <div className="tb-metric">
-      <span className={`tb-metric__value ${compact ? 'tb-metric__value--sm' : ''}`}>{value}</span>
-      <span className="tb-metric__label">{label}</span>
-    </div>
   );
 }
 
@@ -402,6 +392,9 @@ interface TrendLayoutProps {
   statusCounts: Record<TopicFilter, number>;
   onStatusFilterChange: (filter: TopicFilter) => void;
   onClearFilter: () => void;
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  onClearSearch: () => void;
 }
 
 function TrendCardsLayout({
@@ -421,6 +414,9 @@ function TrendCardsLayout({
   statusCounts,
   onStatusFilterChange,
   onClearFilter,
+  searchQuery,
+  onSearchChange,
+  onClearSearch,
 }: TrendLayoutProps): JSX.Element {
   return (
     <div className="tb-layout tb-layout--cards">
@@ -432,11 +428,14 @@ function TrendCardsLayout({
           statusCounts={statusCounts}
           onStatusFilterChange={onStatusFilterChange}
           onClearFilter={onClearFilter}
+          searchQuery={searchQuery}
+          onSearchChange={onSearchChange}
+          onClearSearch={onClearSearch}
         />
         {articles.length === 0 ? (
           <div className="tb-feed-empty">
             <h3>この条件に一致する記事がありません</h3>
-            <p>別の状態を選ぶか、すべての記事に戻してください。</p>
+            <p>{searchQuery.trim() ? '検索語を変えるか、検索条件をクリアしてください。' : '別の状態を選ぶか、すべての記事に戻してください。'}</p>
           </div>
         ) : (
           <>
@@ -478,6 +477,9 @@ function TrendFeedHeader({
   statusCounts,
   onStatusFilterChange,
   onClearFilter,
+  searchQuery,
+  onSearchChange,
+  onClearSearch,
 }: {
   count: number;
   totalCount: number;
@@ -485,17 +487,40 @@ function TrendFeedHeader({
   statusCounts: Record<TopicFilter, number>;
   onStatusFilterChange: (filter: TopicFilter) => void;
   onClearFilter: () => void;
+  searchQuery: string;
+  onSearchChange: (value: string) => void;
+  onClearSearch: () => void;
 }): JSX.Element {
   const filtered = statusFilter !== 'all';
+  const searched = searchQuery.trim().length > 0;
   const statusLabel = TOPIC_FILTERS.find((item) => item.id === statusFilter)?.label ?? 'すべて';
 
   return (
     <div className="tb-feed__header">
       <div className="tb-feed__title">
-        <h3>{filtered ? `${statusLabel}の記事` : 'RSS記事一覧'}</h3>
+        <h3>{filtered ? `${statusLabel}の記事` : '海外メディアを中心にトレンドをキャッチ'}</h3>
         {filtered && (
           <button type="button" className="tb-feed__clear" onClick={onClearFilter}>
             絞り込み解除
+          </button>
+        )}
+      </div>
+      <div className="tb-feed__search">
+        <span className="tb-feed__search-icon">⌕</span>
+        <input
+          type="text"
+          placeholder="キーワードで絞り込み"
+          value={searchQuery}
+          onChange={(e) => onSearchChange(e.target.value)}
+        />
+        {searched && (
+          <button
+            type="button"
+            className="tb-feed__search-clear"
+            onClick={onClearSearch}
+            aria-label="検索条件をクリア"
+          >
+            ×
           </button>
         )}
       </div>
@@ -506,7 +531,7 @@ function TrendFeedHeader({
           onChange={onStatusFilterChange}
         />
         <span className="tb-feed__count">
-          {filtered ? `${count}/${totalCount}件` : `${count}件`}
+          {filtered || searched ? `${count}/${totalCount}件` : `${count}件`}
         </span>
       </div>
     </div>
@@ -676,7 +701,7 @@ function TrendArticleCard({
         {hasTopicStatus && (
           <div className="tb-article__topic-row">
             <span className={`tb-status-badge tb-status-badge--${article.topicStatus}`}>
-              {topicStatusLabel(article.topicStatus)}トピック
+              {topicStatusLabel(article.topicStatus)}
             </span>
             {article.firstSeenAt && (
               <span className="tb-article__topic-seen">初回 {formatDate(article.firstSeenAt)}</span>

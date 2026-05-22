@@ -27,7 +27,6 @@ interface RightPanelProps {
     ideas: IdeaCandidate[];
     featuredIdea: IdeaCandidate | null;
     featuredTrend: FeaturedTrend | null;
-    selectedIdea: IdeaCandidate | null;
     onOpenTrends: () => void;
 }
 
@@ -35,34 +34,24 @@ export default function RightPanel({
     ideas,
     featuredIdea,
     featuredTrend,
-    selectedIdea,
     onOpenTrends,
 }: RightPanelProps): JSX.Element {
     const tagData = buildTagData(ideas);
     const latestIdea = ideas[0];
     const highlightIdea = featuredIdea ?? latestIdea;
-    const focusIdea = selectedIdea ?? highlightIdea;
 
     return (
         <aside className="right-panel">
             <div className="right-panel__card right-panel__card--highlight">
-                <div className="right-panel__card-badge">{selectedIdea ? '選択中のアイデア' : '注目のアイデア'}</div>
-                <h3 className="right-panel__card-title">{focusIdea?.title ?? '-'}</h3>
+                <div className="right-panel__card-badge">注目のアイデア</div>
+                <h3 className="right-panel__card-title">{highlightIdea?.title ?? '-'}</h3>
                 <p className="right-panel__card-desc">
-                    {focusIdea?.tagline ?? ''}
+                    {highlightIdea?.tagline ?? ''}
                 </p>
-                {focusIdea?.tags[0] && (
-                    <span className="right-panel__card-tag">{focusIdea.tags[0]}</span>
+                {highlightIdea?.tags[0] && (
+                    <span className="right-panel__card-tag">{highlightIdea.tags[0]}</span>
                 )}
             </div>
-
-            {highlightIdea && focusIdea?.id !== highlightIdea.id && (
-                <div className="right-panel__card right-panel__card--compact">
-                    <div className="right-panel__card-badge">レコメンド</div>
-                    <h3 className="right-panel__card-title">{highlightIdea.title}</h3>
-                    <p className="right-panel__card-desc">{highlightIdea.tagline}</p>
-                </div>
-            )}
 
             <div className="right-panel__card right-panel__card--trend">
                 <div className="right-panel__card-badge">注目のトレンド</div>
