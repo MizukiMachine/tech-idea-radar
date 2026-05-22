@@ -104,4 +104,36 @@ describe("trend history persistent cache", () => {
     expect(cache.getCachedTrends()?.summaryPolicy).toEqual(RSS_ARTICLE_SUMMARY_POLICY);
     expect(cache.getCachedTrendByIndex(0)?.summaryPolicy).toEqual(RSS_ARTICLE_SUMMARY_POLICY);
   });
+
+  it("strips deprecated featured trend data from persistent trend cache", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-deprecated-trends-"));
+    const cacheFile = path.join(tmpDir, "idea-cache.json");
+    const generatedAt = "2026-05-17T00:00:00.000Z";
+    const legacyTrendScan = {
+      ...trendScan(generatedAt),
+      featuredTrend: {
+        title: "Deprecated featured trend",
+        reason: "No longer used by the UI",
+      },
+    };
+
+    fs.writeFileSync(cacheFile, JSON.stringify({
+      version: 3,
+      updatedAt: generatedAt,
+      batches: [],
+      trendHistory: [{
+        scannedAt: generatedAt,
+        data: legacyTrendScan,
+      }],
+    }));
+
+    vi.resetModules();
+    delete process.env.IDEA_CACHE_DISABLED;
+    process.env.IDEA_CACHE_FILE = cacheFile;
+
+    const cache = await import("../src/services/idea-cache");
+
+    expect(cache.getCachedTrends()).not.toHaveProperty("featuredTrend");
+    expect(cache.getCachedTrendByIndex(0)).not.toHaveProperty("featuredTrend");
+  });
 });

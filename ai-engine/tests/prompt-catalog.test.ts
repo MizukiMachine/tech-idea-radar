@@ -14,7 +14,6 @@ describe('prompt catalog', () => {
       'rss_article_summary',
       'rss_article_summary_repair',
       'featured_idea_selection',
-      'featured_trend_selection',
     ]);
   });
 

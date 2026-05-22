@@ -12,7 +12,6 @@ import {
   renderRssArticleSummaryRepairPolicy,
 } from '../policies/rss-summary-policy';
 import type {
-  FeaturedTrend,
   IdeaGenerationInput,
   IdeaGenerationOutput,
   TrendScanOutput,
@@ -1042,7 +1041,6 @@ export class EntrepreneurAgent {
         rssItemCount: rssContext.trendingKeywords.length + rssContext.relatedArticles.length,
         ...(warnings.length > 0 ? { warnings } : {}),
       },
-      featuredTrend: await this.selectFeaturedTrend(rssContext),
     };
   }
 
@@ -1149,48 +1147,6 @@ export class EntrepreneurAgent {
       console.warn(`[IdeaGeneration] Featured idea selection failed: ${message}`);
     }
     return undefined;
-  }
-
-  private async selectFeaturedTrend(rssContext: RssContext): Promise<FeaturedTrend | undefined> {
-    const articles = rssContext.relatedArticles
-      .filter((article) => article.url || article.link)
-      .slice(0, 18);
-    if (articles.length === 0) return undefined;
-
-    try {
-      const summaries = articles.map((article, index) => ({
-        index,
-        title: article.title,
-        titleJa: article.titleJa,
-        source: article.source,
-        published: article.publishedAt ?? article.published,
-        summary: article.summaryJa ?? article.summary ?? article.description,
-        keywords: article.keywords ?? [],
-      }));
-
-      const systemPrompt = renderPromptRole('featured_trend_selection', 'system');
-      const userPrompt = renderPromptRole('featured_trend_selection', 'user', { trend_summaries: summaries });
-      const raw = await this.llm.send(systemPrompt, userPrompt, 512);
-      const parsed = ResponseParser.parse<{ index?: unknown; summary?: unknown }>(raw);
-      const index = typeof parsed.index === 'number' ? parsed.index : undefined;
-      const summary = typeof parsed.summary === 'string' ? normalizeTitle(parsed.summary) : '';
-      if (index === undefined || index < 0 || index >= articles.length || !summary) return undefined;
-
-      const article = articles[index];
-      console.log(`[TrendScan] Featured trend selected: index=${index} "${article.titleJa ?? article.title}"`);
-      return {
-        title: article.title,
-        titleJa: article.titleJa,
-        url: article.url ?? article.link,
-        source: article.source,
-        published: article.publishedAt ?? article.published,
-        summary,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[TrendScan] Featured trend selection failed: ${message}`);
-      return undefined;
-    }
   }
 
   async filterIdeas(input: SemanticFilterInput): Promise<SemanticFilterOutput> {

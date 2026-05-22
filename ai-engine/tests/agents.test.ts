@@ -203,7 +203,7 @@ describe('FilterAgent', () => {
 });
 
 describe('EntrepreneurAgent', () => {
-  it('selects a featured trend from scanned RSS articles', async () => {
+  it('scans RSS articles without selecting a featured trend', async () => {
     vi.mocked(fetchRssContext).mockResolvedValueOnce({
       trendingKeywords: [{ word: 'AI', count: 3 }],
       relatedArticles: [{
@@ -218,32 +218,23 @@ describe('EntrepreneurAgent', () => {
       }],
     });
     const client = createMockClient('{}');
-    vi.mocked(client.send)
-      .mockResolvedValueOnce(JSON.stringify([{
-        index: 0,
-        title: 'AIエージェントツールがプロダクト業務に広がる',
-        titleJa: 'AIエージェントツールがプロダクト業務に広がる',
-        summaryJa: validTrendSummary(),
-      }]))
-      .mockResolvedValueOnce(JSON.stringify({
-        index: 0,
-        summary: 'AIエージェント導入がプロダクト業務に広がっています。',
-      }));
+    vi.mocked(client.send).mockResolvedValueOnce(JSON.stringify([{
+      index: 0,
+      title: 'AIエージェントツールがプロダクト業務に広がる',
+      titleJa: 'AIエージェントツールがプロダクト業務に広がる',
+      summaryJa: validTrendSummary(),
+    }]));
     const agent = new EntrepreneurAgent(client);
 
     const result = await agent.scanTrends();
 
-    expect(result.featuredTrend).toEqual(expect.objectContaining({
-      title: 'AIエージェントツールがプロダクト業務に広がる',
-      url: 'https://example.com/agent-tools',
-      source: 'Test RSS',
-      summary: 'AIエージェント導入がプロダクト業務に広がっています。',
-    }));
+    expect(result).not.toHaveProperty('featuredTrend');
     expect(result.summaryPolicy).toEqual(RSS_ARTICLE_SUMMARY_POLICY);
-    expect(client.send).toHaveBeenLastCalledWith(
-      expect.stringContaining('技術トレンド'),
+    expect(client.send).toHaveBeenCalledOnce();
+    expect(client.send).toHaveBeenCalledWith(
+      expect.stringContaining('技術ニュースの編集者'),
       expect.any(String),
-      512,
+      7000,
     );
   });
 

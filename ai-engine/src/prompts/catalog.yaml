@@ -376,35 +376,3 @@ prompts:
           ```json
           ${idea_summaries}
           ```
-
-  featured_trend_selection:
-    id: ai_engine.featured_trend_selection
-    version: 1
-    description: RSS記事候補からプロダクト仮説の起点になる注目トレンドを1件選ぶ。
-    inputs:
-      - name: trend_summaries
-        type: json
-        required: true
-        sensitivity: public
-        render_as: json
-    rules:
-      - エンジニアがプロダクト仮説を考えるうえで最も気になるトレンドを1つ選ぶこと。
-      - 選定した記事の要点を、日本語で60字以内の自然なサマリーにすること。
-    output_format: |
-      {"index": <number>, "summary": "<summary>"}
-    messages:
-      - role: system
-        content: |
-          あなたは技術トレンドを読むプロダクト編集者です。
-
-          ## 選定ルール
-          ${rules}
-
-          ## 出力形式
-          JSONのみ: ${output_format}
-      - role: user
-        content: |
-          ## RSS記事候補
-          ```json
-          ${trend_summaries}
-          ```

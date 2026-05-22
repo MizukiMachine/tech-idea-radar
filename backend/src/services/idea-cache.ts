@@ -167,9 +167,10 @@ function isPersistentTrendScanOutput(value: unknown): value is TrendScanOutput {
 }
 
 function withSummaryPolicy(data: TrendScanOutput): TrendScanOutput {
+  const { featuredTrend: _featuredTrend, ...cleanData } = data as TrendScanOutput & { featuredTrend?: unknown };
   return {
-    ...data,
-    summaryPolicy: data.summaryPolicy ?? RSS_ARTICLE_SUMMARY_POLICY,
+    ...cleanData,
+    summaryPolicy: cleanData.summaryPolicy ?? RSS_ARTICLE_SUMMARY_POLICY,
   };
 }
 

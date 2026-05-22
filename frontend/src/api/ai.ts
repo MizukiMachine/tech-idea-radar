@@ -225,15 +225,6 @@ export interface RssSummaryError {
   url?: string;
 }
 
-export interface FeaturedTrend {
-  title: string;
-  titleJa?: string;
-  url: string;
-  source: string;
-  published?: string;
-  summary: string;
-}
-
 export interface RssArticleSummaryPolicy {
   minItems: number;
   maxItems: number;
@@ -265,7 +256,6 @@ export interface TrendScan {
     observationWarning?: string;
   };
   focusKeywords: string[];
-  featuredTrend?: FeaturedTrend;
   generatedAt: string;
   sourceSummary: SourceSummary;
   summaryPolicy: RssArticleSummaryPolicy;
