@@ -1,16 +1,99 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+const EXPECTED_DEV_STACK_ID = (import.meta.env.VITE_DEV_STACK_ID ?? '').trim();
+const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+const API_BASE = EXPECTED_DEV_STACK_ID ? '' : RAW_API_BASE;
+const BACKEND_SERVICE_NAME = 'builder-agent-chain-backend';
+const HEALTH_CHECK_TIMEOUT_MS = 5_000;
 
 export function getApiBase(): string {
   return API_BASE || '(same-origin /api)';
 }
 
+export function getExpectedDevStackId(): string {
+  return EXPECTED_DEV_STACK_ID;
+}
+
+interface BackendHealth {
+  status?: string;
+  service?: string;
+  config?: {
+    requireDevStackHeader?: boolean;
+  };
+  process?: {
+    devStackId?: string | null;
+  };
+}
+
+function devStackError(message: string): Error {
+  return new Error(`DEV_STACK_MISMATCH: ${message}`);
+}
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+
+async function assertBackendConnection(): Promise<void> {
+  if (!EXPECTED_DEV_STACK_ID) return;
+
+  let res: Response;
+  try {
+    res = await fetchWithTimeout(`${API_BASE}/health`, { cache: 'no-store' }, HEALTH_CHECK_TIMEOUT_MS);
+  } catch (error) {
+    const message = error instanceof DOMException && error.name === 'AbortError'
+      ? `timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms`
+      : error instanceof Error ? error.message : String(error);
+    throw devStackError(`backend health check failed (${message})`);
+  }
+
+  if (!res.ok) {
+    throw devStackError(`backend health check returned HTTP ${res.status}`);
+  }
+
+  let health: BackendHealth;
+  try {
+    health = await res.json() as BackendHealth;
+  } catch {
+    throw devStackError('backend health check did not return JSON');
+  }
+
+  if (health.status !== 'ok' || health.service !== BACKEND_SERVICE_NAME) {
+    throw devStackError('backend health check did not identify the expected service');
+  }
+
+  const actualStackId = health.process?.devStackId ?? null;
+  if (actualStackId !== EXPECTED_DEV_STACK_ID) {
+    throw devStackError(`expected ${EXPECTED_DEV_STACK_ID}, got ${actualStackId ?? 'none'}`);
+  }
+
+  if (health.config?.requireDevStackHeader !== true) {
+    throw devStackError('backend is not enforcing the local dev-stack API boundary');
+  }
+}
+
+async function apiFetch(path: string, label: string, init?: RequestInit): Promise<Response> {
+  await assertBackendConnection();
+  const res = await fetch(`${API_BASE}${path}`, init);
+  if (!res.ok) await throwApiError(res, label);
+  return res;
+}
+
 async function throwApiError(res: Response, label: string): Promise<never> {
   let message = `${label} failed: ${res.status}`;
   try {
-    const body = await res.json() as { error?: string };
-    if (body.error) message = body.error;
+    const body = await res.json() as { error?: string; message?: string };
+    if (body.error && body.message) message = `${body.error}: ${body.message}`;
+    else if (body.error) message = body.error;
+    else if (body.message) message = body.message;
   } catch {
     // Keep the status-based message when the response is not JSON.
   }
@@ -233,52 +316,46 @@ export async function fetchIdeas(): Promise<{
   sourceSummary: SourceSummary;
   batches: BatchInfo[];
 }> {
-  const res = await fetch(`${API_BASE}/api/ai/ideas`);
-  if (!res.ok) await throwApiError(res, 'fetchIdeas');
+  const res = await apiFetch('/api/ai/ideas', 'fetchIdeas');
   return res.json();
 }
 
 // GET /api/ideas/meta
 export async function fetchIdeasMeta(): Promise<IdeasMeta> {
-  const res = await fetch(`${API_BASE}/api/ai/ideas/meta`, { cache: 'no-store' });
-  if (!res.ok) await throwApiError(res, 'fetchIdeasMeta');
+  const res = await apiFetch('/api/ai/ideas/meta', 'fetchIdeasMeta', { cache: 'no-store' });
   return res.json();
 }
 
 // GET /api/trends
 export async function fetchTrends(): Promise<TrendScan> {
-  const res = await fetch(`${API_BASE}/api/ai/trends`, { cache: 'no-store' });
-  if (!res.ok) await throwApiError(res, 'fetchTrends');
+  const res = await apiFetch('/api/ai/trends', 'fetchTrends', { cache: 'no-store' });
   return normalizeTrendScan(await res.json() as TrendScan);
 }
 
 // GET /api/trends/history
 export async function fetchTrendHistory(): Promise<{ history: TrendHistoryEntry[] }> {
-  const res = await fetch(`${API_BASE}/api/ai/trends/history`, { cache: 'no-store' });
-  if (!res.ok) await throwApiError(res, 'fetchTrendHistory');
+  const res = await apiFetch('/api/ai/trends/history', 'fetchTrendHistory', { cache: 'no-store' });
   return res.json();
 }
 
 // GET /api/trends/history/:index
 export async function fetchTrendSnapshot(index: number): Promise<TrendScan> {
-  const res = await fetch(`${API_BASE}/api/ai/trends/history/${index}`, { cache: 'no-store' });
-  if (!res.ok) await throwApiError(res, 'fetchTrendSnapshot');
+  const res = await apiFetch(`/api/ai/trends/history/${index}`, 'fetchTrendSnapshot', { cache: 'no-store' });
   return normalizeTrendScan(await res.json() as TrendScan);
 }
 
 // POST /api/trends/refresh
 export async function refreshTrends(): Promise<TrendScan> {
-  const res = await fetch(`${API_BASE}/api/ai/trends/refresh`, {
+  const res = await apiFetch('/api/ai/trends/refresh', 'refreshTrends', {
     method: 'POST',
     cache: 'no-store',
   });
-  if (!res.ok) await throwApiError(res, 'refreshTrends');
   return normalizeTrendScan(await res.json() as TrendScan);
 }
 
 // SSE helper for idea generation / refresh streams
 function ideaStream(
-  url: string,
+  path: string,
   method: string,
   callbacks: {
     onProgress?: (text: string) => void;
@@ -290,14 +367,23 @@ function ideaStream(
 ): AbortController {
   const controller = new AbortController();
 
-  fetch(url, {
-    method,
-    signal: controller.signal,
-    ...(body ? {
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    } : {}),
-  })
+  void (async () => {
+    await assertBackendConnection();
+    const res = await fetch(`${API_BASE}${path}`, {
+      method,
+      signal: controller.signal,
+      ...(body ? {
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      } : {}),
+    });
+
+    if (!res.ok) {
+      await throwApiError(res, 'streamIdeas');
+    }
+
+    return res;
+  })()
     .then(async (res) => {
       if (!res.ok) {
         callbacks.onError(`Stream failed: ${res.status}`);
@@ -343,7 +429,7 @@ function ideaStream(
 
 // GET /api/ideas/stream
 export function streamIdeas(callbacks: Parameters<typeof ideaStream>[2]): AbortController {
-  return ideaStream(`${API_BASE}/api/ai/ideas/stream`, 'GET', callbacks);
+  return ideaStream('/api/ai/ideas/stream', 'GET', callbacks);
 }
 
 // POST /api/ideas/filter
@@ -352,19 +438,18 @@ export async function filterIdeas(query: string, candidates: IdeaCandidate[], to
   filterReasoning: string;
   matchCriteria: string[];
 }> {
-  const res = await fetch(`${API_BASE}/api/ai/ideas/filter`, {
+  const res = await apiFetch('/api/ai/ideas/filter', 'filterIdeas', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, candidates, topK }),
   });
-  if (!res.ok) await throwApiError(res, 'filterIdeas');
   return res.json();
 }
 
 // POST /api/ideas/refresh
 export function refreshIdeas(callbacks: Parameters<typeof ideaStream>[2], focusKeyword?: string): AbortController {
   return ideaStream(
-    `${API_BASE}/api/ai/ideas/refresh`,
+    '/api/ai/ideas/refresh',
     'POST',
     callbacks,
     focusKeyword ? { focusKeyword } : undefined,

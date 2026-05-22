@@ -113,6 +113,13 @@ function userFacingError(message: string): string {
     }
     return 'バックエンドに接続できません。API サーバーを起動してから、もう一度生成してください。';
   }
+  if (
+    normalized.includes('dev_stack_mismatch')
+    || normalized.includes('dev stack')
+    || normalized.includes('devstack')
+  ) {
+    return 'フロントエンドが起動時に確認したバックエンドと現在の接続先が一致しません。npm run dev でフロントエンドとバックエンドをセットで再起動してください。';
+  }
   if (normalized.includes('zai_api_key')) {
     return 'ZAI_API_KEY が設定されていません。バックエンドの環境変数を確認してください。';
   }
@@ -158,7 +165,7 @@ function App(): JSX.Element {
   const [featuredIdea, setFeaturedIdea] = useState<IdeaCandidate | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const error: string | null = null;
+  const [error, setError] = useState<string | null>(null);
   const progressText: string | null = null;
   const [sourceSummary, setSourceSummary] = useState<SourceSummary | null>(null);
   const [activeCategory, setActiveCategory] = useState('すべて');
@@ -176,14 +183,16 @@ function App(): JSX.Element {
       try {
         const result = await fetchIdeas();
         if (!cancelled && result.candidates.length > 0) {
+          setError(null);
           setIdeas(result.candidates);
           setFeaturedIdea(result.featuredIdea ?? null);
           setSourceSummary(result.sourceSummary);
           setLoading(false);
           return;
         }
-      } catch {
-        // Empty state below handles unavailable cached ideas.
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'アイデア取得に失敗しました';
+        if (!cancelled) setError(userFacingError(message));
       }
 
       if (!cancelled) setLoading(false);
@@ -333,7 +342,7 @@ function App(): JSX.Element {
 
   const hasIdeas = ideas.length > 0;
   const showDashboard = loading || hasIdeas;
-  const showSetupState = !loading && !hasIdeas;
+  const showSetupState = !loading && !hasIdeas && !error;
   const handleIdeaSelect = useCallback((idea: IdeaCandidate) => {
     setSelectedIdea(idea);
     setModalIdea(idea);

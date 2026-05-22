@@ -45,6 +45,7 @@ healthRouter.get("/", (_req, res) => {
       corsConfigured,
       port: process.env.PORT ?? "3001",
       nodeEnv: process.env.NODE_ENV ?? "development",
+      requireDevStackHeader: process.env.BAC_REQUIRE_DEV_STACK_HEADER === "true",
     },
     cache: {
       hasData: Boolean(cached && cached.candidates.length > 0),
