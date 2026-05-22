@@ -28,6 +28,8 @@ const IDEA_SORTS: { id: IdeaSort; label: string; requiresTrend?: boolean }[] = [
   { id: 'evidence', label: '根拠多い順' },
 ];
 
+const TREND_DISPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 const INTEREST_KEYWORDS: Record<string, string[]> = {
   business: ['業務', '効率', 'SaaS', 'B2B', '自動化', '管理', '営業', '経理', 'バックオフィス'],
   ai: ['AI', '機械学習', '自動化', '生成', 'LLM', 'チャット', '分析'],
@@ -96,6 +98,24 @@ function matchesSearchQuery(text: string, query: string): boolean {
   return terms.every((term) => normalizedText.includes(term));
 }
 
+function parseTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
+
+function isWithinTrendDisplayWindow(time: number | null, referenceTime = Date.now()): boolean {
+  return time !== null && referenceTime - time < TREND_DISPLAY_WINDOW_MS;
+}
+
+function trendScanTime(scan: TrendScan): number | null {
+  return parseTime(scan.generatedAt);
+}
+
+function trendHistoryEntryTime(entry: TrendHistoryEntry): number | null {
+  return parseTime(entry.generatedAt) ?? parseTime(entry.scannedAt);
+}
+
 function userFacingError(message: string): string {
   const normalized = message.toLowerCase();
   if (
@@ -133,8 +153,7 @@ function App(): JSX.Element {
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [trendError, setTrendError] = useState<string | null>(null);
   const [trendHistory, setTrendHistory] = useState<TrendHistoryEntry[]>([]);
-  const [activeTrendIndex, setActiveTrendIndex] = useState<number>(0);
-  const [trendSnapshotCache, setTrendSnapshotCache] = useState<Map<number, TrendScan>>(new Map());
+  const [trendSnapshots, setTrendSnapshots] = useState<TrendScan[]>([]);
   const [ideas, setIdeas] = useState<IdeaCandidate[]>([]);
   const [featuredIdea, setFeaturedIdea] = useState<IdeaCandidate | null>(null);
   const [loading, setLoading] = useState(true);
@@ -185,8 +204,9 @@ function App(): JSX.Element {
       try {
         const result = await fetchTrends();
         if (!cancelled) {
-          setTrends(result);
-          setTrendSnapshotCache(new Map([[0, result]]));
+          const recentTrend = isWithinTrendDisplayWindow(trendScanTime(result)) ? result : null;
+          setTrends(recentTrend);
+          setTrendSnapshots(recentTrend ? [recentTrend] : []);
         }
       } catch {
         // The trends view still performs its own user-facing load and error handling.
@@ -215,11 +235,31 @@ function App(): JSX.Element {
         } catch {
           historyResult = { history: [] };
         }
+
+        const referenceTime = Date.now();
+        const recentHistoryEntries = historyResult.history
+          .map((entry, index) => ({ entry, index }))
+          .filter(({ entry }) => isWithinTrendDisplayWindow(trendHistoryEntryTime(entry), referenceTime));
+        const latestSnapshot = isWithinTrendDisplayWindow(trendScanTime(trendsResult), referenceTime)
+          ? trendsResult
+          : null;
+        const historicalSnapshots = await Promise.all(
+          recentHistoryEntries.slice(1).map(async ({ index }) => {
+            try {
+              return await fetchTrendSnapshot(index);
+            } catch {
+              return null;
+            }
+          }),
+        );
+
         if (!cancelled) {
-          setTrends(trendsResult);
-          setTrendHistory(historyResult.history);
-          setActiveTrendIndex(0);
-          setTrendSnapshotCache(new Map([[0, trendsResult]]));
+          setTrends(latestSnapshot);
+          setTrendHistory(recentHistoryEntries.map(({ entry }) => entry));
+          setTrendSnapshots([
+            ...(latestSnapshot ? [latestSnapshot] : []),
+            ...historicalSnapshots.filter((snapshot): snapshot is TrendScan => Boolean(snapshot)),
+          ]);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'トレンド取得に失敗しました';
@@ -234,34 +274,6 @@ function App(): JSX.Element {
       cancelled = true;
     };
   }, [activeView]);
-
-  // Handle trend snapshot selection
-  const handleSelectTrendSnapshot = useCallback(async (index: number) => {
-    if (index === activeTrendIndex) return;
-
-    setTrendError(null);
-    const cached = trendSnapshotCache.get(index);
-    if (cached) {
-      setTrends(cached);
-      setActiveTrendIndex(index);
-      setTrendsLoading(false);
-      return;
-    }
-
-    setTrendsLoading(true);
-
-    try {
-      const snapshot = await fetchTrendSnapshot(index);
-      setTrendSnapshotCache((prev) => new Map(prev).set(index, snapshot));
-      setTrends(snapshot);
-      setActiveTrendIndex(index);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'スナップショット取得に失敗しました';
-      setTrendError(userFacingError(message));
-    } finally {
-      setTrendsLoading(false);
-    }
-  }, [activeTrendIndex, trendSnapshotCache]);
 
   // Debounced search
   const handleSearch = useCallback((value: string) => {
@@ -356,12 +368,10 @@ function App(): JSX.Element {
       <main className="workspace">
         {activeView === 'trends' && (
           <TrendBoard
-            trends={trends}
+            trendSnapshots={trendSnapshots}
             loading={trendsLoading}
             error={trendError}
             trendHistory={trendHistory}
-            activeTrendIndex={activeTrendIndex}
-            onSelectTrend={handleSelectTrendSnapshot}
           />
         )}
 

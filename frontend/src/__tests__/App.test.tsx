@@ -153,14 +153,6 @@ const trends = {
   },
   focusKeywords: ["AI"],
   summaryPolicy,
-  featuredTrend: {
-    title: "AI agent tools are moving into product workflows",
-    titleJa: "AIエージェントツールがプロダクト業務に広がる",
-    url: "https://example.com/article",
-    source: "Example RSS",
-    published: generatedAt,
-    summary: "AIエージェント導入がプロダクト業務に広がっています。",
-  },
   generatedAt,
   sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
 };
@@ -254,6 +246,92 @@ describe("App", () => {
     expect(screen.getByText("1/2件")).toBeTruthy();
   });
 
+  it("renders previous trend snapshots and deduplicates repeated article URLs", async () => {
+    const previousGeneratedAt = new Date(Date.parse(generatedAt) - 4 * 60 * 60 * 1000).toISOString();
+    const oldGeneratedAt = new Date(Date.parse(generatedAt) - 25 * 60 * 60 * 1000).toISOString();
+    const previousOnlyPublishedAt = new Date(Date.parse(previousGeneratedAt) - 71 * 60 * 60 * 1000).toISOString();
+    const previousTrends = {
+      ...trends,
+      generatedAt: previousGeneratedAt,
+      rssContext: {
+        ...trends.rssContext,
+        trendingKeywords: [{ word: "previous", count: 1 }],
+        topicClusters: [],
+        relatedArticles: [
+          {
+            ...trends.rssContext.relatedArticles[0],
+            title: "Older duplicate article",
+            titleJa: "古い重複記事",
+          },
+          {
+            ...trends.rssContext.relatedArticles[1],
+            title: "Previous snapshot unique article",
+            titleJa: "前回取得分だけにある記事",
+            link: "https://example.com/previous-only",
+            url: "https://example.com/previous-only",
+            published: previousOnlyPublishedAt,
+            publishedAt: previousOnlyPublishedAt,
+            source: "Previous RSS",
+            topicStatus: undefined,
+            topicKey: undefined,
+            firstSeenAt: undefined,
+            lastSeenAt: undefined,
+            topicArticleCount: undefined,
+            topicSourceCount: undefined,
+            keywords: ["previous"],
+          },
+        ],
+      },
+    };
+    const historyWithPrevious = {
+      history: [
+        trendHistory.history[0],
+        {
+          scannedAt: previousGeneratedAt,
+          generatedAt: previousGeneratedAt,
+          articleCount: 2,
+          keywordCount: 1,
+        },
+        {
+          scannedAt: oldGeneratedAt,
+          generatedAt: oldGeneratedAt,
+          articleCount: 1,
+          keywordCount: 1,
+        },
+      ],
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends/history/1")) body = previousTrends;
+      else if (url.includes("/api/ai/trends/history")) body = historyWithPrevious;
+      else if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 3" })).toBeTruthy());
+    expect(screen.getByText("履歴2回")).toBeTruthy();
+    expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
+    expect(screen.getByText("開発ワークフローの自動化が進む")).toBeTruthy();
+    expect(screen.getByText("前回取得分だけにある記事")).toBeTruthy();
+    expect(screen.queryByText("古い重複記事")).toBeNull();
+    expect(screen.getByRole("button", { name: "新着 1" })).toBeTruthy();
+    expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history/2"))).toBe(false);
+  });
+
   it("shows trend evidence on idea cards and detail modal", async () => {
     render(<App />);
 
@@ -270,6 +348,38 @@ describe("App", () => {
     expect(screen.getByText("AIエージェント導入")).toBeTruthy();
     expect(screen.getByText((_, node) => node?.textContent === "観測規模 2媒体 / 2記事")).toBeTruthy();
     expect(screen.queryByText((_, node) => node?.textContent === "このアイデアの根拠 RSS 1件")).toBeNull();
+  });
+
+  it("does not use trend evidence on idea cards when the latest trend scan is older than 24 hours", async () => {
+    const staleGeneratedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    const staleTrends = {
+      ...trends,
+      generatedAt: staleGeneratedAt,
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      else if (url.includes("/api/ai/trends")) body = staleTrends;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" })).toBeTruthy());
+    await waitFor(() => expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends"))).toBe(true));
+    expect(screen.queryByText("急増トレンド")).toBeNull();
+    expect((screen.getByRole("button", { name: "トレンド優先" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("infers visible trend status when cached RSS articles omit topic metadata", async () => {

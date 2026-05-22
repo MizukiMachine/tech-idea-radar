@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import type {
   RssArticle,
   RssArticleSummaryPolicy,
@@ -40,23 +40,6 @@ function formatDate(value: string | null | undefined): string {
   });
 }
 
-function formatTimelineLabel(scannedAt: string): string {
-  const date = new Date(scannedAt);
-  if (Number.isNaN(date.getTime())) return scannedAt;
-  const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-
-  if (diffHours < 1) return '今';
-  if (diffHours < 24) return `${diffHours}時間前`;
-  return date.toLocaleString('ja-JP', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 function containsJapanese(text: string): boolean {
   return /[ぁ-んァ-ヶ一-龯]/.test(text);
 }
@@ -78,6 +61,102 @@ function containsFeedMetadataOrUrl(text: string): boolean {
 
 function articleUrl(article: RssArticle): string {
   return article.url || article.link;
+}
+
+function normalizeArticleUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    for (const key of [...url.searchParams.keys()]) {
+      if (key.toLowerCase().startsWith('utm_')) url.searchParams.delete(key);
+    }
+    return url.toString();
+  } catch {
+    return value.trim();
+  }
+}
+
+function articleIdentity(article: RssArticle): string {
+  const url = normalizeArticleUrl(articleUrl(article));
+  return url || `${article.source}:${article.title}:${article.publishedAt ?? article.published}`;
+}
+
+type MergedRssArticle = RssArticle & {
+  trendSnapshotGeneratedAt?: string;
+};
+
+function articleTrendReferenceDate(article: RssArticle, fallback?: string): string | undefined {
+  return (article as MergedRssArticle).trendSnapshotGeneratedAt ?? fallback;
+}
+
+function mergeKeywords(articles: RssArticle[], fallback: TrendScan['rssContext']['trendingKeywords']) {
+  const counts = new Map<string, number>();
+  for (const article of articles) {
+    for (const keyword of article.keywords ?? []) {
+      counts.set(keyword, (counts.get(keyword) ?? 0) + 1);
+    }
+  }
+
+  const merged = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 20)
+    .map(([word, count]) => ({ word, count }));
+
+  return merged.length > 0 ? merged : fallback;
+}
+
+function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {
+  const latest = snapshots[0];
+  if (!latest) return null;
+
+  const seenArticles = new Set<string>();
+  const relatedArticles: MergedRssArticle[] = [];
+  const seenTopics = new Set<string>();
+  const topicClusters: NonNullable<TrendScan['rssContext']['topicClusters']> = [];
+  const warnings = new Set<string>();
+  const sourceErrors = [];
+  const summaryErrors = [];
+
+  for (const snapshot of snapshots) {
+    for (const article of snapshot.rssContext.relatedArticles) {
+      const key = articleIdentity(article);
+      if (seenArticles.has(key)) continue;
+      seenArticles.add(key);
+      relatedArticles.push({
+        ...article,
+        trendSnapshotGeneratedAt: snapshot.generatedAt,
+      });
+    }
+
+    for (const topic of snapshot.rssContext.topicClusters ?? []) {
+      if (seenTopics.has(topic.topic)) continue;
+      seenTopics.add(topic.topic);
+      topicClusters.push(topic);
+    }
+
+    for (const warning of snapshot.sourceSummary.warnings ?? []) warnings.add(warning);
+    sourceErrors.push(...(snapshot.rssContext.sourceErrors ?? []));
+    summaryErrors.push(...(snapshot.rssContext.summaryErrors ?? []));
+  }
+
+  const trendingKeywords = mergeKeywords(relatedArticles, latest.rssContext.trendingKeywords);
+
+  return {
+    ...latest,
+    rssContext: {
+      ...latest.rssContext,
+      trendingKeywords,
+      relatedArticles,
+      topicClusters,
+      ...(sourceErrors.length > 0 ? { sourceErrors } : {}),
+      ...(summaryErrors.length > 0 ? { summaryErrors } : {}),
+    },
+    sourceSummary: {
+      ...latest.sourceSummary,
+      rssItemCount: relatedArticles.length + trendingKeywords.length,
+      ...(warnings.size > 0 ? { warnings: [...warnings] } : {}),
+    },
+  };
 }
 
 function articleSummary(article: RssArticle): string {
@@ -197,32 +276,32 @@ interface SourceRow {
 }
 
 interface TrendBoardProps {
-  trends: TrendScan | null;
+  trendSnapshots: TrendScan[];
   loading: boolean;
   error: string | null;
   trendHistory: TrendHistoryEntry[];
-  activeTrendIndex: number;
-  onSelectTrend: (index: number) => void;
 }
 
 export default function TrendBoard({
-  trends,
+  trendSnapshots,
   loading,
   error,
   trendHistory,
-  activeTrendIndex,
-  onSelectTrend,
 }: TrendBoardProps): JSX.Element {
   const [expandedArticleUrls, setExpandedArticleUrls] = useState<Set<string>>(() => new Set());
   const [topicFilter, setTopicFilter] = useState<TopicFilter>('all');
   const [trendSearchQuery, setTrendSearchQuery] = useState('');
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 16;
-  const summaryPolicy = trends?.summaryPolicy;
-  const usesLegacySummaryContract = trends?.summaryPolicySource === 'default';
-  const relatedArticles = trends?.rssContext.relatedArticles ?? [];
+  const mergedTrends = useMemo(
+    () => mergeTrendSnapshots(trendSnapshots),
+    [trendSnapshots],
+  );
+  const summaryPolicy = mergedTrends?.summaryPolicy;
+  const usesLegacySummaryContract = mergedTrends?.summaryPolicySource === 'default';
+  const relatedArticles = mergedTrends?.rssContext.relatedArticles ?? [];
   const policyDisplayableArticles = summaryPolicy
-    ? (trends?.rssContext.relatedArticles ?? []).filter((article) => isDisplayableArticle(article, summaryPolicy))
+    ? relatedArticles.filter((article) => isDisplayableArticle(article, summaryPolicy))
     : [];
   const displayableArticles = usesLegacySummaryContract ? [] : policyDisplayableArticles;
   const fallbackArticles = displayableArticles.length > 0
@@ -238,9 +317,12 @@ export default function TrendBoard({
       : displayableArticles
     ).map((article) => articleUrl(article)),
   );
-  const keywords = trends?.rssContext.trendingKeywords ?? [];
-  const topicClusters = (trends?.rssContext.topicClusters ?? []).filter((topic) => topic.status !== 'stale');
-  const articleDisplayStatus = (article: RssArticle) => displayTopicStatus(article, trends?.generatedAt);
+  const keywords = mergedTrends?.rssContext.trendingKeywords ?? [];
+  const topicClusters = (mergedTrends?.rssContext.topicClusters ?? []).filter((topic) => topic.status !== 'stale');
+  const articleDisplayStatus = (article: RssArticle) => displayTopicStatus(
+    article,
+    articleTrendReferenceDate(article, mergedTrends?.generatedAt),
+  );
   const articleStatusCounts: Record<TopicFilter, number> = {
     all: rssArticles.length,
     spiking: rssArticles.filter((article) => articleDisplayStatus(article) === 'spiking').length,
@@ -305,7 +387,7 @@ export default function TrendBoard({
         </div>
       )}
 
-      {loading && !trends && (
+      {loading && !mergedTrends && (
         <div className="tb-loading">
           <span className="tb-loading__spinner" />
           <div>
@@ -315,29 +397,21 @@ export default function TrendBoard({
         </div>
       )}
 
-      {!loading && trends && rssArticles.length === 0 && (
+      {!loading && (!mergedTrends || rssArticles.length === 0) && (
         <div className="tb-loading">
           <h3>表示できるRSS記事がありません</h3>
           <p>データ更新後に表示されます。</p>
         </div>
       )}
 
-      {trendHistory.length > 1 && (!trends || rssArticles.length === 0) && (
-        <TimelineNavigator
-          history={trendHistory}
-          activeIndex={activeTrendIndex}
-          onSelectIndex={onSelectTrend}
-        />
-      )}
-
-      {trends?.rssContext.observationWarning && rssArticles.length === 0 && (
+      {mergedTrends?.rssContext.observationWarning && rssArticles.length === 0 && (
         <div className="tb-observation-warning">
           <strong>観測履歴の保存に注意が必要です</strong>
-          <span>{trends.rssContext.observationWarning}</span>
+          <span>{mergedTrends.rssContext.observationWarning}</span>
         </div>
       )}
 
-      {trends && rssArticles.length > 0 && (
+      {mergedTrends && rssArticles.length > 0 && (
         <TrendCardsLayout
           articles={filteredArticles}
           allArticleCount={rssArticles.length}
@@ -358,9 +432,10 @@ export default function TrendBoard({
           searchQuery={trendSearchQuery}
           onSearchChange={handleTrendSearch}
           onClearSearch={handleClearTrendSearch}
-          trendGeneratedAt={trends?.generatedAt}
-          observationWarning={trends.rssContext.observationWarning}
+          trendGeneratedAt={mergedTrends.generatedAt}
+          observationWarning={mergedTrends.rssContext.observationWarning}
           showTopicUnavailable={topicClusters.length === 0}
+          snapshotCount={trendHistory.length || trendSnapshots.length}
         />
       )}
     </section>
@@ -390,6 +465,7 @@ interface TrendLayoutProps {
   trendGeneratedAt?: string;
   observationWarning?: string;
   showTopicUnavailable: boolean;
+  snapshotCount: number;
 }
 
 function TrendCardsLayout({
@@ -415,6 +491,7 @@ function TrendCardsLayout({
   trendGeneratedAt,
   observationWarning,
   showTopicUnavailable,
+  snapshotCount,
 }: TrendLayoutProps): JSX.Element {
   return (
     <div className="tb-layout tb-layout--cards">
@@ -445,6 +522,7 @@ function TrendCardsLayout({
           searchQuery={searchQuery}
           onSearchChange={onSearchChange}
           onClearSearch={onClearSearch}
+          snapshotCount={snapshotCount}
         />
         {articles.length === 0 ? (
           <div className="tb-feed-empty">
@@ -462,7 +540,7 @@ function TrendCardsLayout({
                   rank={page * pageSize + index + 1}
                   expanded={expandedArticleUrls.has(articleUrl(article))}
                   summaryAvailable={summaryArticleUrls.has(articleUrl(article))}
-                  displayStatus={displayTopicStatus(article, trendGeneratedAt)}
+                  displayStatus={displayTopicStatus(article, articleTrendReferenceDate(article, trendGeneratedAt))}
                   onToggle={() => onToggleArticle(article)}
                 />
               ))}
@@ -495,6 +573,7 @@ function TrendFeedHeader({
   searchQuery,
   onSearchChange,
   onClearSearch,
+  snapshotCount,
 }: {
   count: number;
   totalCount: number;
@@ -505,6 +584,7 @@ function TrendFeedHeader({
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onClearSearch: () => void;
+  snapshotCount: number;
 }): JSX.Element {
   const filtered = statusFilter !== 'all';
   const searched = searchQuery.trim().length > 0;
@@ -548,6 +628,9 @@ function TrendFeedHeader({
         <span className="tb-feed__count">
           {filtered || searched ? `${count}/${totalCount}件` : `${count}件`}
         </span>
+        {snapshotCount > 1 && (
+          <span className="tb-feed__count">履歴{snapshotCount}回</span>
+        )}
       </div>
     </div>
   );
@@ -639,35 +722,6 @@ function SourcePanel({
             </span>
             <span className="tb-source-row__count">{count}</span>
           </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/* ── Timeline Navigator ───────────────────────────────── */
-
-interface TimelineNavigatorProps {
-  history: TrendHistoryEntry[];
-  activeIndex: number;
-  onSelectIndex: (index: number) => void;
-}
-
-function TimelineNavigator({ history, activeIndex, onSelectIndex }: TimelineNavigatorProps): JSX.Element {
-  return (
-    <div className="tb-timeline">
-      <div className="tb-timeline__scroll">
-        {history.map((entry, index) => (
-          <button
-            key={entry.scannedAt}
-            type="button"
-            className={`tb-timeline__item ${index === activeIndex ? 'tb-timeline__item--active' : ''}`}
-            onClick={() => onSelectIndex(index)}
-            title={new Date(entry.scannedAt).toLocaleString('ja-JP')}
-          >
-            <span className="tb-timeline__label">{formatTimelineLabel(entry.scannedAt)}</span>
-            {index === activeIndex && <span className="tb-timeline__indicator" />}
-          </button>
         ))}
       </div>
     </div>
