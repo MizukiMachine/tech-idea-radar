@@ -11,7 +11,6 @@ import {
   type SourceSummary,
   type IdeasMeta,
   type TrendScan,
-  type BatchInfo,
   type TrendHistoryEntry,
   type FeaturedTrend,
   type RssArticle,
@@ -181,8 +180,6 @@ function App(): JSX.Element {
   const [ideaSort, setIdeaSort] = useState<IdeaSort>('generated');
   const [selectedIdea, setSelectedIdea] = useState<IdeaCandidate | null>(null);
   const [modalIdea, setModalIdea] = useState<IdeaCandidate | null>(null);
-  const [activeBatch, setActiveBatch] = useState<string | null>(null);
-  const [batches, setBatches] = useState<BatchInfo[]>([]);
   const refreshIdeasMeta = useCallback((retryUsage = false) => {
     const update = () => {
       void fetchIdeasMeta()
@@ -208,7 +205,6 @@ function App(): JSX.Element {
           setIdeas(result.candidates);
           setFeaturedIdea(result.featuredIdea ?? null);
           setSourceSummary(result.sourceSummary);
-          setBatches(result.batches ?? []);
           setLoading(false);
           return;
         }
@@ -333,7 +329,6 @@ function App(): JSX.Element {
   }, [sourceIdeas, trends]);
   const hasTrendSignals = [...trendSignalByIdea.values()].some((signal) => signal && signal.status !== 'stale');
   const filteredIdeas = sourceIdeas.filter((idea) => {
-      if (activeBatch && idea.batchTime !== activeBatch) return false;
       const text = ideaText(idea);
       const normalizedSearch = searchQuery.trim().toLowerCase();
       if (normalizedSearch && !matchesSearchQuery(text, normalizedSearch)) return false;
@@ -496,9 +491,6 @@ function App(): JSX.Element {
                   <Sidebar
                     onCategoryFilter={setActiveCategory}
                     onInterestChange={setActiveInterests}
-                    batches={batches}
-                    activeBatch={activeBatch}
-                    onBatchFilter={setActiveBatch}
                   />
                 )}
 

@@ -18,23 +18,6 @@ function getIconForIdea(id: string, index: number) {
     };
 }
 
-function formatGeneratedAtLabel(generatedAt: string) {
-    try {
-        const date = new Date(generatedAt);
-        if (Number.isNaN(date.getTime())) return generatedAt;
-        return date.toLocaleString('ja-JP', {
-            timeZone: 'Asia/Tokyo',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-        });
-    } catch {
-        return generatedAt;
-    }
-}
-
 interface IdeaCardProps {
     idea: IdeaCandidate;
     index: number;
@@ -75,11 +58,6 @@ export default function IdeaCard({
                     <span className="idea-card__trend-scope">
                         登場メディア {visibleTrendSignal.sourceCount}箇所 / 関連記事 {visibleTrendSignal.articleCount}件
                     </span>
-                </div>
-            )}
-            {idea.batchTime && (
-                <div className="idea-card__meta">
-                    <span className="idea-card__batch">生成 {formatGeneratedAtLabel(idea.batchTime)}</span>
                 </div>
             )}
         </button>
