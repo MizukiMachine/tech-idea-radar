@@ -1,4 +1,4 @@
-import type { RssTopicStatus } from '../api/ai';
+import type { RssArticle, RssTopicStatus } from '../api/ai';
 
 export const TOPIC_STATUS_LABEL: Record<RssTopicStatus, string> = {
   spiking: '急増',
@@ -16,4 +16,30 @@ export function topicStatusRank(status: RssTopicStatus | undefined): number {
   if (status === 'new') return 2;
   if (status === 'continuing') return 1;
   return 0;
+}
+
+const INFERRED_NEW_WINDOW_MS = 72 * 60 * 60 * 1000;
+
+function parseTime(value: string | undefined): number | null {
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
+
+export function displayTopicStatus(
+  article: Pick<RssArticle, 'topicStatus' | 'firstSeenAt' | 'publishedAt' | 'published' | 'lastSeenAt'>,
+  referenceDate?: string,
+): RssTopicStatus | null {
+  if (article.topicStatus) {
+    return article.topicStatus === 'stale' ? null : article.topicStatus;
+  }
+
+  const articleTime = parseTime(article.firstSeenAt)
+    ?? parseTime(article.publishedAt)
+    ?? parseTime(article.published)
+    ?? parseTime(article.lastSeenAt);
+  if (!articleTime) return null;
+
+  const referenceTime = parseTime(referenceDate) ?? Date.now();
+  return referenceTime - articleTime <= INFERRED_NEW_WINDOW_MS ? 'new' : null;
 }

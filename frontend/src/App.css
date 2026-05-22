@@ -133,29 +133,6 @@
   padding: 0 32px 56px;
 }
 
-/* ===== Idea Page Header ===== */
-.idea-page-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  margin-bottom: 20px;
-  padding: 4px 0 18px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.idea-page-header__copy {
-  min-width: 0;
-}
-
-.idea-page-header h2 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 24px;
-  font-weight: 800;
-  line-height: 1.25;
-  letter-spacing: 0;
-}
-
 /* ===== Dashboard 3-Column Layout ===== */
 .dashboard {
   display: flex;

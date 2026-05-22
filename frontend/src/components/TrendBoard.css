@@ -6,27 +6,6 @@
   min-width: 0;
 }
 
-.tb-header {
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-start;
-  padding: 4px 0 18px;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.tb-header__copy {
-  min-width: 0;
-}
-
-.tb-header h2 {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 24px;
-  font-weight: 800;
-  line-height: 1.25;
-  letter-spacing: 0;
-}
-
 /* ===== Timeline Navigator ===== */
 .tb-timeline {
   min-width: 0;

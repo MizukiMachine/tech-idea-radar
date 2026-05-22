@@ -4,8 +4,9 @@ import type {
   RssArticleSummaryPolicy,
   TrendScan,
   TrendHistoryEntry,
+  RssTopicStatus,
 } from '../api/ai';
-import { topicStatusLabel } from '../utils/trend-status';
+import { displayTopicStatus, topicStatusLabel } from '../utils/trend-status';
 import './TrendBoard.css';
 
 const SOURCE_STYLE: Record<string, { color: string; bg: string }> = {
@@ -239,11 +240,12 @@ export default function TrendBoard({
   );
   const keywords = trends?.rssContext.trendingKeywords ?? [];
   const topicClusters = (trends?.rssContext.topicClusters ?? []).filter((topic) => topic.status !== 'stale');
+  const articleDisplayStatus = (article: RssArticle) => displayTopicStatus(article, trends?.generatedAt);
   const articleStatusCounts: Record<TopicFilter, number> = {
     all: rssArticles.length,
-    spiking: rssArticles.filter((article) => article.topicStatus === 'spiking').length,
-    new: rssArticles.filter((article) => article.topicStatus === 'new').length,
-    continuing: rssArticles.filter((article) => article.topicStatus === 'continuing').length,
+    spiking: rssArticles.filter((article) => articleDisplayStatus(article) === 'spiking').length,
+    new: rssArticles.filter((article) => articleDisplayStatus(article) === 'new').length,
+    continuing: rssArticles.filter((article) => articleDisplayStatus(article) === 'continuing').length,
   };
 
   const maxKeywordCount = keywords.length > 0
@@ -260,7 +262,7 @@ export default function TrendBoard({
     .map(([source, count]) => ({ source, count }));
   const statusFilteredArticles = topicFilter === 'all'
     ? rssArticles
-    : rssArticles.filter((article) => article.topicStatus === topicFilter);
+    : rssArticles.filter((article) => articleDisplayStatus(article) === topicFilter);
   const filteredArticles = statusFilteredArticles.filter((article) => matchesTrendSearch(article, trendSearchQuery));
   const visibleArticles = filteredArticles.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
@@ -295,13 +297,7 @@ export default function TrendBoard({
   };
 
   return (
-    <section className="trend-board">
-      <div className="tb-header">
-        <div className="tb-header__copy">
-          <h2>海外メディアトレンド</h2>
-        </div>
-      </div>
-
+    <section className="trend-board" aria-label="海外トレンド">
       {error && (
         <div className="tb-error">
           <strong>トレンド取得に失敗しました</strong>
@@ -369,6 +365,7 @@ export default function TrendBoard({
           searchQuery={trendSearchQuery}
           onSearchChange={handleTrendSearch}
           onClearSearch={handleClearTrendSearch}
+          trendGeneratedAt={trends?.generatedAt}
         />
       )}
     </section>
@@ -395,6 +392,7 @@ interface TrendLayoutProps {
   searchQuery: string;
   onSearchChange: (value: string) => void;
   onClearSearch: () => void;
+  trendGeneratedAt?: string;
 }
 
 function TrendCardsLayout({
@@ -417,6 +415,7 @@ function TrendCardsLayout({
   searchQuery,
   onSearchChange,
   onClearSearch,
+  trendGeneratedAt,
 }: TrendLayoutProps): JSX.Element {
   return (
     <div className="tb-layout tb-layout--cards">
@@ -448,6 +447,7 @@ function TrendCardsLayout({
                   rank={page * pageSize + index + 1}
                   expanded={expandedArticleUrls.has(articleUrl(article))}
                   summaryAvailable={summaryArticleUrls.has(articleUrl(article))}
+                  displayStatus={displayTopicStatus(article, trendGeneratedAt)}
                   onToggle={() => onToggleArticle(article)}
                 />
               ))}
@@ -498,7 +498,7 @@ function TrendFeedHeader({
   return (
     <div className="tb-feed__header">
       <div className="tb-feed__title">
-        <h3>{filtered ? `${statusLabel}の記事` : '海外メディアを中心にトレンドをキャッチ'}</h3>
+        {filtered && <h3>{`${statusLabel}の記事`}</h3>}
         {filtered && (
           <button type="button" className="tb-feed__clear" onClick={onClearFilter}>
             絞り込み解除
@@ -668,6 +668,7 @@ function TrendArticleCard({
   onToggle,
   layout,
   rank,
+  displayStatus,
 }: {
   article: RssArticle;
   expanded: boolean;
@@ -675,12 +676,12 @@ function TrendArticleCard({
   onToggle: () => void;
   layout: TrendArticleLayout;
   rank: number;
+  displayStatus: RssTopicStatus | null;
 }): JSX.Element {
   const displayTitle = article.titleJa || article.title;
   const style = sourceStyle(article.source);
   const summaryItems = articleSummaryItems(article);
   const summaryIsList = summaryItems.some((item) => item.bullet);
-  const hasTopicStatus = article.topicStatus && article.topicStatus !== 'stale';
 
   return (
     <article
@@ -698,10 +699,10 @@ function TrendArticleCard({
             {formatDate(article.publishedAt || article.published)}
           </time>
         </div>
-        {hasTopicStatus && (
+        {displayStatus && (
           <div className="tb-article__topic-row">
-            <span className={`tb-status-badge tb-status-badge--${article.topicStatus}`}>
-              {topicStatusLabel(article.topicStatus)}
+            <span className={`tb-status-badge tb-status-badge--${displayStatus}`}>
+              {topicStatusLabel(displayStatus)}
             </span>
             {article.firstSeenAt && (
               <span className="tb-article__topic-seen">初回 {formatDate(article.firstSeenAt)}</span>

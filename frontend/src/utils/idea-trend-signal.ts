@@ -1,7 +1,7 @@
-import type { TrendScan, RssArticle, RssTopicCluster } from '../api/ai';
+import type { TrendScan, RssArticle, RssTopicCluster, RssTopicStatus } from '../api/ai';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { IdeaTrendEvidenceArticle, IdeaTrendSignal } from '../types/idea-trend-signal';
-import { topicStatusRank } from './trend-status';
+import { displayTopicStatus, topicStatusRank } from './trend-status';
 
 function normalizeUrl(value: string | undefined): string {
   if (!value) return '';
@@ -109,7 +109,8 @@ export function buildIdeaTrendSignal(
     .filter((cluster, index, list) => list.findIndex((item) => item.topic === cluster.topic) === index);
   const cluster = bestCluster(matchedClusters);
   const articleStatus = matchedArticles
-    .map((article) => article.topicStatus)
+    .map((article) => displayTopicStatus(article, trends?.generatedAt))
+    .filter((status): status is RssTopicStatus => Boolean(status))
     .sort((a, b) => topicStatusRank(b) - topicStatusRank(a))[0];
 
   if (!cluster && !articleStatus) return null;

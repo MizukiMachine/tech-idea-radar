@@ -358,7 +358,7 @@ function App(): JSX.Element {
               onClick={handleOpenIdeas}
               aria-pressed={activeView === 'ideas'}
             >
-              アイデア
+              開発アイデア
               {hasIdeas && <span>{ideas.length}</span>}
             </button>
             <button
@@ -367,7 +367,7 @@ function App(): JSX.Element {
               onClick={() => setActiveView('trends')}
               aria-pressed={activeView === 'trends'}
             >
-              トレンド
+              海外トレンド
             </button>
           </nav>
         </div>
@@ -387,12 +387,6 @@ function App(): JSX.Element {
 
         {activeView === 'ideas' && (
           <>
-            <section className="idea-page-header" aria-labelledby="idea-page-title">
-              <div className="idea-page-header__copy">
-                <h2 id="idea-page-title">おすすめ開発アイデア</h2>
-              </div>
-            </section>
-
             {progressText && (
               <div className="progress-bar">
                 <span className="progress-bar__text">{progressText}</span>
@@ -436,7 +430,6 @@ function App(): JSX.Element {
                   {hasIdeas && (
                     <div className="idea-results-toolbar">
                       <div className="idea-results-toolbar__summary">
-                        <h3>アイデア一覧</h3>
                         <span>{displayedIdeas.length}件</span>
                       </div>
                       <div className="idea-results-toolbar__search">
