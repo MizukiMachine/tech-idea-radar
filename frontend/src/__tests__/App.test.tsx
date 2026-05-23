@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import App from "../App";
+import { formatBatchTimestamp } from "../utils/batch-time";
 
 const mockFetch = vi.fn();
 const generatedAt = new Date().toISOString();
+const trendBatchTime = "2026-05-23T04:00:00+09:00";
 const summaryPolicy = {
   minItems: 3,
   maxItems: 6,
@@ -48,6 +50,7 @@ const idea = {
     ],
   },
   generatedAt,
+  batchTime: trendBatchTime,
 };
 const meta = {
   instanceId: "test-instance",
@@ -154,6 +157,7 @@ const trends = {
   focusKeywords: ["AI"],
   summaryPolicy,
   generatedAt,
+  batchTime: trendBatchTime,
   sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
 };
 const trendHistory = {
@@ -218,6 +222,12 @@ describe("App", () => {
     expect(screen.queryByText("言語")).toBeNull();
     expect(screen.queryByText("短期開発向け")).toBeNull();
     expect(screen.getByPlaceholderText("キーワードで絞り込み")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" })).toBeTruthy());
+    const ideaSearchRow = document.querySelector(".idea-results-toolbar__search-row");
+    expect(ideaSearchRow?.querySelector(".idea-results-toolbar__search input")).toBeTruthy();
+    expect(ideaSearchRow?.querySelector(".idea-results-toolbar__count")?.textContent).toBe("1件");
+    expect(document.querySelector(".idea-results-toolbar > .idea-results-toolbar__count")).toBeNull();
+    expect(screen.getByText(formatBatchTimestamp(trendBatchTime))).toBeTruthy();
   });
 
   it("starts idea generation stream when the cache is empty", async () => {
@@ -269,6 +279,10 @@ describe("App", () => {
     expect(screen.queryByText("海外メディアを中心にトレンドをキャッチ")).toBeNull();
     expect(screen.queryByText("動いているトピック")).toBeNull();
     expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy();
+    const trendSearchRow = document.querySelector(".tb-feed__search-row");
+    expect(trendSearchRow?.querySelector(".tb-feed__search input")).toBeTruthy();
+    expect(trendSearchRow?.querySelector(".tb-feed__count")?.textContent).toBe("2件");
+    expect(document.querySelector(".tb-feed__tools > .tb-feed__count")).toBeNull();
     const spikingFilter = screen.getByRole("button", { name: "急増 2" });
     expect(spikingFilter).toBeTruthy();
     fireEvent.click(spikingFilter);
@@ -276,6 +290,7 @@ describe("App", () => {
     expect(screen.getByText("2/2件")).toBeTruthy();
     expect(screen.queryByText(/score/i)).toBeNull();
     expect(screen.getAllByText("急増").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(formatBatchTimestamp(trendBatchTime))).toHaveLength(2);
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     const buttons = screen.getAllByRole("button", { name: "要約を見る" });
     fireEvent.click(buttons[0]);

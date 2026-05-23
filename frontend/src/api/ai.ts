@@ -270,6 +270,7 @@ export interface TrendScan {
   };
   focusKeywords: string[];
   generatedAt: string;
+  batchTime?: string;
   sourceSummary: SourceSummary;
   summaryPolicy: RssArticleSummaryPolicy;
   summaryPolicySource?: 'api' | 'default';

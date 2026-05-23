@@ -69,6 +69,7 @@ function emptyTrendScan(): TrendScanOutput {
     },
     focusKeywords: [],
     generatedAt: '',
+    batchTime: undefined,
     summaryPolicy: RSS_ARTICLE_SUMMARY_POLICY,
     sourceSummary: {
       rssItemCount: 0,

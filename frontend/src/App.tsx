@@ -445,28 +445,28 @@ function App(): JSX.Element {
                 <section className="main-content">
                   {hasIdeas && (
                     <div className="idea-results-toolbar">
-                      <div className="idea-results-toolbar__summary">
-                        <span>{displayedIdeas.length}件</span>
-                      </div>
-                      <div className="idea-results-toolbar__search">
-                        <span className="idea-results-toolbar__search-icon">⌕</span>
-                        <input
-                          type="text"
-                          placeholder="キーワードで絞り込み"
-                          value={searchQuery}
-                          onChange={(e) => handleSearch(e.target.value)}
-                          disabled={!hasIdeas}
-                        />
-                        {searchQuery && hasIdeas && (
-                          <button
-                            type="button"
-                            className="idea-results-toolbar__clear"
-                            onClick={() => handleSearch('')}
-                            aria-label="検索条件をクリア"
-                          >
-                            ×
-                          </button>
-                        )}
+                      <div className="idea-results-toolbar__search-row">
+                        <div className="idea-results-toolbar__search">
+                          <span className="idea-results-toolbar__search-icon">⌕</span>
+                          <input
+                            type="text"
+                            placeholder="キーワードで絞り込み"
+                            value={searchQuery}
+                            onChange={(e) => handleSearch(e.target.value)}
+                            disabled={!hasIdeas}
+                          />
+                          {searchQuery && hasIdeas && (
+                            <button
+                              type="button"
+                              className="idea-results-toolbar__clear"
+                              onClick={() => handleSearch('')}
+                              aria-label="検索条件をクリア"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                        <span className="idea-results-toolbar__count">{displayedIdeas.length}件</span>
                       </div>
                       <div className="idea-results-toolbar__controls">
                         <div className="idea-results-toolbar__sort" aria-label="並び順">

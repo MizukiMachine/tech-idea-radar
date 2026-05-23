@@ -1,5 +1,6 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { IdeaTrendSignal } from '../types/idea-trend-signal';
+import { formatBatchTimestamp, scheduledBatchTimeJST } from '../utils/batch-time';
 import { topicStatusLabel } from '../utils/trend-status';
 import './IdeaCard.css';
 
@@ -37,6 +38,7 @@ export default function IdeaCard({
 }: IdeaCardProps): JSX.Element {
     const { icon, color } = getIconForIdea(idea.id, index);
     const visibleTrendSignal = trendSignal?.status === 'stale' ? null : trendSignal;
+    const batchTime = idea.batchTime ?? scheduledBatchTimeJST(idea.generatedAt);
 
     return (
         <button
@@ -56,6 +58,11 @@ export default function IdeaCard({
                 <div className={`idea-card__trend idea-card__trend--${visibleTrendSignal.status}`}>
                     <span className="idea-card__trend-badge">{topicStatusLabel(visibleTrendSignal.status)}トレンド</span>
                 </div>
+            )}
+            {batchTime && (
+                <time className="idea-card__batch-time" dateTime={batchTime}>
+                    {formatBatchTimestamp(batchTime)}
+                </time>
             )}
         </button>
     );

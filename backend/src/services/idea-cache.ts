@@ -791,9 +791,13 @@ export async function scanAndCacheTrends(
   trendScanLock = (async () => {
     try {
       loadPersistentCache();
-      const agent = new EntrepreneurAgent(getClient());
-      const result = withSummaryPolicy(await agent.scanTrends(onProgress));
       const now = new Date();
+      const batchTime = getCurrentBatchTimeJST(now);
+      const agent = new EntrepreneurAgent(getClient());
+      const result = {
+        ...withSummaryPolicy(await agent.scanTrends(onProgress)),
+        batchTime,
+      };
       const scannedAt = now.toISOString();
 
       // Prepend to history, deduplicate by generatedAt, then prune stale snapshots.

@@ -39,6 +39,7 @@ export interface TrendScanOutput {
   rssContext: RssContext;
   focusKeywords: string[];
   generatedAt: string;
+  batchTime?: string;
   sourceSummary: IdeaGenerationOutput['sourceSummary'];
   summaryPolicy: RssArticleSummaryPolicy;
 }

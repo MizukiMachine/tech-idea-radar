@@ -6,6 +6,7 @@ import type {
   TrendHistoryEntry,
   RssTopicStatus,
 } from '../api/ai';
+import { formatBatchTimestamp, scheduledBatchTimeJST } from '../utils/batch-time';
 import { displayTopicStatus, topicStatusLabel } from '../utils/trend-status';
 import './TrendBoard.css';
 
@@ -26,18 +27,6 @@ const FALLBACK_SOURCE = { color: '#7B8491', bg: 'rgba(123,132,145,0.045)' };
 
 function sourceStyle(source: string | undefined) {
   return SOURCE_STYLE[source ?? ''] ?? FALLBACK_SOURCE;
-}
-
-function formatDate(value: string | null | undefined): string {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('ja-JP', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
 }
 
 function containsJapanese(text: string): boolean {
@@ -83,10 +72,17 @@ function articleIdentity(article: RssArticle): string {
 
 type MergedRssArticle = RssArticle & {
   trendSnapshotGeneratedAt?: string;
+  trendSnapshotBatchTime?: string;
 };
 
 function articleTrendReferenceDate(article: RssArticle, fallback?: string): string | undefined {
   return (article as MergedRssArticle).trendSnapshotGeneratedAt ?? fallback;
+}
+
+function articleBatchTime(article: RssArticle, fallback?: string): string | undefined {
+  const merged = article as MergedRssArticle;
+  return merged.trendSnapshotBatchTime
+    ?? scheduledBatchTimeJST(article.lastSeenAt ?? articleTrendReferenceDate(article, fallback));
 }
 
 function mergeKeywords(articles: RssArticle[], fallback: TrendScan['rssContext']['trendingKeywords']) {
@@ -125,6 +121,7 @@ function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {
       relatedArticles.push({
         ...article,
         trendSnapshotGeneratedAt: snapshot.generatedAt,
+        trendSnapshotBatchTime: snapshot.batchTime ?? scheduledBatchTimeJST(snapshot.generatedAt),
       });
     }
 
@@ -496,22 +493,6 @@ function TrendCardsLayout({
   return (
     <div className="tb-layout tb-layout--cards">
       <div className="tb-main">
-        {(observationWarning || showTopicUnavailable) && (
-          <div className="tb-feed-notices">
-            {observationWarning && (
-              <div className="tb-observation-warning">
-                <strong>観測履歴の保存に注意が必要です</strong>
-                <span>{observationWarning}</span>
-              </div>
-            )}
-            {showTopicUnavailable && (
-              <div className="tb-topic-unavailable">
-                <strong>観測トピックはこのトレンドデータに含まれていません</strong>
-                <span>RSS観測メタデータを含むスキャン結果になると、記事一覧を急増・新着・継続で絞り込めます。</span>
-              </div>
-            )}
-          </div>
-        )}
         <TrendFeedHeader
           count={articles.length}
           totalCount={allArticleCount}
@@ -541,6 +522,7 @@ function TrendCardsLayout({
                   expanded={expandedArticleUrls.has(articleUrl(article))}
                   summaryAvailable={summaryArticleUrls.has(articleUrl(article))}
                   displayStatus={displayTopicStatus(article, articleTrendReferenceDate(article, trendGeneratedAt))}
+                  batchTime={articleBatchTime(article, trendGeneratedAt)}
                   onToggle={() => onToggleArticle(article)}
                 />
               ))}
@@ -556,6 +538,22 @@ function TrendCardsLayout({
       </div>
 
       <aside className="tb-sidebar">
+        {(observationWarning || showTopicUnavailable) && (
+          <div className="tb-feed-notices">
+            {observationWarning && (
+              <div className="tb-observation-warning">
+                <strong>観測履歴の保存に注意が必要です</strong>
+                <span>{observationWarning}</span>
+              </div>
+            )}
+            {showTopicUnavailable && (
+              <div className="tb-topic-unavailable">
+                <strong>観測トピックはこのトレンドデータに含まれていません</strong>
+                <span>RSS観測メタデータを含むスキャン結果になると、記事一覧を急増・新着・継続で絞り込めます。</span>
+              </div>
+            )}
+          </div>
+        )}
         <KeywordPanel keywords={keywords} maxKeywordCount={maxKeywordCount} />
         <SourcePanel sourceRows={sourceRows} articleCount={allArticleCount} />
       </aside>
@@ -592,31 +590,39 @@ function TrendFeedHeader({
 
   return (
     <div className="tb-feed__header">
-      <div className="tb-feed__title">
-        {filtered && <h3>{`${statusLabel}の記事`}</h3>}
-        {filtered && (
-          <button type="button" className="tb-feed__clear" onClick={onClearFilter}>
-            絞り込み解除
-          </button>
+      <div className="tb-feed__search-row">
+        <div className="tb-feed__search">
+          <span className="tb-feed__search-icon">⌕</span>
+          <input
+            type="text"
+            placeholder="キーワードで絞り込み"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+          />
+          {searched && (
+            <button
+              type="button"
+              className="tb-feed__search-clear"
+              onClick={onClearSearch}
+              aria-label="検索条件をクリア"
+            >
+              ×
+            </button>
+          )}
+        </div>
+        <span className="tb-feed__count">
+          {filtered || searched ? `${count}/${totalCount}件` : `${count}件`}
+        </span>
+        {snapshotCount > 1 && (
+          <span className="tb-feed__count">履歴{snapshotCount}回</span>
         )}
-      </div>
-      <div className="tb-feed__search">
-        <span className="tb-feed__search-icon">⌕</span>
-        <input
-          type="text"
-          placeholder="キーワードで絞り込み"
-          value={searchQuery}
-          onChange={(e) => onSearchChange(e.target.value)}
-        />
-        {searched && (
-          <button
-            type="button"
-            className="tb-feed__search-clear"
-            onClick={onClearSearch}
-            aria-label="検索条件をクリア"
-          >
-            ×
-          </button>
+        {filtered && (
+          <span className="tb-feed__active-filter">
+            <span>{`${statusLabel}の記事`}</span>
+            <button type="button" className="tb-feed__clear" onClick={onClearFilter}>
+              絞り込み解除
+            </button>
+          </span>
         )}
       </div>
       <div className="tb-feed__tools">
@@ -625,12 +631,6 @@ function TrendFeedHeader({
           activeFilter={statusFilter}
           onChange={onStatusFilterChange}
         />
-        <span className="tb-feed__count">
-          {filtered || searched ? `${count}/${totalCount}件` : `${count}件`}
-        </span>
-        {snapshotCount > 1 && (
-          <span className="tb-feed__count">履歴{snapshotCount}回</span>
-        )}
       </div>
     </div>
   );
@@ -738,6 +738,7 @@ function TrendArticleCard({
   layout,
   rank,
   displayStatus,
+  batchTime,
 }: {
   article: RssArticle;
   expanded: boolean;
@@ -746,6 +747,7 @@ function TrendArticleCard({
   layout: TrendArticleLayout;
   rank: number;
   displayStatus: RssTopicStatus | null;
+  batchTime?: string;
 }): JSX.Element {
   const displayTitle = article.titleJa || article.title;
   const style = sourceStyle(article.source);
@@ -764,40 +766,41 @@ function TrendArticleCard({
             <span className="tb-article__source-dot" />
             {article.source || 'RSS'}
           </span>
-          <time className="tb-article__date">
-            {formatDate(article.publishedAt || article.published)}
-          </time>
         </div>
-        {displayStatus && (
-          <div className="tb-article__topic-row">
+        <div className="tb-article__title-row">
+          {displayStatus && (
             <span className={`tb-status-badge tb-status-badge--${displayStatus}`}>
               {topicStatusLabel(displayStatus)}
             </span>
-            {article.firstSeenAt && (
-              <span className="tb-article__topic-seen">初回 {formatDate(article.firstSeenAt)}</span>
+          )}
+          <h3 className="tb-article__title">{displayTitle}</h3>
+        </div>
+        <div className="tb-article__footer">
+          <div className="tb-article__actions">
+            <a
+              href={articleUrl(article)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="tb-article__link"
+            >
+              元記事を読む
+              <span aria-hidden="true">↗</span>
+            </a>
+            {summaryAvailable && (
+              <button
+                type="button"
+                className="tb-article__summary-btn"
+                onClick={onToggle}
+                aria-expanded={expanded}
+              >
+                {expanded ? '要約を閉じる' : '要約を見る'}
+              </button>
             )}
           </div>
-        )}
-        <h3 className="tb-article__title">{displayTitle}</h3>
-        <div className="tb-article__actions">
-          <a
-            href={articleUrl(article)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="tb-article__link"
-          >
-            元記事を読む
-            <span aria-hidden="true">↗</span>
-          </a>
-          {summaryAvailable && (
-            <button
-              type="button"
-              className="tb-article__summary-btn"
-              onClick={onToggle}
-              aria-expanded={expanded}
-            >
-              {expanded ? '要約を閉じる' : '要約を見る'}
-            </button>
+          {batchTime && (
+            <time className="tb-article__batch-time" dateTime={batchTime}>
+              {formatBatchTimestamp(batchTime)}
+            </time>
           )}
         </div>
       </div>
