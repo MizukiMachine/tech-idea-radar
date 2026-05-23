@@ -21,7 +21,14 @@ export * from './types/idea-generation';
 export * from './types/semantic-filter';
 
 // Config
-export { DEFAULT_IDEA_COUNT, MAX_BATCHES, BATCH_SCHEDULE_HOURS_JST, MAX_TREND_HISTORY } from './config/constants';
+export {
+  DEFAULT_IDEA_COUNT,
+  MAX_BATCHES,
+  BATCH_SCHEDULE_HOURS_JST,
+  IDEA_RETENTION_WINDOW_HOURS,
+  TREND_HISTORY_WINDOW_HOURS,
+  MAX_TREND_HISTORY,
+} from './config/constants';
 export {
   RSS_ARTICLE_SUMMARY_POLICY,
   renderRssArticleSummaryPolicy,

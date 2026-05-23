@@ -79,14 +79,14 @@ interface ObservationState {
 
 interface ObservationSettings {
   filePath: string;
-  retentionDays: number;
+  retentionHours: number;
   maxItems: number;
   maxItemsPerSource: number;
   hours: number;
   limit: number;
 }
 
-const DEFAULT_RETENTION_DAYS = 30;
+const DEFAULT_RETENTION_HOURS = 24;
 const DEFAULT_MAX_ITEMS = 5_000;
 const DEFAULT_MAX_ITEMS_PER_SOURCE = 500;
 const DEFAULT_TOPIC_HOURS = 24;
@@ -115,10 +115,18 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function observationRetentionHours(): number {
+  const hours = parsePositiveInt(process.env.RSS_OBSERVATION_RETENTION_HOURS, 0);
+  if (hours > 0) return hours;
+
+  const days = parsePositiveInt(process.env.RSS_OBSERVATION_RETENTION_DAYS, 0);
+  return days > 0 ? days * 24 : DEFAULT_RETENTION_HOURS;
+}
+
 function observationSettings(): ObservationSettings {
   return {
     filePath: process.env.RSS_OBSERVATIONS_FILE?.trim() ?? '',
-    retentionDays: parsePositiveInt(process.env.RSS_OBSERVATION_RETENTION_DAYS, DEFAULT_RETENTION_DAYS),
+    retentionHours: observationRetentionHours(),
     maxItems: parsePositiveInt(process.env.RSS_OBSERVATION_MAX_ITEMS, DEFAULT_MAX_ITEMS),
     maxItemsPerSource: parsePositiveInt(
       process.env.RSS_OBSERVATION_MAX_ITEMS_PER_SOURCE,
@@ -344,7 +352,7 @@ function buildTopicClusters(items: ObservedRssItem[], now: Date, hours: number, 
 }
 
 function pruneState(state: ObservationState, now: Date, settings: ObservationSettings): ObservationState {
-  const cutoff = now.getTime() - settings.retentionDays * 24 * 60 * 60 * 1000;
+  const cutoff = now.getTime() - settings.retentionHours * 60 * 60 * 1000;
   const perSource = new Map<string, number>();
   const items = [...state.items]
     .filter((item) => {

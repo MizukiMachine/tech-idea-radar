@@ -4,6 +4,8 @@ import {
   DEFAULT_IDEA_COUNT,
   MAX_BATCHES,
   BATCH_SCHEDULE_HOURS_JST,
+  IDEA_RETENTION_WINDOW_HOURS,
+  TREND_HISTORY_WINDOW_HOURS,
   MAX_TREND_HISTORY,
   RSS_ARTICLE_SUMMARY_POLICY,
   EntrepreneurAgent,
@@ -26,6 +28,8 @@ const PUBLIC_READONLY_MODE = isTruthy(process.env.PUBLIC_READONLY_MODE);
 const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN?.trim() ?? '';
 const PERSISTENT_CACHE_VERSION = 3;
 const TREND_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
+const IDEA_RETENTION_WINDOW_MS = IDEA_RETENTION_WINDOW_HOURS * 60 * 60 * 1000;
+const TREND_HISTORY_WINDOW_MS = TREND_HISTORY_WINDOW_HOURS * 60 * 60 * 1000;
 const WARMUP_ON_START = process.env.IDEA_WARMUP_ON_START === undefined
   ? true
   : isTruthy(process.env.IDEA_WARMUP_ON_START);
@@ -68,6 +72,38 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
   return parsed;
+}
+
+function batchEntryTimeMs(entry: BatchEntry): number {
+  const batchTime = Date.parse(entry.batchTime);
+  if (Number.isFinite(batchTime)) return batchTime;
+  return Date.parse(entry.data.generatedAt);
+}
+
+function pruneIdeaBatches(entries: BatchEntry[], now: Date): BatchEntry[] {
+  const cutoff = now.getTime() - IDEA_RETENTION_WINDOW_MS;
+  return entries
+    .filter((entry) => {
+      const time = batchEntryTimeMs(entry);
+      return Number.isFinite(time) && time >= cutoff;
+    })
+    .slice(0, MAX_BATCHES);
+}
+
+function trendEntryTimeMs(entry: TrendHistoryEntry): number {
+  const generatedAt = Date.parse(entry.data.generatedAt);
+  if (Number.isFinite(generatedAt)) return generatedAt;
+  return Date.parse(entry.scannedAt);
+}
+
+function pruneTrendHistory(entries: TrendHistoryEntry[], now: Date): TrendHistoryEntry[] {
+  const cutoff = now.getTime() - TREND_HISTORY_WINDOW_MS;
+  return entries
+    .filter((entry) => {
+      const time = trendEntryTimeMs(entry);
+      return Number.isFinite(time) && time >= cutoff;
+    })
+    .slice(0, MAX_TREND_HISTORY);
 }
 
 // --- JST schedule helpers ---
@@ -474,8 +510,10 @@ export function getRuntimeMeta(): {
     persistentCacheEnabled: boolean;
     warmupOnStart: boolean;
     ideaGenerationBatchSize: number;
+    ideaRetentionWindowHours: number;
     batchScheduleHours: readonly number[];
     maxBatches: number;
+    trendHistoryWindowHours: number;
     maxTrendHistory: number;
   };
   cache: {
@@ -503,8 +541,10 @@ export function getRuntimeMeta(): {
       persistentCacheEnabled: isPersistentCacheEnabled(),
       warmupOnStart: WARMUP_ON_START,
       ideaGenerationBatchSize: IDEA_GENERATION_BATCH_SIZE,
+      ideaRetentionWindowHours: IDEA_RETENTION_WINDOW_HOURS,
       batchScheduleHours: BATCH_SCHEDULE_HOURS_JST,
       maxBatches: MAX_BATCHES,
+      trendHistoryWindowHours: TREND_HISTORY_WINDOW_HOURS,
       maxTrendHistory: MAX_TREND_HISTORY,
     },
     cache: cached ? {
@@ -612,11 +652,11 @@ export async function generateAndCacheIdeas(
         },
       };
 
-      // Replace same-slot batch or prepend, trim to MAX_BATCHES
-      batches = [
+      // Replace same-slot batch or prepend, then prune stale batches on cache update.
+      batches = pruneIdeaBatches([
         { batchTime, data: batchOutput },
         ...batches.filter((b) => b.batchTime !== batchTime),
-      ].slice(0, MAX_BATCHES);
+      ], now);
 
       persistCache();
       return batchOutput;
@@ -638,15 +678,17 @@ export async function scanAndCacheTrends(
 
   trendScanLock = (async () => {
     try {
+      loadPersistentCache();
       const agent = new EntrepreneurAgent(getClient());
       const result = withSummaryPolicy(await agent.scanTrends(onProgress));
-      const now = new Date().toISOString();
+      const now = new Date();
+      const scannedAt = now.toISOString();
 
-      // Prepend to history, deduplicate by generatedAt, trim to MAX_TREND_HISTORY
-      trendHistory = [
-        { scannedAt: now, data: result },
+      // Prepend to history, deduplicate by generatedAt, then prune stale snapshots.
+      trendHistory = pruneTrendHistory([
+        { scannedAt, data: result },
         ...trendHistory.filter((e) => e.data.generatedAt !== result.generatedAt),
-      ].slice(0, MAX_TREND_HISTORY);
+      ], now);
 
       persistCache();
       await notifyTrendSummaryFailures(result);

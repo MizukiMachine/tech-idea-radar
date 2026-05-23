@@ -143,8 +143,10 @@ export interface IdeasMeta {
     persistentCacheEnabled?: boolean;
     warmupOnStart?: boolean;
     ideaGenerationBatchSize?: number;
+    ideaRetentionWindowHours?: number;
     batchScheduleHours?: number[];
     maxBatches?: number;
+    trendHistoryWindowHours?: number;
     maxTrendHistory?: number;
   };
   cache: {
