@@ -125,7 +125,7 @@ describe('fetchRssContext', () => {
     ]));
   });
 
-  it('uses ten built-in feeds with only Zenn and Qiita as Japanese sources', async () => {
+  it('uses eight built-in overseas technology feeds by default', async () => {
     delete process.env.RSS_FEEDS;
     process.env.RSS_FETCH_ARTICLE_EXCERPTS = 'false';
 
@@ -152,16 +152,14 @@ describe('fetchRssContext', () => {
     const result = await fetchRssContext(['AI', 'developer']);
     const sources = new Set(result.relatedArticles.map((article) => article.source));
 
-    expect(fetchMock.mock.calls.length).toBe(10);
-    expect(result.relatedArticles).toHaveLength(18);
-    expect(sources.size).toBe(10);
+    expect(fetchMock.mock.calls.length).toBe(8);
+    expect(result.relatedArticles).toHaveLength(8);
+    expect(sources.size).toBe(8);
     expect([...sources]).toEqual(expect.arrayContaining([
       'Hacker News',
       'GitHub Blog',
       'Stack Overflow Blog',
       'Product Hunt',
-      'Zenn',
-      'Qiita Popular',
     ]));
     expect([...sources]).not.toEqual(expect.arrayContaining([
       'DEV Community',
@@ -169,10 +167,13 @@ describe('fetchRssContext', () => {
       'Ars Technica',
       'Lobsters',
       'MIT Technology Review',
+      'Zenn',
+      'Qiita Popular',
     ]));
   });
 
   it('keeps one article per source before filling by source-balanced score rounds', async () => {
+    process.env.RSS_MAX_RELATED_ARTICLES = '18';
     process.env.RSS_FEEDS = JSON.stringify(
       Array.from({ length: 6 }, (_, index) => ({
         name: `Source ${index + 1}`,

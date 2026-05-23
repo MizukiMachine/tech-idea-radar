@@ -61,7 +61,7 @@ const DEFAULT_ARTICLE_FETCH_TIMEOUT_MS = 5000;
 const DEFAULT_RSS_FETCH_CONCURRENCY = 3;
 const DEFAULT_ARTICLE_FETCH_CONCURRENCY = 3;
 const DEFAULT_RSS_FEED_CACHE_TTL_MS = 5 * 60 * 1000;
-const DEFAULT_MAX_RELATED_ARTICLES = 18;
+const DEFAULT_MAX_RELATED_ARTICLES = 8;
 const DEFAULT_SOURCE_FIRST_PASS_LIMIT = 1;
 const DEFAULT_SOURCE_TOTAL_LIMIT = 3;
 const MIN_USEFUL_SUMMARY_LENGTH = 280;
@@ -86,8 +86,6 @@ const DEFAULT_RSS_FEEDS: PublicFeed[] = [
   { name: 'AWS News Blog', url: 'https://aws.amazon.com/blogs/aws/feed/' },
   { name: 'Microsoft DevBlogs', url: 'https://devblogs.microsoft.com/feed/' },
   { name: 'Product Hunt', url: 'https://www.producthunt.com/feed' },
-  { name: 'Zenn', url: 'https://zenn.dev/feed' },
-  { name: 'Qiita Popular', url: 'https://qiita.com/popular-items/feed' },
 ];
 
 const STOP_WORDS = new Set([

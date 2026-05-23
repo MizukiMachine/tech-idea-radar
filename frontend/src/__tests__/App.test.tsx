@@ -52,6 +52,20 @@ const idea = {
   generatedAt,
   batchTime: trendBatchTime,
 };
+
+function makeIdea(index: number) {
+  return {
+    ...idea,
+    id: `paged-idea-${index}`,
+    title: `Paged Idea ${index}`,
+    tagline: `ページング確認用アイデア ${index}`,
+    sources: {
+      rssKeywords: ["AI"],
+      evidenceUrls: index % 2 === 0 ? idea.sources.evidenceUrls : [],
+    },
+  };
+}
+
 const meta = {
   instanceId: "test-instance",
   pid: 123,
@@ -576,6 +590,42 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "根拠多い順" }));
     expect(document.querySelector(".idea-grid .idea-card__title")?.textContent).toBe("AI Ops Memo");
+  });
+
+  it("paginates ideas in groups of 15", async () => {
+    const pagedIdeas = Array.from({ length: 16 }, (_, index) => makeIdea(index + 1));
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: pagedIdeas,
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Paged Idea 1 の詳細を開く" })).toBeTruthy());
+    expect(document.querySelectorAll(".idea-grid .idea-card")).toHaveLength(15);
+    expect(document.querySelector(".idea-results-toolbar__count")?.textContent).toBe("16件");
+    expect(screen.getByText("1-15 / 16件")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Paged Idea 16 の詳細を開く" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "次のページ" }));
+
+    expect(screen.getByText("16-16 / 16件")).toBeTruthy();
+    expect(document.querySelectorAll(".idea-grid .idea-card")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "Paged Idea 16 の詳細を開く" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Paged Idea 1 の詳細を開く" })).toBeNull();
   });
 
   it("keeps legacy trend summaries clickable when the API omits the summary policy", async () => {

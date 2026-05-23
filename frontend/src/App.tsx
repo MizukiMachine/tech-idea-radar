@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { IdeaCandidate } from './types/idea-candidate';
 import { buildIdeaTrendSignal, ideaTrendSignalKey } from './utils/idea-trend-signal';
 import { topicStatusRank } from './utils/trend-status';
@@ -29,6 +29,7 @@ const IDEA_SORTS: { id: IdeaSort; label: string; requiresTrend?: boolean }[] = [
   { id: 'evidence', label: '根拠多い順' },
 ];
 
+const IDEAS_PER_PAGE = 15;
 const TREND_DISPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const INTEREST_KEYWORDS: Record<string, string[]> = {
@@ -109,6 +110,21 @@ function isWithinTrendDisplayWindow(time: number | null, referenceTime = Date.no
   return time !== null && referenceTime - time < TREND_DISPLAY_WINDOW_MS;
 }
 
+function paginationItems(totalPages: number, current: number): (number | '...')[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index);
+  }
+
+  const pages: (number | '...')[] = [0];
+  if (current > 2) pages.push('...');
+  for (let page = Math.max(1, current - 1); page <= Math.min(totalPages - 2, current + 1); page += 1) {
+    pages.push(page);
+  }
+  if (current < totalPages - 3) pages.push('...');
+  pages.push(totalPages - 1);
+  return pages;
+}
+
 function trendScanTime(scan: TrendScan): number | null {
   return parseTime(scan.generatedAt);
 }
@@ -149,6 +165,8 @@ function userFacingError(message: string): string {
 }
 
 function App(): JSX.Element {
+  const ideaListTopRef = useRef<HTMLDivElement | null>(null);
+  const hasMountedIdeaPageRef = useRef(false);
   const [activeView, setActiveView] = useState<WorkspaceView>('ideas');
   const [trends, setTrends] = useState<TrendScan | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(true);
@@ -166,6 +184,7 @@ function App(): JSX.Element {
   const [activeInterests, setActiveInterests] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
   const [ideaSort, setIdeaSort] = useState<IdeaSort>('generated');
+  const [ideaPage, setIdeaPage] = useState(0);
   const [selectedIdea, setSelectedIdea] = useState<IdeaCandidate | null>(null);
   const [modalIdea, setModalIdea] = useState<IdeaCandidate | null>(null);
 
@@ -311,10 +330,26 @@ function App(): JSX.Element {
   // Debounced search
   const handleSearch = useCallback((value: string) => {
     setSearchQuery(value);
+    setIdeaPage(0);
   }, []);
 
   const handleOpenIdeas = useCallback(() => {
     setActiveView('ideas');
+  }, []);
+
+  const handleCategoryFilter = useCallback((category: string) => {
+    setActiveCategory(category);
+    setIdeaPage(0);
+  }, []);
+
+  const handleInterestChange = useCallback((interests: string[]) => {
+    setActiveInterests(interests);
+    setIdeaPage(0);
+  }, []);
+
+  const handleIdeaSortChange = useCallback((sort: IdeaSort) => {
+    setIdeaSort(sort);
+    setIdeaPage(0);
   }, []);
 
   const sourceIdeas = ideas;
@@ -355,6 +390,23 @@ function App(): JSX.Element {
         || (bSignal?.evidenceCount ?? 0) - (aSignal?.evidenceCount ?? 0)
         || (bSignal?.articleCount ?? 0) - (aSignal?.articleCount ?? 0);
     });
+  const totalIdeaPages = Math.ceil(displayedIdeas.length / IDEAS_PER_PAGE);
+  const ideaPageStart = ideaPage * IDEAS_PER_PAGE;
+  const pagedIdeas = displayedIdeas.slice(ideaPageStart, ideaPageStart + IDEAS_PER_PAGE);
+
+  useEffect(() => {
+    setIdeaPage((current) => Math.min(current, Math.max(totalIdeaPages - 1, 0)));
+  }, [totalIdeaPages]);
+
+  useEffect(() => {
+    if (!hasMountedIdeaPageRef.current) {
+      hasMountedIdeaPageRef.current = true;
+      return;
+    }
+    if (activeView === 'ideas') {
+      ideaListTopRef.current?.scrollIntoView?.({ block: 'start' });
+    }
+  }, [activeView, ideaPage]);
 
   const hasIdeas = ideas.length > 0;
   const showDashboard = loading || hasIdeas;
@@ -444,7 +496,7 @@ function App(): JSX.Element {
               <div className="dashboard">
                 <section className="main-content">
                   {hasIdeas && (
-                    <div className="idea-results-toolbar">
+                    <div className="idea-results-toolbar" ref={ideaListTopRef}>
                       <div className="idea-results-toolbar__search-row">
                         <div className="idea-results-toolbar__search">
                           <span className="idea-results-toolbar__search-icon">⌕</span>
@@ -475,7 +527,7 @@ function App(): JSX.Element {
                               key={sort.id}
                               type="button"
                               className={`idea-results-toolbar__sort-btn ${ideaSort === sort.id ? 'idea-results-toolbar__sort-btn--active' : ''}`}
-                              onClick={() => setIdeaSort(sort.id)}
+                              onClick={() => handleIdeaSortChange(sort.id)}
                               aria-pressed={ideaSort === sort.id}
                               disabled={Boolean(sort.requiresTrend && !hasTrendSignals)}
                               title={sort.requiresTrend && !hasTrendSignals
@@ -519,19 +571,27 @@ function App(): JSX.Element {
                   )}
 
                   {displayedIdeas.length > 0 && (
-                    <div className={`idea-grid idea-grid--${viewMode}`}>
-                      {displayedIdeas.map((idea, index) => (
-                        <IdeaCard
-                          key={ideaRenderKey(idea, index)}
-                          idea={idea}
-                          index={index}
-                          viewMode={viewMode}
-                          selected={isSameIdea(selectedIdea, idea)}
-                          trendSignal={trendSignalByIdea.get(ideaTrendSignalKey(idea)) ?? null}
-                          onSelect={handleIdeaSelect}
-                        />
-                      ))}
-                    </div>
+                    <>
+                      <div className={`idea-grid idea-grid--${viewMode}`}>
+                        {pagedIdeas.map((idea, index) => (
+                          <IdeaCard
+                            key={ideaRenderKey(idea, ideaPageStart + index)}
+                            idea={idea}
+                            index={ideaPageStart + index}
+                            viewMode={viewMode}
+                            selected={isSameIdea(selectedIdea, idea)}
+                            trendSignal={trendSignalByIdea.get(ideaTrendSignalKey(idea)) ?? null}
+                            onSelect={handleIdeaSelect}
+                          />
+                        ))}
+                      </div>
+                      <IdeaPagination
+                        total={displayedIdeas.length}
+                        pageSize={IDEAS_PER_PAGE}
+                        current={ideaPage}
+                        onChange={setIdeaPage}
+                      />
+                    </>
                   )}
 
                   {hasIdeas && !loading && displayedIdeas.length === 0 && (
@@ -549,8 +609,8 @@ function App(): JSX.Element {
                     filters={(
                       <Sidebar
                         variant="panel"
-                        onCategoryFilter={setActiveCategory}
-                        onInterestChange={setActiveInterests}
+                        onCategoryFilter={handleCategoryFilter}
+                        onInterestChange={handleInterestChange}
                       />
                     )}
                   />
@@ -568,6 +628,67 @@ function App(): JSX.Element {
         />
       )}
     </div>
+  );
+}
+
+function IdeaPagination({
+  total,
+  pageSize,
+  current,
+  onChange,
+}: {
+  total: number;
+  pageSize: number;
+  current: number;
+  onChange: (page: number) => void;
+}): JSX.Element {
+  const totalPages = Math.ceil(total / pageSize);
+  if (totalPages <= 1) return <></>;
+
+  const start = current * pageSize + 1;
+  const end = Math.min(total, start + pageSize - 1);
+  const pages = paginationItems(totalPages, current);
+
+  return (
+    <nav className="idea-pagination" aria-label="アイデアページネーション">
+      <span className="idea-pagination__summary">{start}-{end} / {total}件</span>
+      <div className="idea-pagination__controls">
+        <button
+          type="button"
+          className="idea-pagination__btn"
+          disabled={current === 0}
+          onClick={() => onChange(current - 1)}
+          aria-label="前のページ"
+        >
+          ‹
+        </button>
+        {pages.map((page, index) => (
+          page === '...' ? (
+            <span key={`ellipsis-${index}`} className="idea-pagination__ellipsis">…</span>
+          ) : (
+            <button
+              key={page}
+              type="button"
+              className={`idea-pagination__btn ${page === current ? 'idea-pagination__btn--active' : ''}`}
+              onClick={() => onChange(page)}
+              aria-current={page === current ? 'page' : undefined}
+              aria-label={`${page + 1}ページ目`}
+            >
+              {page + 1}
+            </button>
+          )
+        ))}
+        <button
+          type="button"
+          className="idea-pagination__btn"
+          disabled={current === totalPages - 1}
+          onClick={() => onChange(current + 1)}
+          aria-label="次のページ"
+        >
+          ›
+        </button>
+      </div>
+    </nav>
   );
 }
 

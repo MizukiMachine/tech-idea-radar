@@ -289,7 +289,7 @@ export default function TrendBoard({
   const [topicFilter, setTopicFilter] = useState<TopicFilter>('all');
   const [trendSearchQuery, setTrendSearchQuery] = useState('');
   const [page, setPage] = useState(0);
-  const PAGE_SIZE = 16;
+  const PAGE_SIZE = 15;
   const mergedTrends = useMemo(
     () => mergeTrendSnapshots(trendSnapshots),
     [trendSnapshots],
