@@ -24,6 +24,7 @@ const DEFAULT_KEYWORDS = ['AI', 'SaaS', 'developer', 'productivity', 'automation
 const MAX_EVIDENCE_URLS = 1;
 const MAX_SUMMARIZED_RSS_ARTICLES = 18;
 const RSS_SUMMARY_BATCH_SIZE = 4;
+const DEFAULT_RSS_SUMMARY_REQUEST_CONCURRENCY = 2;
 const RSS_SUMMARY_MAX_TOKENS = 7000;
 const RSS_TOPIC_CLUSTERING_MAX_TOKENS = 3000;
 const RSS_TOPIC_CLUSTERING_MIN_CONFIDENCE = 0.55;
@@ -230,6 +231,23 @@ function chunkArray<T>(items: T[], size: number): T[][] {
     chunks.push(items.slice(index, index + size));
   }
   return chunks;
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  let nextIndex = 0;
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      await worker(items[index]);
+    }
+  }));
 }
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
@@ -935,14 +953,22 @@ export class EntrepreneurAgent {
       };
     };
 
-    for (const batch of chunkArray(targets, RSS_SUMMARY_BATCH_SIZE)) {
-      await requestTranslations(batch, 'summary generation failed');
-    }
+    const summaryConcurrency = parsePositiveInt(
+      process.env.RSS_SUMMARY_REQUEST_CONCURRENCY,
+      DEFAULT_RSS_SUMMARY_REQUEST_CONCURRENCY,
+    );
+    await runWithConcurrency(
+      chunkArray(targets, RSS_SUMMARY_BATCH_SIZE),
+      summaryConcurrency,
+      (batch) => requestTranslations(batch, 'summary generation failed'),
+    );
 
     const retryTargets = targets.filter((target) => typeof validateTarget(target) === 'string');
-    for (const retryTarget of retryTargets) {
-      await requestTranslations([retryTarget], 'summary repair failed', 'repair');
-    }
+    await runWithConcurrency(
+      retryTargets,
+      summaryConcurrency,
+      (retryTarget) => requestTranslations([retryTarget], 'summary repair failed', 'repair'),
+    );
 
     const summarizedArticles: RssArticle[] = [];
     const summaryErrors = new Map<number, RssSummaryError>();

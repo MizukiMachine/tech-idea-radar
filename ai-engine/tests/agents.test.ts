@@ -501,6 +501,46 @@ describe('EntrepreneurAgent', () => {
     expect(summarizationPrompt).toContain('文末に「...」「…」を付けない');
   });
 
+  it('summarizes RSS article batches concurrently', async () => {
+    vi.stubEnv('RSS_SUMMARY_REQUEST_CONCURRENCY', '2');
+    vi.mocked(fetchRssContext).mockResolvedValueOnce({
+      trendingKeywords: [{ word: 'AI', count: 8 }],
+      relatedArticles: Array.from({ length: 8 }, (_, index) => ({
+        title: `AI workflow article ${index}`,
+        link: `https://example.com/workflow-${index}`,
+        url: `https://example.com/workflow-${index}`,
+        published: '2026-05-17T00:00:00.000Z',
+        summary: 'Teams are adopting AI agents for product and engineering workflows.',
+        source: 'Hacker News',
+        keywords: ['AI', 'workflow'],
+      })),
+    });
+    const client = createMockClient('[]');
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+    vi.mocked(client.send).mockImplementation(async (_system, userPrompt) => {
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      activeRequests -= 1;
+
+      const indexes = [...userPrompt.matchAll(/"index":\s*(\d+)/g)].map((match) => Number(match[1]));
+      return JSON.stringify(indexes.map((index) => ({
+        index,
+        title: `AI workflow article ${index}`,
+        titleJa: `AIワークフロー記事${index}`,
+        summaryJa: validTrendSummary(`AIワークフロー記事${index}`),
+      })));
+    });
+    const agent = new EntrepreneurAgent(client);
+
+    const result = await agent.scanTrends();
+
+    expect(result.rssContext.relatedArticles).toHaveLength(8);
+    expect(client.send).toHaveBeenCalledTimes(2);
+    expect(maxActiveRequests).toBe(2);
+  });
+
   it('applies Japanese titles to English RSS articles by index', async () => {
     vi.mocked(fetchRssContext).mockResolvedValueOnce({
       trendingKeywords: [{ word: 'ThinkPad', count: 3 }],
