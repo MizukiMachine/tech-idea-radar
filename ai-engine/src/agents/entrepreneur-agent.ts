@@ -4,7 +4,12 @@ import { ResponseParser } from '../services/response-parser';
 import { IdeaGenerationAgent } from './idea-generation-agent';
 import { FilterAgent } from './filter-agent';
 import { fetchRssContext } from '../services/rss-client';
-import { DEFAULT_IDEA_COUNT } from '../config/constants';
+import {
+  DEFAULT_FEATURED_IDEA_SELECTION_TIMEOUT_MS,
+  DEFAULT_IDEA_COUNT,
+  DEFAULT_RSS_SUMMARY_REQUEST_TIMEOUT_MS,
+  DEFAULT_RSS_TOPIC_CLUSTERING_TIMEOUT_MS,
+} from '../config/constants';
 import { RssSourceUnavailableError } from '../errors';
 import {
   RSS_ARTICLE_SUMMARY_POLICY,
@@ -857,6 +862,13 @@ export class EntrepreneurAgent {
         renderPromptRole('rss_topic_clustering', 'system', variables),
         renderPromptRole('rss_topic_clustering', 'user', variables),
         RSS_TOPIC_CLUSTERING_MAX_TOKENS,
+        {
+          maxAttempts: 1,
+          timeoutMs: parsePositiveInt(
+            process.env.RSS_TOPIC_CLUSTERING_TIMEOUT_MS,
+            DEFAULT_RSS_TOPIC_CLUSTERING_TIMEOUT_MS,
+          ),
+        },
       );
       const parsed = ResponseParser.parse<unknown>(raw);
       const groups = normalizeLlmTopicGroups(parsed, rssContext.relatedArticles.length);
@@ -914,6 +926,13 @@ export class EntrepreneurAgent {
           renderPromptRole(promptKey, 'system', variables),
           renderPromptRole(promptKey, 'user', variables),
           RSS_SUMMARY_MAX_TOKENS,
+          {
+            maxAttempts: 1,
+            timeoutMs: parsePositiveInt(
+              process.env.RSS_SUMMARY_REQUEST_TIMEOUT_MS,
+              DEFAULT_RSS_SUMMARY_REQUEST_TIMEOUT_MS,
+            ),
+          },
         );
         const parsed = ResponseParser.parse<RssArticleTranslation[]>(raw);
         if (!Array.isArray(parsed)) throw new Error('RSS summary response was not a JSON array');
@@ -1101,7 +1120,7 @@ export class EntrepreneurAgent {
     };
 
     onProgress?.('アイデア候補を生成中...');
-    const rawCandidates = await this.ideaGeneration.execute(input, onProgress);
+    const rawCandidates = await this.ideaGeneration.executeStaged(input, onProgress);
 
     // LLM may return various formats — normalize to IdeaCandidate[]
     let candidates = attachTrustedEvidence(normalizeCandidates(rawCandidates), rssContext);
@@ -1161,7 +1180,13 @@ export class EntrepreneurAgent {
 
       const systemPrompt = renderPromptRole('featured_idea_selection', 'system');
       const userPrompt = renderPromptRole('featured_idea_selection', 'user', { idea_summaries: summaries });
-      const raw = await this.llm.send(systemPrompt, userPrompt, 256);
+      const raw = await this.llm.send(systemPrompt, userPrompt, 256, {
+        maxAttempts: 1,
+        timeoutMs: parsePositiveInt(
+          process.env.FEATURED_IDEA_SELECTION_TIMEOUT_MS,
+          DEFAULT_FEATURED_IDEA_SELECTION_TIMEOUT_MS,
+        ),
+      });
       const parsed = JSON.parse(raw.trim());
       const idx = typeof parsed.index === 'number' ? parsed.index : undefined;
       if (idx !== undefined && idx >= 0 && idx < candidates.length) {

@@ -9,6 +9,8 @@ describe('prompt catalog', () => {
   it('loads all managed prompt templates from YAML', () => {
     expect(listPromptTemplateKeys()).toEqual([
       'idea_generation',
+      'idea_seed_generation',
+      'idea_detail_generation',
       'semantic_filter',
       'rss_topic_clustering',
       'rss_article_summary',
@@ -35,6 +37,32 @@ describe('prompt catalog', () => {
     expect(userPrompt).toContain('"AI Ops article"');
     expect(userPrompt).toContain('最大 3 件');
     expect(userPrompt).not.toContain('${');
+  });
+
+  it('renders staged idea generation prompts', () => {
+    const seedPrompt = renderPromptRole('idea_seed_generation', 'user', {
+      rss_context: {
+        trendingKeywords: [{ word: 'AI', count: 2 }],
+        relatedArticles: [{ title: 'AI Ops article', url: 'https://example.com/ai-ops' }],
+      },
+      focus_keywords: 'AI, SaaS',
+      requested_idea_count: '4',
+    });
+    const detailPrompt = renderPromptRole('idea_detail_generation', 'user', {
+      rss_context: {
+        trendingKeywords: [{ word: 'AI', count: 2 }],
+        relatedArticles: [{ title: 'AI Ops article', url: 'https://example.com/ai-ops' }],
+      },
+      focus_keywords: 'AI, SaaS',
+      idea_seed: { seedId: 'seed-1', title: 'AI Ops Memo' },
+    });
+
+    expect(seedPrompt).toContain('最大 4 件');
+    expect(seedPrompt).toContain('互いに重複しないアイデア候補');
+    expect(detailPrompt).toContain('"seedId": "seed-1"');
+    expect(detailPrompt).toContain('この候補1件だけ');
+    expect(seedPrompt).not.toContain('${');
+    expect(detailPrompt).not.toContain('${');
   });
 
   it('rejects missing required runtime inputs', () => {

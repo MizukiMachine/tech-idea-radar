@@ -183,6 +183,441 @@ describe('IdeaGenerationAgent', () => {
     })).rejects.toMatchObject({ name: 'RssSourceUnavailableError' });
     expect(client.send).not.toHaveBeenCalled();
   });
+
+  it('selects idea seeds once and expands details concurrently', async () => {
+    vi.stubEnv('IDEA_DETAIL_REQUEST_CONCURRENCY', '3');
+    const client = createMockClient('[]');
+    const seeds = Array.from({ length: 6 }, (_, index) => ({
+      seedId: `seed-${index + 1}`,
+      title: `Idea seed ${index + 1}`,
+      tagline: `Seed tagline ${index + 1}`,
+      tags: ['AI', 'SaaS'],
+      productType: 'B2B SaaS',
+      targetUsers: 'プロダクトチーム',
+      coreProblem: `課題 ${index + 1}`,
+      differentiationHint: `差別化 ${index + 1}`,
+      rssKeywords: ['AI'],
+      evidenceUrls: [{ title: 'AI Ops article', url: 'https://example.com/ai-ops', type: 'rss' }],
+    }));
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+    vi.mocked(client.send).mockImplementation(async (_system, userPrompt) => {
+      if (!userPrompt.includes('### 詳細化するアイデア候補')) {
+        return JSON.stringify(seeds);
+      }
+
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      activeRequests -= 1;
+
+      const seedId = /"seedId":\s*"seed-(\d+)"/.exec(userPrompt)?.[1] ?? '1';
+      return JSON.stringify({
+        ...candidate,
+        id: `idea-${seedId}`,
+        title: `Detailed idea ${seedId}`,
+        coreProblem: `課題 ${seedId}`,
+      });
+    });
+    const agent = new IdeaGenerationAgent(client);
+
+    const result = await agent.executeStaged({
+      rssContext: {
+        trendingKeywords: [{ word: 'AI', count: 6 }],
+        relatedArticles: [{
+          title: 'AI Ops article',
+          link: 'https://example.com/ai-ops',
+          url: 'https://example.com/ai-ops',
+          published: '2026-05-14T00:00:00.000Z',
+          summary: 'AI Ops for SRE teams',
+          source: 'Test RSS',
+          keywords: ['AI', 'SRE'],
+        }],
+      },
+      focusKeywords: ['AI', 'SaaS'],
+      requestedIdeaCount: 6,
+    });
+
+    expect(result.map((item) => item.title)).toEqual([
+      'Detailed idea 1',
+      'Detailed idea 2',
+      'Detailed idea 3',
+      'Detailed idea 4',
+      'Detailed idea 5',
+      'Detailed idea 6',
+    ]);
+    expect(client.send).toHaveBeenCalledTimes(7);
+    expect(client.sendStream).not.toHaveBeenCalled();
+    expect(maxActiveRequests).toBe(3);
+  });
+
+  it('uses a bounded default concurrency for idea detail generation', async () => {
+    const client = createMockClient('[]');
+    const seeds = Array.from({ length: 8 }, (_, index) => ({
+      seedId: `seed-${index + 1}`,
+      title: `Idea seed ${index + 1}`,
+      tagline: `Seed tagline ${index + 1}`,
+      tags: ['AI', 'SaaS'],
+      productType: 'B2B SaaS',
+      targetUsers: 'プロダクトチーム',
+      coreProblem: `課題 ${index + 1}`,
+      differentiationHint: `差別化 ${index + 1}`,
+      rssKeywords: ['AI'],
+    }));
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+    vi.mocked(client.send).mockImplementation(async (_system, userPrompt) => {
+      if (!userPrompt.includes('### 詳細化するアイデア候補')) {
+        return JSON.stringify(seeds);
+      }
+
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      activeRequests -= 1;
+
+      const seedId = /"seedId":\s*"seed-(\d+)"/.exec(userPrompt)?.[1] ?? '1';
+      return JSON.stringify({ ...candidate, id: `idea-${seedId}`, title: `Detailed idea ${seedId}` });
+    });
+    const agent = new IdeaGenerationAgent(client);
+
+    const result = await agent.executeStaged({
+      rssContext: {
+        trendingKeywords: [{ word: 'AI', count: 8 }],
+        relatedArticles: [{
+          title: 'AI Ops article',
+          link: 'https://example.com/ai-ops',
+          url: 'https://example.com/ai-ops',
+          published: '2026-05-14T00:00:00.000Z',
+          summary: 'AI Ops for SRE teams',
+          source: 'Test RSS',
+          keywords: ['AI', 'SRE'],
+        }],
+      },
+      requestedIdeaCount: 8,
+    });
+
+    expect(result).toHaveLength(8);
+    expect(maxActiveRequests).toBe(2);
+  });
+
+  it('passes bounded timeout options to staged idea generation requests', async () => {
+    const client = createMockClient('[]');
+    const seed = {
+      seedId: 'seed-1',
+      title: 'Idea seed 1',
+      tagline: 'Seed tagline 1',
+      tags: ['AI', 'SaaS'],
+      productType: 'B2B SaaS',
+      targetUsers: 'プロダクトチーム',
+      coreProblem: '課題 1',
+      differentiationHint: '差別化 1',
+      rssKeywords: ['AI'],
+    };
+    vi.mocked(client.send).mockImplementation(async (_system, userPrompt) => {
+      if (!userPrompt.includes('### 詳細化するアイデア候補')) return JSON.stringify([seed]);
+      return JSON.stringify({ ...candidate, id: 'idea-1', title: 'Detailed idea 1' });
+    });
+    const agent = new IdeaGenerationAgent(client);
+
+    await agent.executeStaged({
+      rssContext: {
+        trendingKeywords: [{ word: 'AI', count: 1 }],
+        relatedArticles: [{
+          title: 'AI Ops article',
+          link: 'https://example.com/ai-ops',
+          url: 'https://example.com/ai-ops',
+          published: '2026-05-14T00:00:00.000Z',
+          summary: 'AI Ops for SRE teams',
+          source: 'Test RSS',
+          keywords: ['AI', 'SRE'],
+        }],
+      },
+      requestedIdeaCount: 1,
+    });
+
+    expect(vi.mocked(client.send).mock.calls[0]?.[3]).toEqual({
+      maxAttempts: 1,
+      timeoutMs: 60_000,
+    });
+    expect(vi.mocked(client.send).mock.calls[1]?.[3]).toEqual({
+      maxAttempts: 1,
+      timeoutMs: 120_000,
+    });
+  });
+
+  it('falls back to RSS-derived seeds when LLM seed selection times out', async () => {
+    const client = createMockClient('[]');
+    vi.mocked(client.send).mockImplementation(async (_system, userPrompt) => {
+      if (userPrompt.includes('### 今回の候補数')) throw new Error('seed timeout');
+      if (userPrompt.includes('### 詳細化するアイデア候補')) {
+        const seedId = /"seedId":\s*"rss-seed-(\d+)"/.exec(userPrompt)?.[1] ?? '1';
+        return JSON.stringify({
+          ...candidate,
+          id: `idea-${seedId}`,
+          title: `RSS fallback idea ${seedId}`,
+          coreProblem: `RSS由来の課題 ${seedId}`,
+        });
+      }
+      throw new Error('single-request fallback should not run');
+    });
+    const agent = new IdeaGenerationAgent(client);
+
+    const result = await agent.executeStaged({
+      rssContext: {
+        trendingKeywords: [{ word: 'AI', count: 2 }],
+        relatedArticles: [
+          {
+            title: 'AI Ops article',
+            link: 'https://example.com/ai-ops',
+            url: 'https://example.com/ai-ops',
+            published: '2026-05-14T00:00:00.000Z',
+            summary: 'AI Ops for SRE teams',
+            source: 'Test RSS',
+            keywords: ['AI', 'SRE'],
+          },
+          {
+            title: 'Product workflow article',
+            link: 'https://example.com/product-workflow',
+            url: 'https://example.com/product-workflow',
+            published: '2026-05-14T00:00:00.000Z',
+            summary: 'Product teams are adopting AI workflows.',
+            source: 'Test RSS',
+            keywords: ['AI', 'workflow'],
+          },
+        ],
+      },
+      requestedIdeaCount: 2,
+    });
+
+    const singleRequestFallbackCalls = vi.mocked(client.send).mock.calls
+      .filter((call) => String(call[1]).includes('### 今回の生成件数'));
+    expect(result.map((item) => item.title)).toEqual(['RSS fallback idea 1', 'RSS fallback idea 2']);
+    expect(singleRequestFallbackCalls).toHaveLength(0);
+  });
+
+  it('retries failed and incomplete idea detail generations', async () => {
+    vi.stubEnv('IDEA_DETAIL_REQUEST_CONCURRENCY', '2');
+    vi.stubEnv('IDEA_DETAIL_REQUEST_RETRIES', '2');
+    vi.stubEnv('IDEA_DETAIL_RETRY_DELAY_MS', '0');
+    const client = createMockClient('[]');
+    const seeds = Array.from({ length: 3 }, (_, index) => ({
+      seedId: `seed-${index + 1}`,
+      title: `Idea seed ${index + 1}`,
+      tagline: `Seed tagline ${index + 1}`,
+      tags: ['AI', 'SaaS'],
+      productType: 'B2B SaaS',
+      targetUsers: 'プロダクトチーム',
+      coreProblem: `課題 ${index + 1}`,
+      differentiationHint: `差別化 ${index + 1}`,
+      rssKeywords: ['AI'],
+    }));
+    const attemptsBySeed = new Map<string, number>();
+    vi.mocked(client.send).mockImplementation(async (_system, userPrompt) => {
+      if (!userPrompt.includes('### 詳細化するアイデア候補')) {
+        return JSON.stringify(seeds);
+      }
+
+      const seedId = /"seedId":\s*"seed-(\d+)"/.exec(userPrompt)?.[1] ?? '1';
+      const attempt = (attemptsBySeed.get(seedId) ?? 0) + 1;
+      attemptsBySeed.set(seedId, attempt);
+
+      if (seedId === '2' && attempt === 1) {
+        throw new Error('temporary detail failure');
+      }
+      if (seedId === '3' && attempt === 1) {
+        return JSON.stringify({
+          id: 'incomplete',
+          title: 'Incomplete idea',
+          tagline: '説明文がない不完全な応答',
+          tags: ['AI'],
+          productType: 'B2B SaaS',
+          targetUsers: 'プロダクトチーム',
+          coreProblem: '課題',
+          differentiation: '差別化',
+        });
+      }
+
+      return JSON.stringify({
+        ...candidate,
+        id: `idea-${seedId}`,
+        title: `Detailed idea ${seedId}`,
+        description: `Detailed description ${seedId}`,
+      });
+    });
+    const agent = new IdeaGenerationAgent(client);
+
+    const result = await agent.executeStaged({
+      rssContext: {
+        trendingKeywords: [{ word: 'AI', count: 3 }],
+        relatedArticles: [{
+          title: 'AI Ops article',
+          link: 'https://example.com/ai-ops',
+          url: 'https://example.com/ai-ops',
+          published: '2026-05-14T00:00:00.000Z',
+          summary: 'AI Ops for SRE teams',
+          source: 'Test RSS',
+          keywords: ['AI', 'SRE'],
+        }],
+      },
+      requestedIdeaCount: 3,
+    });
+
+    expect(result.map((item) => item.title)).toEqual([
+      'Detailed idea 1',
+      'Detailed idea 2',
+      'Detailed idea 3',
+    ]);
+    expect(attemptsBySeed.get('1')).toBe(1);
+    expect(attemptsBySeed.get('2')).toBe(2);
+    expect(attemptsBySeed.get('3')).toBe(2);
+    expect(client.send).toHaveBeenCalledTimes(6);
+  });
+
+  it('falls back to single-request generation when detail retries still leave missing cards', async () => {
+    vi.stubEnv('IDEA_DETAIL_REQUEST_CONCURRENCY', '2');
+    vi.stubEnv('IDEA_DETAIL_REQUEST_RETRIES', '1');
+    vi.stubEnv('IDEA_DETAIL_RETRY_DELAY_MS', '0');
+    const client = createMockClient('[]');
+    const seeds = [1, 2].map((value) => ({
+      seedId: `seed-${value}`,
+      title: `Idea seed ${value}`,
+      tagline: `Seed tagline ${value}`,
+      tags: ['AI', 'SaaS'],
+      productType: 'B2B SaaS',
+      targetUsers: 'プロダクトチーム',
+      coreProblem: `課題 ${value}`,
+      differentiationHint: `差別化 ${value}`,
+      rssKeywords: ['AI'],
+    }));
+    vi.mocked(client.send).mockImplementation(async (_system, userPrompt) => {
+      if (userPrompt.includes('### 今回の候補数')) return JSON.stringify(seeds);
+      if (userPrompt.includes('### 詳細化するアイデア候補')) return JSON.stringify({ title: 'Incomplete idea' });
+      return JSON.stringify([
+        { ...candidate, id: 'fallback-1', title: 'Fallback idea 1' },
+        { ...candidate, id: 'fallback-2', title: 'Fallback idea 2' },
+      ]);
+    });
+    const agent = new IdeaGenerationAgent(client);
+
+    const result = await agent.executeStaged({
+      rssContext: {
+        trendingKeywords: [{ word: 'AI', count: 2 }],
+        relatedArticles: [{
+          title: 'AI Ops article',
+          link: 'https://example.com/ai-ops',
+          url: 'https://example.com/ai-ops',
+          published: '2026-05-14T00:00:00.000Z',
+          summary: 'AI Ops for SRE teams',
+          source: 'Test RSS',
+          keywords: ['AI', 'SRE'],
+        }],
+      },
+      requestedIdeaCount: 2,
+    });
+
+    expect(result.map((item) => item.title)).toEqual(['Fallback idea 1', 'Fallback idea 2']);
+    expect(client.send).toHaveBeenCalledTimes(6);
+    const calls = vi.mocked(client.send).mock.calls;
+    expect(calls[calls.length - 1]?.[3]).toEqual({
+      maxAttempts: 1,
+      timeoutMs: 180_000,
+    });
+  });
+
+  it('returns partial detail results instead of blocking on single-request fallback', async () => {
+    vi.stubEnv('IDEA_DETAIL_REQUEST_CONCURRENCY', '2');
+    vi.stubEnv('IDEA_DETAIL_REQUEST_RETRIES', '0');
+    const client = createMockClient('[]');
+    const seeds = [1, 2].map((value) => ({
+      seedId: `seed-${value}`,
+      title: `Idea seed ${value}`,
+      tagline: `Seed tagline ${value}`,
+      tags: ['AI', 'SaaS'],
+      productType: 'B2B SaaS',
+      targetUsers: 'プロダクトチーム',
+      coreProblem: `課題 ${value}`,
+      differentiationHint: `差別化 ${value}`,
+      rssKeywords: ['AI'],
+    }));
+    vi.mocked(client.send).mockImplementation(async (_system, userPrompt) => {
+      if (userPrompt.includes('### 今回の候補数')) return JSON.stringify(seeds);
+      if (userPrompt.includes('"seedId": "seed-1"')) {
+        return JSON.stringify({ ...candidate, id: 'partial-1', title: 'Partial idea 1' });
+      }
+      if (userPrompt.includes('### 詳細化するアイデア候補')) return JSON.stringify({ title: 'Incomplete idea' });
+      throw new Error('single-request fallback should not run when partial details exist');
+    });
+    const agent = new IdeaGenerationAgent(client);
+
+    const result = await agent.executeStaged({
+      rssContext: {
+        trendingKeywords: [{ word: 'AI', count: 2 }],
+        relatedArticles: [{
+          title: 'AI Ops article',
+          link: 'https://example.com/ai-ops',
+          url: 'https://example.com/ai-ops',
+          published: '2026-05-14T00:00:00.000Z',
+          summary: 'AI Ops for SRE teams',
+          source: 'Test RSS',
+          keywords: ['AI', 'SRE'],
+        }],
+      },
+      requestedIdeaCount: 2,
+    });
+
+    const singleRequestFallbackCalls = vi.mocked(client.send).mock.calls
+      .filter((call) => String(call[1]).includes('### 今回の生成件数'));
+    expect(result.map((item) => item.title)).toEqual(['Partial idea 1']);
+    expect(singleRequestFallbackCalls).toHaveLength(0);
+  });
+
+  it('falls back when the idea detail stage exceeds its total time budget', async () => {
+    vi.stubEnv('IDEA_DETAIL_TOTAL_TIMEOUT_MS', '1');
+    const client = createMockClient('[]');
+    const seeds = [1, 2].map((value) => ({
+      seedId: `seed-${value}`,
+      title: `Idea seed ${value}`,
+      tagline: `Seed tagline ${value}`,
+      tags: ['AI', 'SaaS'],
+      productType: 'B2B SaaS',
+      targetUsers: 'プロダクトチーム',
+      coreProblem: `課題 ${value}`,
+      differentiationHint: `差別化 ${value}`,
+      rssKeywords: ['AI'],
+    }));
+    vi.mocked(client.send).mockImplementation(async (_system, userPrompt) => {
+      if (userPrompt.includes('### 今回の候補数')) return JSON.stringify(seeds);
+      if (userPrompt.includes('### 詳細化するアイデア候補')) throw new Error('detail should not start');
+      return JSON.stringify([
+        { ...candidate, id: 'fallback-1', title: 'Fallback idea 1' },
+        { ...candidate, id: 'fallback-2', title: 'Fallback idea 2' },
+      ]);
+    });
+    const agent = new IdeaGenerationAgent(client);
+
+    const result = await agent.executeStaged({
+      rssContext: {
+        trendingKeywords: [{ word: 'AI', count: 2 }],
+        relatedArticles: [{
+          title: 'AI Ops article',
+          link: 'https://example.com/ai-ops',
+          url: 'https://example.com/ai-ops',
+          published: '2026-05-14T00:00:00.000Z',
+          summary: 'AI Ops for SRE teams',
+          source: 'Test RSS',
+          keywords: ['AI', 'SRE'],
+        }],
+      },
+      requestedIdeaCount: 2,
+    });
+
+    const detailCalls = vi.mocked(client.send).mock.calls
+      .filter((call) => String(call[1]).includes('### 詳細化するアイデア候補'));
+    expect(result.map((item) => item.title)).toEqual(['Fallback idea 1', 'Fallback idea 2']);
+    expect(detailCalls).toHaveLength(0);
+    expect(client.send).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('FilterAgent', () => {
@@ -235,6 +670,10 @@ describe('EntrepreneurAgent', () => {
       expect.stringContaining('技術ニュースの編集者'),
       expect.any(String),
       7000,
+      {
+        maxAttempts: 1,
+        timeoutMs: 120_000,
+      },
     );
   });
 
@@ -665,10 +1104,10 @@ describe('EntrepreneurAgent', () => {
     const agent = new EntrepreneurAgent(client);
     const progress: string[] = [];
 
-    const result = await agent.generateIdeas((text) => progress.push(text));
+    const result = await agent.generateIdeas((text) => progress.push(text), undefined, 1);
 
     expect(fetchRssContext).toHaveBeenCalled();
-    expect(client.sendStream).toHaveBeenCalledOnce();
+    expect(client.sendStream).not.toHaveBeenCalled();
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0].sources.evidenceUrls).toEqual([
       { title: 'AI Ops article', url: 'https://example.com/ai-ops', type: 'rss' },
@@ -695,6 +1134,38 @@ describe('EntrepreneurAgent', () => {
 
     expect(result.candidates[0].batchTime).toBe('2026-05-16T08:00:00+09:00');
     expect(result.batchTime).toBe('2026-05-16T08:00:00+09:00');
+  });
+
+  it('bounds optional featured idea selection so cache writes are not blocked for long', async () => {
+    const client = createMockClient('[]');
+    const seed = {
+      seedId: 'seed-1',
+      title: 'Idea seed 1',
+      tagline: 'Seed tagline 1',
+      tags: ['AI', 'SaaS'],
+      productType: 'B2B SaaS',
+      targetUsers: 'プロダクトチーム',
+      coreProblem: '課題 1',
+      differentiationHint: '差別化 1',
+      rssKeywords: ['AI'],
+    };
+    vi.mocked(client.send).mockImplementation(async (_system, userPrompt, maxTokens) => {
+      if (String(userPrompt).includes('### 今回の候補数')) return JSON.stringify([seed]);
+      if (String(userPrompt).includes('### 詳細化するアイデア候補')) return JSON.stringify(candidate);
+      if (maxTokens === 256) throw new Error('featured selection timeout');
+      return JSON.stringify([candidate]);
+    });
+    const agent = new EntrepreneurAgent(client);
+
+    const result = await agent.generateIdeas(undefined, undefined, 1);
+
+    const featuredCall = vi.mocked(client.send).mock.calls.find((call) => call[2] === 256);
+    expect(result.candidates).toHaveLength(1);
+    expect(result.featuredIdea).toBeUndefined();
+    expect(featuredCall?.[3]).toEqual({
+      maxAttempts: 1,
+      timeoutMs: 20_000,
+    });
   });
 
   it('returns candidates unchanged for empty filter queries without calling the LLM', async () => {
