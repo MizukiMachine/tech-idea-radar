@@ -1,8 +1,12 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
 
 const EXPECTED_DEV_STACK_ID = (import.meta.env.VITE_DEV_STACK_ID ?? '').trim();
-const RAW_API_BASE = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '');
+const RAW_API_BASE = normalizeApiBase(import.meta.env.VITE_API_BASE_URL ?? '');
 const API_BASE = EXPECTED_DEV_STACK_ID ? '' : RAW_API_BASE;
+const ALLOWED_API_BASES = String(import.meta.env.VITE_ALLOWED_API_BASES ?? '')
+  .split(',')
+  .map((value: string) => normalizeApiBase(value.trim()))
+  .filter(Boolean);
 const BACKEND_SERVICE_NAME = 'builder-agent-chain-backend';
 const HEALTH_CHECK_TIMEOUT_MS = 5_000;
 
@@ -27,6 +31,27 @@ interface BackendHealth {
 
 function devStackError(message: string): Error {
   return new Error(`DEV_STACK_MISMATCH: ${message}`);
+}
+
+function normalizeApiBase(value: string): string {
+  if (!value) return '';
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    url.pathname = url.pathname.replace(/\/+$/, '');
+    if (url.pathname === '/') url.pathname = '';
+    return url.toString().replace(/\/$/, '');
+  } catch {
+    return value.replace(/\/$/, '');
+  }
+}
+
+function assertApiBaseAllowed(): void {
+  if (EXPECTED_DEV_STACK_ID || !RAW_API_BASE) return;
+  if (ALLOWED_API_BASES.includes(normalizeApiBase(RAW_API_BASE))) return;
+  throw devStackError(
+    `explicit VITE_API_BASE_URL=${RAW_API_BASE} is not allowed without VITE_DEV_STACK_ID unless VITE_ALLOWED_API_BASES includes the exact URL. Use same-origin /api, npm run dev, or npm run preview:stack so the frontend and backend are verified together.`,
+  );
 }
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMs: number): Promise<Response> {
@@ -81,6 +106,7 @@ async function assertBackendConnection(): Promise<void> {
 }
 
 async function apiFetch(path: string, label: string, init?: RequestInit): Promise<Response> {
+  assertApiBaseAllowed();
   await assertBackendConnection();
   const res = await fetch(`${API_BASE}${path}`, init);
   if (!res.ok) await throwApiError(res, label);

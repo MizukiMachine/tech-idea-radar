@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "node ../scripts/require-proxy-target.mjs && vite",
     "build": "tsc -b && vite build --configLoader runner",
-    "preview": "vite preview",
+    "preview": "node ../scripts/require-safe-preview.mjs && vite preview",
     "lint": "eslint src --ext ts,tsx --max-warnings=0",
     "test": "vitest --configLoader runner"
   },

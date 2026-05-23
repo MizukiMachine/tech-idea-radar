@@ -47,15 +47,34 @@ afterEach(() => {
 });
 
 describe('API dev-stack boundary', () => {
-  it('uses an explicit API base outside the local dev stack', async () => {
-    vi.stubEnv('VITE_API_BASE_URL', 'http://127.0.0.1:3999');
+  it('rejects an explicit non-local API base outside the local dev stack unless allowlisted', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.test');
+
+    const { fetchIdeas } = await import('../api/ai');
+
+    await expect(fetchIdeas()).rejects.toThrow(/VITE_ALLOWED_API_BASES/);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it('uses an allowlisted explicit API base outside the local dev stack', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.test');
+    vi.stubEnv('VITE_ALLOWED_API_BASES', 'https://api.example.test');
     mockFetch.mockResolvedValueOnce(jsonResponse(ideasResponse));
 
     const { fetchIdeas, getApiBase } = await import('../api/ai');
     await fetchIdeas();
 
-    expect(getApiBase()).toBe('http://127.0.0.1:3999');
-    expect(mockFetch).toHaveBeenCalledWith('http://127.0.0.1:3999/api/ai/ideas', undefined);
+    expect(getApiBase()).toBe('https://api.example.test');
+    expect(mockFetch).toHaveBeenCalledWith('https://api.example.test/api/ai/ideas', undefined);
+  });
+
+  it('rejects an explicit loopback API base outside the local dev stack', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'http://127.0.0.1:3999');
+
+    const { fetchIdeas } = await import('../api/ai');
+
+    await expect(fetchIdeas()).rejects.toThrow(/VITE_ALLOWED_API_BASES/);
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it('forces same-origin proxy and validates the backend stack during local dev', async () => {

@@ -14,6 +14,8 @@ const frontendPort = parsePort(process.env.DEV_FRONTEND_PORT ?? process.env.FRON
 const backendUrl = `http://${host}:${backendPort}`;
 const frontendUrl = `http://${host}:${frontendPort}`;
 const stackId = `dev-${process.pid}-${Date.now().toString(36)}`;
+const tmpDir = path.join(rootDir, '.tmp');
+const devStackInfoFile = path.join(tmpDir, 'dev-stack.json');
 const children = new Set();
 const allowStaleBuilderProcesses = process.env.BAC_ALLOW_STALE_BUILDER_PROCESSES === 'true';
 let shuttingDown = false;
@@ -214,11 +216,37 @@ function validateBackendHealth(json) {
   return '';
 }
 
+function writeDevStackInfo() {
+  fs.mkdirSync(tmpDir, { recursive: true });
+  fs.writeFileSync(devStackInfoFile, `${JSON.stringify({
+    stackId,
+    backendUrl,
+    frontendUrl,
+    backendPort,
+    frontendPort,
+    host,
+    pid: process.pid,
+    startedAt: new Date().toISOString(),
+  }, null, 2)}\n`);
+}
+
+function removeDevStackInfo() {
+  try {
+    const current = JSON.parse(fs.readFileSync(devStackInfoFile, 'utf8'));
+    if (current?.stackId === stackId && current?.pid === process.pid) {
+      fs.rmSync(devStackInfoFile, { force: true });
+    }
+  } catch {
+    // Missing or malformed metadata should not block shutdown.
+  }
+}
+
 function stopAll(code = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
   shutdownExitCode = code;
   process.exitCode = code;
+  removeDevStackInfo();
 
   if (children.size === 0) {
     process.exit(code);
@@ -269,6 +297,7 @@ try {
   });
 
   await waitForJson(`${frontendUrl}/health`, validateBackendHealth, 'frontend proxy');
+  writeDevStackInfo();
   console.log(`[dev] Frontend ready: ${frontendUrl}`);
   console.log(`[dev] Verified frontend proxy -> ${backendUrl} (stack ${stackId})`);
 } catch (error) {

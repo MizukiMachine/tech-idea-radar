@@ -60,3 +60,5 @@ npm run test
 
 `npm run dev` はバックエンドとフロントエンドをセットで起動します。既定ではバックエンドを `127.0.0.1:3010`、フロントエンドを `127.0.0.1:5180` で起動し、フロントエンドの `/api` と `/health` が今回起動したバックエンドに向いていることを確認してからURLを表示します。
 ローカル開発中は dev stack id をフロントエンド、Vite proxy、バックエンドで照合します。別プロセスや古いモックAPIに向いた場合は、ブラウザ内のAPIクライアントとバックエンドの両方で拒否します。また、別ポートに古い `builder-agent-chain` の待受プロセスが残っている場合は起動を止めます。意図的に複数スタックを並行起動する場合だけ `BAC_ALLOW_STALE_BUILDER_PROCESSES=true` を指定してください。フロント単体で起動する場合は `BAC_ALLOW_FRONTEND_SOLO=true` と `VITE_PROXY_TARGET` を明示してください。
+
+静的ビルドやプレビューでも、誤接続を避けるため `VITE_API_BASE_URL` を焼き込むビルドは既定で失敗します。通常は同一オリジンの `/api` proxy を使ってください。別オリジンの本番・ステージングAPIを意図的に使う場合だけ、完全一致するURLを `VITE_ALLOWED_API_BASES` に追加します。プレビューは raw `vite preview` ではなく、dev-stack header を付けてバックエンドを検証する `npm run preview:stack` を使ってください。`npm run dev` が起動中なら、`preview:stack` は `.tmp/dev-stack.json` から現在のバックエンドと stack id を自動で読みます。

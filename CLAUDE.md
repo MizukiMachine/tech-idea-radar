@@ -28,10 +28,13 @@ npm run backend:dev            # npm run dev と同じセット起動
 npm run frontend:dev           # npm run dev と同じセット起動
 npm run frontend:dev:solo      # フロント単体起動。VITE_PROXY_TARGET の明示指定が必要
 npm run backend:dev:solo       # バックエンド単体起動
+npm run preview:stack          # 静的distをdev-stack header付きproxyでプレビュー
 npm run build                  # 全ワークスペースビルド
 npm run test                   # 全ワークスペーステスト (Vitest)
 npm run lint                   # 全ワークスペースlint
 ```
+
+静的ビルドに `VITE_API_BASE_URL` を焼き込むこと、raw `vite preview` で確認することは禁止。バックエンド接続を伴う確認は `npm run dev` か `npm run preview:stack` を使う。別オリジンAPIが必要な本番・ステージングビルドだけ、完全一致URLを `VITE_ALLOWED_API_BASES` に入れて許可する。
 
 ## 環境変数
 

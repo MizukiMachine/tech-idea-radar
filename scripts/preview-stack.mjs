@@ -6,11 +6,16 @@ import { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
+const devStackInfoFile = path.join(rootDir, '.tmp', 'dev-stack.json');
+const explicitBackendUrl = process.env.PREVIEW_BACKEND_URL ?? process.env.VITE_PROXY_TARGET;
+const explicitStackId = process.env.BAC_DEV_STACK_ID?.trim() ?? '';
+const devStackInfo = readDevStackInfo();
 const host = process.env.PREVIEW_HOST ?? '127.0.0.1';
 const frontendPort = parsePort(process.env.PREVIEW_FRONTEND_PORT ?? process.env.FRONTEND_PORT, 5191, 'PREVIEW_FRONTEND_PORT');
-const backendUrl = (process.env.PREVIEW_BACKEND_URL ?? process.env.VITE_PROXY_TARGET ?? 'http://127.0.0.1:3020').replace(/\/$/, '');
-const stackId = process.env.BAC_DEV_STACK_ID?.trim() ?? 'manual-retention-3020';
+const backendUrl = (explicitBackendUrl ?? devStackInfo?.backendUrl ?? '').replace(/\/$/, '');
+const stackId = explicitStackId || devStackInfo?.stackId || '';
 const frontendDistDir = path.resolve(rootDir, process.env.FRONTEND_DIST_DIR?.trim() || 'frontend/dist');
+const allowUnverifiedBackend = process.env.BAC_ALLOW_UNVERIFIED_PREVIEW_BACKEND === 'true';
 
 const contentTypes = new Map([
   ['.html', 'text/html; charset=utf-8'],
@@ -28,6 +33,19 @@ function parsePort(value, fallback, name) {
     throw new Error(`${name} must be a valid TCP port, got: ${value}`);
   }
   return port;
+}
+
+function readDevStackInfo() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(devStackInfoFile, 'utf8'));
+    if (!parsed || typeof parsed !== 'object') return null;
+    const backendUrl = typeof parsed.backendUrl === 'string' ? parsed.backendUrl.trim() : '';
+    const stackId = typeof parsed.stackId === 'string' ? parsed.stackId.trim() : '';
+    if (!backendUrl || !stackId) return null;
+    return { backendUrl, stackId };
+  } catch {
+    return null;
+  }
 }
 
 function sendFile(res, file) {
@@ -83,6 +101,49 @@ async function proxyToBackend(req, res, url) {
   }
 }
 
+async function assertVerifiedBackend() {
+  if (allowUnverifiedBackend) {
+    console.warn('[preview] BAC_ALLOW_UNVERIFIED_PREVIEW_BACKEND=true; skipping backend dev-stack verification.');
+    return;
+  }
+
+  let response;
+  try {
+    response = await fetch(`${backendUrl}/health`, {
+      cache: 'no-store',
+      headers: {
+        'x-bac-dev-stack-id': stackId,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Preview backend health check failed at ${backendUrl}/health (${message}).`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Preview backend health check returned HTTP ${response.status} at ${backendUrl}/health.`);
+  }
+
+  let health;
+  try {
+    health = await response.json();
+  } catch {
+    throw new Error(`Preview backend health check at ${backendUrl}/health did not return JSON.`);
+  }
+
+  if (health?.status !== 'ok' || health?.service !== 'builder-agent-chain-backend') {
+    throw new Error('Preview backend health check did not identify the expected builder-agent-chain backend.');
+  }
+
+  if (health?.process?.devStackId !== stackId) {
+    throw new Error(`Preview backend devStackId mismatch; expected ${stackId}, got ${health?.process?.devStackId ?? 'none'}.`);
+  }
+
+  if (health?.config?.requireDevStackHeader !== true) {
+    throw new Error('Preview backend is not enforcing the dev-stack API boundary.');
+  }
+}
+
 function serveFrontend(req, res, url) {
   const requested = path.normalize(decodeURIComponent(url.pathname)).replace(/^[/\\]+/, '');
   const file = path.resolve(frontendDistDir, requested || 'index.html');
@@ -104,6 +165,22 @@ function serveFrontend(req, res, url) {
 if (!fs.existsSync(path.join(frontendDistDir, 'index.html'))) {
   throw new Error(`frontend build was not found at ${frontendDistDir}. Run npm run frontend:build first.`);
 }
+
+if (!backendUrl) {
+  throw new Error([
+    `No verified dev-stack backend metadata found at ${devStackInfoFile}.`,
+    'Start the stack with `npm run dev` first, or pass PREVIEW_BACKEND_URL explicitly.',
+  ].join(' '));
+}
+
+if (!allowUnverifiedBackend && !stackId) {
+  throw new Error([
+    `No verified dev-stack id found at ${devStackInfoFile}.`,
+    'Start the stack with `npm run dev` first, or pass BAC_DEV_STACK_ID explicitly.',
+  ].join(' '));
+}
+
+await assertVerifiedBackend();
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url || '/', `http://${host}:${frontendPort}`);

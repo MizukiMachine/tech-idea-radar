@@ -26,7 +26,7 @@
     "frontend:dev:solo": "npm run dev --workspace frontend",
     "frontend:dev:5180": "npm run dev",
     "frontend:build": "npm run build --workspace frontend",
-    "frontend:preview": "npm run preview --workspace frontend",
+    "frontend:preview": "npm run preview:stack",
     "frontend:test": "npm run test --workspace frontend",
     "frontend:lint": "npm run lint --workspace frontend"
   },
