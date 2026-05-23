@@ -143,6 +143,17 @@ export interface IdeasMeta {
     persistentCacheEnabled?: boolean;
     warmupOnStart?: boolean;
     ideaGenerationBatchSize?: number;
+    ideaDetailRequestConcurrency?: number;
+    ideaDetailRequestRetries?: number;
+    ideaDetailRequestTimeoutMs?: number;
+    ideaDetailTotalTimeoutMs?: number;
+    ideaDetailRetryDelayMs?: number;
+    ideaDetailRetryMaxDelayMs?: number;
+    ideaSeedRequestTimeoutMs?: number;
+    ideaFallbackRequestTimeoutMs?: number;
+    featuredIdeaSelectionTimeoutMs?: number;
+    rssTopicClusteringTimeoutMs?: number;
+    rssSummaryRequestTimeoutMs?: number;
     ideaRetentionWindowHours?: number;
     batchScheduleHours?: number[];
     maxBatches?: number;
@@ -349,10 +360,16 @@ export async function refreshTrends(): Promise<TrendScan> {
 function ideaStream(
   path: string,
   method: string,
-  callbacks: {
+ callbacks: {
     onProgress?: (text: string) => void;
     onIdeaGenerated: (idea: IdeaCandidate) => void;
-    onComplete: (summary: { generatedAt: string; count: number; sourceSummary?: SourceSummary; batches?: BatchInfo[] }) => void;
+    onComplete: (summary: {
+      generatedAt: string;
+      count: number;
+      featuredIdea?: IdeaCandidate;
+      sourceSummary?: SourceSummary;
+      batches?: BatchInfo[];
+    }) => void;
     onError: (error: string) => void;
   },
   body?: Record<string, unknown>,

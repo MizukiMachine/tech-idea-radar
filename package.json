@@ -11,6 +11,7 @@
   ],
   "scripts": {
     "dev": "node scripts/dev-stack.mjs",
+    "preview:stack": "node scripts/preview-stack.mjs",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "build": "npm run backend:build && npm run frontend:build",

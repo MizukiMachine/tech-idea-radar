@@ -251,6 +251,7 @@ router.get('/ideas/stream', async (_req: Request, res: Response) => {
       sseSend(res, 'generation_complete', {
         generatedAt: cached.generatedAt,
         count: cached.candidates.length,
+        featuredIdea: cached.featuredIdea,
         sourceSummary: cached.sourceSummary,
         batches: getBatchInfos(),
       }, disconnected);
@@ -266,6 +267,7 @@ router.get('/ideas/stream', async (_req: Request, res: Response) => {
       sseSend(res, 'generation_complete', {
         generatedAt: result.generatedAt,
         count: result.candidates.length,
+        featuredIdea: result.featuredIdea,
         sourceSummary: result.sourceSummary,
         batches: getBatchInfos(),
       }, disconnected);
@@ -349,6 +351,7 @@ router.post('/ideas/refresh', async (_req: Request, res: Response) => {
     sseSend(res, 'generation_complete', {
       generatedAt: result.generatedAt,
       count: result.candidates.length,
+      featuredIdea: result.featuredIdea,
       sourceSummary: result.sourceSummary,
       batches: getBatchInfos(),
     }, disconnected);

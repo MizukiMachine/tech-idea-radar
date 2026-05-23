@@ -7,6 +7,7 @@ import type { IdeaGenerationOutput } from "ai-engine";
 const originalCacheDisabled = process.env.IDEA_CACHE_DISABLED;
 const originalCacheFile = process.env.IDEA_CACHE_FILE;
 const originalZaiApiKey = process.env.ZAI_API_KEY;
+const originalIdeaGenerationBatchSize = process.env.IDEA_GENERATION_BATCH_SIZE;
 
 function restoreEnv() {
   if (originalCacheDisabled === undefined) delete process.env.IDEA_CACHE_DISABLED;
@@ -17,6 +18,9 @@ function restoreEnv() {
 
   if (originalZaiApiKey === undefined) delete process.env.ZAI_API_KEY;
   else process.env.ZAI_API_KEY = originalZaiApiKey;
+
+  if (originalIdeaGenerationBatchSize === undefined) delete process.env.IDEA_GENERATION_BATCH_SIZE;
+  else process.env.IDEA_GENERATION_BATCH_SIZE = originalIdeaGenerationBatchSize;
 }
 
 function ideaBatch(batchTime: string, id: string): {
@@ -195,5 +199,59 @@ describe("idea cache retention", () => {
     vi.setSystemTime(new Date("2026-05-18T08:01:00+09:00"));
 
     expect(cache.getCachedIdeas()?.candidates.map((idea) => idea.id)).toContain("idea-24h");
+  });
+
+  it("records a warning when fewer ideas are cached than requested", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T04:00:00+09:00"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-ideas-short-"));
+    const cacheFile = path.join(tmpDir, "idea-cache.json");
+
+    vi.doMock("ai-engine", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("ai-engine")>();
+      return {
+        ...actual,
+        EntrepreneurAgent: class {
+          async generateIdeas(
+            _onProgress?: (text: string) => void,
+            _focusKeywords?: string[],
+            _count?: number,
+            batchTime?: string,
+          ): Promise<IdeaGenerationOutput> {
+            const generatedAt = new Date().toISOString();
+            return {
+              generatedAt,
+              batchTime,
+              sourceSummary: { rssItemCount: 1, usedLLMFallback: false },
+              candidates: [{
+                id: "idea-short",
+                title: "idea-short",
+                tagline: "Short batch",
+                description: "Only one generated idea",
+                tags: ["short"],
+                productType: "SaaS",
+                targetUsers: "Builders",
+                coreProblem: "Partial generation should be visible",
+                differentiation: "Adds a warning",
+                sources: { rssKeywords: ["short"], evidenceUrls: [] },
+                generatedAt,
+                batchTime,
+              }],
+            };
+          }
+        },
+      };
+    });
+
+    vi.resetModules();
+    delete process.env.IDEA_CACHE_DISABLED;
+    process.env.IDEA_CACHE_FILE = cacheFile;
+    process.env.IDEA_GENERATION_BATCH_SIZE = "3";
+    process.env.ZAI_API_KEY = "test-key";
+
+    const cache = await import("../src/services/idea-cache");
+    await cache.generateAndCacheIdeas();
+
+    expect(cache.getCachedIdeas()?.sourceSummary.warnings?.[0]).toContain("1/3件");
   });
 });

@@ -7,6 +7,7 @@ import {
   fetchTrends,
   fetchTrendHistory,
   fetchTrendSnapshot,
+  streamIdeas,
   type SourceSummary,
   type TrendScan,
   type TrendHistoryEntry,
@@ -159,7 +160,7 @@ function App(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const progressText: string | null = null;
+  const [progressText, setProgressText] = useState<string | null>(null);
   const [sourceSummary, setSourceSummary] = useState<SourceSummary | null>(null);
   const [activeCategory, setActiveCategory] = useState('すべて');
   const [activeInterests, setActiveInterests] = useState<string[]>([]);
@@ -171,6 +172,7 @@ function App(): JSX.Element {
   // Load cached ideas on mount. Fresh generation starts automatically when cache is disabled.
   useEffect(() => {
     let cancelled = false;
+    let streamController: AbortController | null = null;
 
     async function loadIdeas() {
       try {
@@ -186,14 +188,45 @@ function App(): JSX.Element {
       } catch (err) {
         const message = err instanceof Error ? err.message : 'アイデア取得に失敗しました';
         if (!cancelled) setError(userFacingError(message));
+        if (!cancelled) setLoading(false);
+        return;
       }
 
-      if (!cancelled) setLoading(false);
+      if (cancelled) return;
+      setProgressText('トレンドデータを分析中です。');
+      streamController = streamIdeas({
+        onProgress: (text) => {
+          if (!cancelled) setProgressText(text);
+        },
+        onIdeaGenerated: (idea) => {
+          if (cancelled) return;
+          setError(null);
+          setIdeas((current) => (
+            current.some((existing) => isSameIdea(existing, idea))
+              ? current
+              : [...current, idea]
+          ));
+        },
+        onComplete: (summary) => {
+          if (cancelled) return;
+          setFeaturedIdea(summary.featuredIdea ?? null);
+          setSourceSummary(summary.sourceSummary ?? null);
+          setProgressText(null);
+          setLoading(false);
+        },
+        onError: (message) => {
+          if (cancelled) return;
+          setError(userFacingError(message));
+          setProgressText(null);
+          setLoading(false);
+        },
+      });
     }
 
     void loadIdeas();
     return () => {
       cancelled = true;
+      streamController?.abort();
     };
   }, []);
 

@@ -167,6 +167,21 @@ const trendHistory = {
   ],
 };
 
+function streamResponse(events: string[]): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const event of events) controller.enqueue(encoder.encode(event));
+      controller.close();
+    },
+  });
+  return {
+    ok: true,
+    status: 200,
+    body: stream,
+  } as Response;
+}
+
 beforeEach(() => {
   mockFetch.mockReset();
   mockFetch.mockImplementation((input: RequestInfo | URL) => {
@@ -203,6 +218,44 @@ describe("App", () => {
     expect(screen.queryByText("言語")).toBeNull();
     expect(screen.queryByText("短期開発向け")).toBeNull();
     expect(screen.getByPlaceholderText("キーワードで絞り込み")).toBeTruthy();
+  });
+
+  it("starts idea generation stream when the cache is empty", async () => {
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/ai/ideas/stream")) {
+        return Promise.resolve(streamResponse([
+          `event: generation_progress\ndata: ${JSON.stringify({ text: "アイデア候補を生成中..." })}\n\n`,
+          `event: idea_generated\ndata: ${JSON.stringify(idea)}\n\n`,
+          `event: generation_complete\ndata: ${JSON.stringify({
+            generatedAt,
+            count: 1,
+            featuredIdea: idea,
+            sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+          })}\n\n`,
+        ]));
+      }
+
+      let body: unknown = {
+        status: "empty",
+        candidates: [],
+        generatedAt: "",
+        sourceSummary: { rssItemCount: 0, usedLLMFallback: false },
+        batches: [],
+      };
+      if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" })).toBeTruthy());
+    expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/ideas/stream"))).toBe(true);
   });
 
   it("renders RSS-only trends after switching tabs", async () => {
