@@ -62,13 +62,10 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                                 <span>初回 {formatDate(visibleTrendSignal.firstSeenAt)}</span>
                                 <span>最終 {formatDate(visibleTrendSignal.lastSeenAt)}</span>
                             </div>
-                            {visibleTrendSignal.evidenceArticles.length > 0 && (
-                                <div className="idea-modal__trend-links">
-                                    {visibleTrendSignal.evidenceArticles.map((article) => (
-                                        <a key={article.url} href={article.url} target="_blank" rel="noopener noreferrer">
-                                            <span>{article.source}</span>
-                                            {article.title}
-                                        </a>
+                            {visibleTrendSignal.sources.length > 0 && (
+                                <div className="idea-modal__trend-sources" aria-label="観測媒体">
+                                    {visibleTrendSignal.sources.map((source) => (
+                                        <span key={source}>{source}</span>
                                     ))}
                                 </div>
                             )}

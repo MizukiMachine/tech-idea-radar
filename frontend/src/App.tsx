@@ -383,7 +383,7 @@ function App(): JSX.Element {
               onClick={handleOpenIdeas}
               aria-pressed={activeView === 'ideas'}
             >
-              開発アイデア
+              需要アイデア
               {hasIdeas && <span>{ideas.length}</span>}
             </button>
             <button

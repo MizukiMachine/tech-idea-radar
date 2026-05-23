@@ -212,7 +212,7 @@ describe("App", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "Lume" })).toBeTruthy();
     await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
-    expect(screen.getByRole("button", { name: /^開発アイデア/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^需要アイデア/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "海外トレンド" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "おすすめ開発アイデア" })).toBeNull();
     expect(screen.queryByText("アイデア一覧")).toBeNull();
@@ -415,6 +415,10 @@ describe("App", () => {
     await waitFor(() => expect(screen.getByText("トレンド根拠")).toBeTruthy());
     expect(screen.getByText("AIエージェント導入")).toBeTruthy();
     expect(screen.getByText((_, node) => node?.textContent === "観測規模 2媒体 / 2記事")).toBeTruthy();
+    expect(screen.getByLabelText("観測媒体").textContent).toContain("Example RSS");
+    expect(screen.getByLabelText("観測媒体").textContent).toContain("TechCrunch");
+    expect(screen.queryByRole("link", { name: /AIエージェントツールがプロダクト業務に広がる/ })).toBeNull();
+    expect(screen.getByRole("link", { name: /AI agent tools are moving into product workflows/ })).toBeTruthy();
     expect(screen.queryByText((_, node) => node?.textContent === "このアイデアの根拠 RSS 1件")).toBeNull();
   });
 
