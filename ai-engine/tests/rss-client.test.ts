@@ -406,12 +406,12 @@ describe('fetchRssContext', () => {
 
     expect(result.topicClusters?.length).toBeGreaterThan(0);
     expect(result.topicClusters?.[0]).toMatchObject({
-      status: 'spiking',
+      status: 'new',
       sourceCount: 2,
     });
     expect(result.relatedArticles[0]).toMatchObject({
       topicKey: expect.any(String),
-      topicStatus: 'spiking',
+      topicStatus: 'new',
       firstSeenAt: expect.any(String),
       lastSeenAt: expect.any(String),
     });
