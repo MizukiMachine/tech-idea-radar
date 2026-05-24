@@ -454,9 +454,10 @@ function trendSourceNames(result: TrendScanOutput): string[] {
   const failedSources = result.rssContext.sourceErrors
     ?.map((error) => error.source)
     .filter(Boolean) ?? [];
-  const summarySources = result.rssContext.summaryErrors
-    ?.map((error) => error.source)
-    .filter(Boolean) ?? [];
+  const summarySources = [
+    ...(result.rssContext.summaryErrors ?? []),
+    ...(result.rssContext.replacedSummaryErrors ?? []),
+  ].map((error) => error.source).filter(Boolean);
   return [...new Set([...articleSources, ...failedSources, ...summarySources])];
 }
 
