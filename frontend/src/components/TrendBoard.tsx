@@ -5,7 +5,8 @@ import type {
   TrendScan,
   RssTopicStatus,
 } from '../api/ai';
-import { formatBatchTimestamp, scheduledBatchTimeJST } from '../utils/batch-time';
+import { formatBatchTimestamp, normalizeBatchTimeJST } from '../utils/batch-time';
+import { cleanDisplayText } from '../utils/html-text';
 import { displayTopicStatus, topicStatusLabel } from '../utils/trend-status';
 import './TrendBoard.css';
 
@@ -95,6 +96,10 @@ function articleIdentity(article: RssArticle): string {
   return url || `${article.source}:${article.title}:${article.publishedAt ?? article.published}`;
 }
 
+function articleDisplayTitle(article: RssArticle): string {
+  return cleanDisplayText(article.titleJa || article.title);
+}
+
 type MergedRssArticle = RssArticle & {
   trendSnapshotGeneratedAt?: string;
   trendSnapshotBatchTime?: string;
@@ -107,7 +112,7 @@ function articleTrendReferenceDate(article: RssArticle, fallback?: string): stri
 function articleBatchTime(article: RssArticle, fallback?: string): string | undefined {
   const merged = article as MergedRssArticle;
   return merged.trendSnapshotBatchTime
-    ?? scheduledBatchTimeJST(article.lastSeenAt ?? articleTrendReferenceDate(article, fallback));
+    ?? normalizeBatchTimeJST(undefined, article.lastSeenAt ?? articleTrendReferenceDate(article, fallback));
 }
 
 function mergeKeywords(articles: RssArticle[], fallback: TrendScan['rssContext']['trendingKeywords']) {
@@ -154,7 +159,7 @@ function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {
       relatedArticles.push({
         ...article,
         trendSnapshotGeneratedAt: snapshot.generatedAt,
-        trendSnapshotBatchTime: snapshot.batchTime ?? scheduledBatchTimeJST(snapshot.generatedAt),
+        trendSnapshotBatchTime: normalizeBatchTimeJST(snapshot.batchTime, snapshot.generatedAt),
       });
     }
 
@@ -192,7 +197,7 @@ function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {
 }
 
 function articleSummary(article: RssArticle): string {
-  const displayTitle = article.titleJa || article.title;
+  const displayTitle = articleDisplayTitle(article);
   const summary = article.summaryJa || '';
   const normalized = summary
     .replace(/^(?:はじめに|概要|要約|導入|introduction)\s*[：:]\s*/i, '')
@@ -751,7 +756,7 @@ function TrendArticleCard({
   displayStatus: RssTopicStatus | null;
   batchTime?: string;
 }): JSX.Element {
-  const displayTitle = article.titleJa || article.title;
+  const displayTitle = articleDisplayTitle(article);
   const style = sourceStyle(article.source);
   const summaryItems = articleSummaryItems(article);
   const summaryIsList = summaryItems.some((item) => item.bullet);

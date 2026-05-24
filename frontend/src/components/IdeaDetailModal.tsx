@@ -1,5 +1,6 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { IdeaTrendSignal } from '../types/idea-trend-signal';
+import { cleanDisplayText } from '../utils/html-text';
 import { topicStatusLabel } from '../utils/trend-status';
 import './IdeaDetailModal.css';
 
@@ -21,6 +22,28 @@ function formatDate(value: string | undefined): string {
         minute: '2-digit',
         hour12: false,
     });
+}
+
+function normalizeUrl(value: string): string {
+    try {
+        const url = new URL(value);
+        url.hash = '';
+        for (const key of [...url.searchParams.keys()]) {
+            if (key.toLowerCase().startsWith('utm_')) url.searchParams.delete(key);
+        }
+        return url.toString();
+    } catch {
+        return value.trim();
+    }
+}
+
+function evidenceTitle(
+    source: NonNullable<IdeaCandidate['sources']['evidenceUrls']>[number],
+    trendSignal: IdeaTrendSignal | null,
+): string {
+    const sourceUrl = normalizeUrl(source.url);
+    const trendArticle = trendSignal?.evidenceArticles.find((article) => normalizeUrl(article.url) === sourceUrl);
+    return cleanDisplayText(trendArticle?.title || source.title || source.url);
 }
 
 export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: IdeaDetailModalProps): JSX.Element {
@@ -104,7 +127,7 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                                 {evidenceUrls.map((source) => (
                                     <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
                                         <span>{source.type}</span>
-                                        {source.title || source.url}
+                                        {evidenceTitle(source, visibleTrendSignal)}
                                     </a>
                                 ))}
                             </div>

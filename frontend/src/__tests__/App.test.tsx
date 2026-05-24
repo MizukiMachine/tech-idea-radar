@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "../App";
-import { formatBatchTimestamp } from "../utils/batch-time";
+import { formatBatchTimestamp, scheduledBatchTimeJST } from "../utils/batch-time";
 
 const mockFetch = vi.fn();
 const generatedAt = new Date().toISOString();
-const trendBatchTime = "2026-05-23T04:00:00+09:00";
+const trendBatchTime = scheduledBatchTimeJST(generatedAt) ?? generatedAt;
 const summaryPolicy = {
   minItems: 3,
   maxItems: 5,
@@ -586,8 +586,8 @@ describe("App", () => {
     expect(screen.getByText((_, node) => node?.textContent === "観測規模 2媒体 / 2記事")).toBeTruthy();
     expect(screen.getByLabelText("観測媒体").textContent).toContain("Example RSS");
     expect(screen.getByLabelText("観測媒体").textContent).toContain("TechCrunch");
-    expect(screen.queryByRole("link", { name: /AIエージェントツールがプロダクト業務に広がる/ })).toBeNull();
-    expect(screen.getByRole("link", { name: /AI agent tools are moving into product workflows/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /AIエージェントツールがプロダクト業務に広がる/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /AI agent tools are moving into product workflows/ })).toBeNull();
     expect(screen.queryByText((_, node) => node?.textContent === "このアイデアの根拠 RSS 1件")).toBeNull();
   });
 

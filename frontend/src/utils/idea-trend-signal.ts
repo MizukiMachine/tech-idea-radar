@@ -1,6 +1,7 @@
 import type { TrendScan, RssArticle, RssTopicCluster, RssTopicStatus } from '../api/ai';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { IdeaTrendEvidenceArticle, IdeaTrendSignal } from '../types/idea-trend-signal';
+import { cleanDisplayText } from './html-text';
 import { displayTopicStatus, topicStatusRank } from './trend-status';
 
 function normalizeUrl(value: string | undefined): string {
@@ -54,7 +55,7 @@ function toEvidenceArticle(article: RssArticle): IdeaTrendEvidenceArticle | null
   const url = articleUrl(article);
   if (!url) return null;
   return {
-    title: article.titleJa || article.title,
+    title: cleanDisplayText(article.titleJa || article.title),
     url,
     source: article.source || 'RSS',
     publishedAt: article.publishedAt ?? article.published,

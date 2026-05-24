@@ -1,7 +1,7 @@
 import type { KeyboardEvent, MouseEvent } from 'react';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { IdeaTrendSignal } from '../types/idea-trend-signal';
-import { formatBatchTimestamp, scheduledBatchTimeJST } from '../utils/batch-time';
+import { formatBatchTimestamp, normalizeBatchTimeJST } from '../utils/batch-time';
 import { compactTargetUsers, normalizeTargetUsers } from '../utils/target-users';
 import './IdeaCard.css';
 
@@ -36,7 +36,7 @@ export default function IdeaCard({
     onSelect,
 }: IdeaCardProps): JSX.Element {
     const { icon, color } = getIconForIdea(idea.id, index);
-    const batchTime = idea.batchTime ?? scheduledBatchTimeJST(idea.generatedAt);
+    const batchTime = normalizeBatchTimeJST(idea.batchTime, idea.generatedAt);
     const targetUsers = normalizeTargetUsers(idea.targetUsers);
     const compactTarget = compactTargetUsers(idea.targetUsers);
     const targetTitle = compactTarget !== targetUsers ? targetUsers : undefined;
@@ -73,7 +73,7 @@ export default function IdeaCard({
             </p>
             <p className="idea-card__summary">
                 <span className="idea-card__summary-label">概要</span>
-                <span className="idea-card__tagline">{idea.tagline}</span>
+                <span className="idea-card__tagline" title={idea.tagline}>{idea.tagline}</span>
             </p>
             {batchTime && (
                 <time className="idea-card__batch-time" dateTime={batchTime}>
