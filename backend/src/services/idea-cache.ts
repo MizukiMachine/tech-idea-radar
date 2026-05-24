@@ -41,6 +41,8 @@ const PERSISTENT_CACHE_VERSION = 3;
 const TREND_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
 const IDEA_RETENTION_WINDOW_MS = IDEA_RETENTION_WINDOW_HOURS * 60 * 60 * 1000;
 const TREND_HISTORY_WINDOW_MS = TREND_HISTORY_WINDOW_HOURS * 60 * 60 * 1000;
+const BATCH_SLOT_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const BATCH_SLOT_FUTURE_GRACE_MS = 5 * 60 * 1000;
 const WARMUP_ON_START = process.env.IDEA_WARMUP_ON_START === undefined
   ? true
   : isTruthy(process.env.IDEA_WARMUP_ON_START);
@@ -243,10 +245,66 @@ function getCurrentBatchTimeJST(now: Date): string {
   return formatBatchTimeJST(batchDate);
 }
 
-function getActualBatchTimeJST(now: Date): string {
-  const batchDate = toJST(now);
-  batchDate.setUTCMinutes(0, 0, 0);
-  return formatBatchTimeJST(batchDate);
+function isScheduledBatchHourJST(value: Date): boolean {
+  const jst = toJST(value);
+  const hour = jst.getUTCHours();
+  return BATCH_SCHEDULE_HOURS_JST.some((scheduledHour) => scheduledHour === hour);
+}
+
+function normalizeScheduledBatchTimeJST(
+  batchTime: string | undefined,
+  referenceTime: string | undefined,
+): string | undefined {
+  const reference = referenceTime ? new Date(referenceTime) : undefined;
+  const fallback = reference && !Number.isNaN(reference.getTime())
+    ? getCurrentBatchTimeJST(reference)
+    : undefined;
+  if (!batchTime) return fallback;
+
+  const batchDate = new Date(batchTime);
+  if (Number.isNaN(batchDate.getTime())) return fallback;
+  if (!isScheduledBatchHourJST(batchDate)) return fallback ?? batchTime;
+  if (!reference || Number.isNaN(reference.getTime())) return batchTime;
+
+  const ageMs = reference.getTime() - batchDate.getTime();
+  if (ageMs < -BATCH_SLOT_FUTURE_GRACE_MS) {
+    return fallback ?? batchTime;
+  }
+  if (!fallback) return batchTime;
+
+  const fallbackDate = new Date(fallback);
+  if (Number.isNaN(fallbackDate.getTime())) return batchTime;
+
+  const slotDistanceMs = fallbackDate.getTime() - batchDate.getTime();
+  if (slotDistanceMs === 0 || slotDistanceMs === BATCH_SLOT_INTERVAL_MS) return batchTime;
+  if (slotDistanceMs > 0) return fallback;
+
+  return batchTime;
+}
+
+function normalizeIdeaBatchEntry(entry: BatchEntry): BatchEntry {
+  const batchTime = normalizeScheduledBatchTimeJST(entry.batchTime, entry.data.generatedAt)
+    ?? entry.batchTime;
+  return {
+    batchTime,
+    data: {
+      ...entry.data,
+      batchTime,
+      candidates: entry.data.candidates.map((candidate) => ({ ...candidate, batchTime })),
+      featuredIdea: entry.data.featuredIdea
+        ? { ...entry.data.featuredIdea, batchTime }
+        : undefined,
+    },
+  };
+}
+
+function normalizeTrendScanBatchTime(data: TrendScanOutput): TrendScanOutput {
+  const batchTime = normalizeScheduledBatchTimeJST(data.batchTime, data.generatedAt)
+    ?? data.batchTime;
+  return withSummaryPolicy({
+    ...data,
+    ...(batchTime ? { batchTime } : {}),
+  });
 }
 
 function scheduleNextBatch(): void {
@@ -361,10 +419,10 @@ function loadPersistentCache(): void {
       }
     }
 
-    batches = nextBatches;
+    batches = nextBatches.map(normalizeIdeaBatchEntry);
     trendHistory = nextTrendHistory.map((entry) => ({
       ...entry,
-      data: withSummaryPolicy(entry.data),
+      data: normalizeTrendScanBatchTime(entry.data),
     }));
     persistentCacheLoaded = true;
     persistentCacheMtimeMs = stat.mtimeMs;
@@ -495,17 +553,17 @@ export function getCachedIdeas(): IdeaGenerationOutput | null {
   loadPersistentCache();
   if (batches.length === 0) return null;
 
+  const normalizedBatches = batches.map(normalizeIdeaBatchEntry);
   // Flatten all batches into a single output
-  const allCandidates = batches.flatMap((b) => b.data.candidates);
-  const latestGeneratedAt = batches[0].data.generatedAt;
-  const latestSourceSummary = batches[0].data.sourceSummary;
-  const featuredIdea = batches[0].data.featuredIdea;
+  const allCandidates = normalizedBatches.flatMap((b) => b.data.candidates);
+  const latest = normalizedBatches[0].data;
 
   return {
     candidates: allCandidates,
-    featuredIdea,
-    generatedAt: latestGeneratedAt,
-    sourceSummary: latestSourceSummary,
+    featuredIdea: latest.featuredIdea,
+    generatedAt: latest.generatedAt,
+    batchTime: latest.batchTime,
+    sourceSummary: latest.sourceSummary,
   };
 }
 
@@ -517,7 +575,7 @@ function latestTrend(): TrendHistoryEntry | null {
 
 export function getCachedTrends(): TrendScanOutput | null {
   const latest = latestTrend();
-  return latest ? withSummaryPolicy(latest.data) : null;
+  return latest ? normalizeTrendScanBatchTime(latest.data) : null;
 }
 
 export function getIdeaCacheStatus(): CacheStatus {
@@ -684,7 +742,7 @@ export interface BatchInfoApi {
 
 export function getBatchInfos(): BatchInfoApi[] {
   loadPersistentCache();
-  return batches.map((b) => ({
+  return batches.map(normalizeIdeaBatchEntry).map((b) => ({
     batchTime: b.batchTime,
     generatedAt: b.data.generatedAt,
     ideaCount: b.data.candidates.length,
@@ -713,7 +771,7 @@ export function getTrendHistory(): TrendHistoryEntryApi[] {
 export function getCachedTrendByIndex(index: number): TrendScanOutput | null {
   loadPersistentCache();
   if (index < 0 || index >= trendHistory.length) return null;
-  return withSummaryPolicy(trendHistory[index].data);
+  return normalizeTrendScanBatchTime(trendHistory[index].data);
 }
 
 // --- Generation ---
@@ -722,7 +780,6 @@ export async function generateAndCacheIdeas(
   onProgress?: (text: string) => void,
   focusKeywords?: string[],
   trendScanOverride?: TrendScanOutput,
-  useScheduleSlot = true,
 ): Promise<IdeaGenerationOutput> {
   // If already generating, reuse the same promise
   if (generationLock) {
@@ -734,7 +791,7 @@ export async function generateAndCacheIdeas(
     try {
       loadPersistentCache();
       const now = new Date();
-      const batchTime = useScheduleSlot ? getCurrentBatchTimeJST(now) : getActualBatchTimeJST(now);
+      const batchTime = getCurrentBatchTimeJST(now);
       const agent = new EntrepreneurAgent(getClient());
       const trendScanForIdeas = trendScanOverride ?? (!focusKeywords ? latestTrend()?.data : undefined);
       const result = trendScanForIdeas && !focusKeywords
@@ -821,8 +878,8 @@ export async function scanAndCacheTrends(
   return trendScanLock;
 }
 
-async function refreshEmptyCachesIdeaFirst(useScheduleSlot: boolean): Promise<void> {
-  await generateAndCacheIdeas(undefined, undefined, undefined, useScheduleSlot);
+async function refreshEmptyCachesIdeaFirst(): Promise<void> {
+  await generateAndCacheIdeas();
 
   try {
     await scanAndCacheTrends();
@@ -835,7 +892,6 @@ async function refreshEmptyCachesIdeaFirst(useScheduleSlot: boolean): Promise<vo
 async function refreshRequestedCaches(
   shouldRefreshTrends: boolean,
   shouldRefreshIdeas: boolean,
-  useScheduleSlot: boolean,
 ): Promise<void> {
   let refreshedTrendScan: TrendScanOutput | undefined;
 
@@ -843,11 +899,11 @@ async function refreshRequestedCaches(
     refreshedTrendScan = await scanAndCacheTrends();
   }
   if (shouldRefreshIdeas) {
-    await generateAndCacheIdeas(undefined, undefined, refreshedTrendScan, useScheduleSlot);
+    await generateAndCacheIdeas(undefined, undefined, refreshedTrendScan);
   }
 }
 
-export function refreshCachesInBackground(reason: string, force = false, useScheduleSlot = true): Promise<void> {
+export function refreshCachesInBackground(reason: string, force = false): Promise<void> {
   if (backgroundRefreshLock) return backgroundRefreshLock;
 
   loadPersistentCache();
@@ -864,8 +920,8 @@ export function refreshCachesInBackground(reason: string, force = false, useSche
 
   backgroundRefreshLock = (async () => {
     console.log(`[Cache] Background refresh started (${reason})`);
-    if (shouldWarmEmptyCachesIdeaFirst) await refreshEmptyCachesIdeaFirst(useScheduleSlot);
-    else await refreshRequestedCaches(shouldRefreshTrends, shouldRefreshIdeas, useScheduleSlot);
+    if (shouldWarmEmptyCachesIdeaFirst) await refreshEmptyCachesIdeaFirst();
+    else await refreshRequestedCaches(shouldRefreshTrends, shouldRefreshIdeas);
     console.log(`[Cache] Background refresh completed (${reason})`);
   })()
     .catch((error: unknown) => {
@@ -888,7 +944,7 @@ export function startBackgroundCacheRefresh(): void {
   }
 
   if (WARMUP_ON_START) {
-    void refreshCachesInBackground('startup', false, false);
+    void refreshCachesInBackground('startup', false);
   }
 
   if (batchScheduleTimer) return;
