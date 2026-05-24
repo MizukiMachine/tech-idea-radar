@@ -110,6 +110,7 @@ beforeEach(() => {
     trendingKeywords: [{ word: 'AI', count: 3 }],
     relatedArticles: [{
       title: 'AI Ops article',
+      titleJa: 'AI運用記事',
       link: 'https://example.com/ai-ops',
       url: 'https://example.com/ai-ops',
       published: '2026-05-14T00:00:00.000Z',
@@ -1356,7 +1357,7 @@ describe('EntrepreneurAgent', () => {
     expect(client.sendStream).not.toHaveBeenCalled();
     expect(result.candidates).toHaveLength(1);
     expect(result.candidates[0].sources.evidenceUrls).toEqual([
-      { title: 'AI Ops article', url: 'https://example.com/ai-ops', type: 'rss' },
+      { title: 'RSS記事0', url: 'https://example.com/ai-ops', type: 'rss' },
     ]);
     expect(result.sourceSummary.usedLLMFallback).toBe(false);
     expect(progress.length).toBeGreaterThan(0);

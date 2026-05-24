@@ -56,6 +56,66 @@ describe('fetchRssContext', () => {
     expect(result.trendingKeywords.length).toBeGreaterThan(0);
   });
 
+  it('decodes numeric and named HTML entities in RSS titles', async () => {
+    process.env.RSS_FEEDS = JSON.stringify([
+      { name: 'Entity Feed', url: 'https://example.com/entity.xml' },
+    ]);
+    process.env.RSS_FETCH_ARTICLE_EXCERPTS = 'false';
+    const feedXml = `<?xml version="1.0"?>
+      <rss version="2.0">
+        <channel>
+          <title>Entity Feed</title>
+          <item>
+            <title>The AX stack: what&#8217;s fixed &amp; where you can win</title>
+            <link>https://example.com/ax-stack</link>
+            <pubDate>Sun, 24 May 2026 12:00:00 GMT</pubDate>
+            <description>AI developer platform workflows are changing.</description>
+          </item>
+        </channel>
+      </rss>`;
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      statusText: 'OK',
+      text: async () => feedXml,
+    }));
+
+    const { fetchRssContext } = await import('../src/services/rss-client');
+    const result = await fetchRssContext(['AI', 'developer']);
+
+    expect(result.relatedArticles[0].title).toBe("The AX stack: what’s fixed & where you can win");
+  });
+
+  it('keeps escaped angle-bracket text while cleaning RSS title markup', async () => {
+    process.env.RSS_FEEDS = JSON.stringify([
+      { name: 'Generic Feed', url: 'https://example.com/generic.xml' },
+    ]);
+    process.env.RSS_FETCH_ARTICLE_EXCERPTS = 'false';
+    const feedXml = `<?xml version="1.0"?>
+      <rss version="2.0">
+        <channel>
+          <title>Generic Feed</title>
+          <item>
+            <title>Using Promise&lt;Result&gt; &lt;b&gt;safely&lt;/b&gt; &amp; fast</title>
+            <link>https://example.com/promise-result</link>
+            <pubDate>Sun, 24 May 2026 12:00:00 GMT</pubDate>
+            <description>AI developer platform workflows are changing.</description>
+          </item>
+        </channel>
+      </rss>`;
+
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      statusText: 'OK',
+      text: async () => feedXml,
+    }));
+
+    const { fetchRssContext } = await import('../src/services/rss-client');
+    const result = await fetchRssContext(['Promise', 'developer']);
+
+    expect(result.relatedArticles[0].title).toBe('Using Promise<Result> safely & fast');
+  });
+
   it('filters Japanese sentence endings from extracted RSS keywords', async () => {
     process.env.RSS_FEEDS = JSON.stringify([
       { name: 'Japanese Feed', url: 'https://example.com/japanese.xml' },
