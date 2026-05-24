@@ -112,6 +112,7 @@ function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {
   const warnings = new Set<string>();
   const sourceErrors = [];
   const summaryErrors = [];
+  const replacedSummaryErrors = [];
 
   for (const snapshot of snapshots) {
     for (const article of snapshot.rssContext.relatedArticles) {
@@ -134,6 +135,7 @@ function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {
     for (const warning of snapshot.sourceSummary.warnings ?? []) warnings.add(warning);
     sourceErrors.push(...(snapshot.rssContext.sourceErrors ?? []));
     summaryErrors.push(...(snapshot.rssContext.summaryErrors ?? []));
+    replacedSummaryErrors.push(...(snapshot.rssContext.replacedSummaryErrors ?? []));
   }
 
   const trendingKeywords = mergeKeywords(relatedArticles, latest.rssContext.trendingKeywords);
@@ -147,6 +149,7 @@ function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {
       topicClusters,
       ...(sourceErrors.length > 0 ? { sourceErrors } : {}),
       ...(summaryErrors.length > 0 ? { summaryErrors } : {}),
+      ...(replacedSummaryErrors.length > 0 ? { replacedSummaryErrors } : {}),
     },
     sourceSummary: {
       ...latest.sourceSummary,

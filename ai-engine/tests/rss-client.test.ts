@@ -153,7 +153,7 @@ describe('fetchRssContext', () => {
     const sources = new Set(result.relatedArticles.map((article) => article.source));
 
     expect(fetchMock.mock.calls.length).toBe(8);
-    expect(result.relatedArticles).toHaveLength(8);
+    expect(result.relatedArticles).toHaveLength(18);
     expect(sources.size).toBe(8);
     expect([...sources]).toEqual(expect.arrayContaining([
       'Hacker News',
@@ -215,6 +215,42 @@ describe('fetchRssContext', () => {
     for (let index = 2; index <= 6; index += 1) {
       expect(counts[`Source ${index}`]).toBe(3);
     }
+  });
+
+  it('keeps the RSS candidate pool at least as large as the display article count', async () => {
+    process.env.RSS_MAX_RELATED_ARTICLES = '8';
+    process.env.RSS_RELATED_ARTICLE_CANDIDATE_COUNT = '5';
+    process.env.RSS_FETCH_ARTICLE_EXCERPTS = 'false';
+    process.env.RSS_FEEDS = JSON.stringify(
+      Array.from({ length: 4 }, (_, index) => ({
+        name: `Source ${index + 1}`,
+        url: `https://example.com/min-${index + 1}.xml`,
+      })),
+    );
+
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
+      const sourceMatch = String(input).match(/min-(\d+)/);
+      const sourceNumber = sourceMatch?.[1] ?? '0';
+      const items = Array.from({ length: 3 }, (_, index) => `
+        <item>
+          <title>AI developer workflow candidate ${sourceNumber}-${index + 1}</title>
+          <link>https://example.com/min/${sourceNumber}/${index + 1}</link>
+          <pubDate>Sun, 17 May 2026 1${index}:00:00 GMT</pubDate>
+          <description>AI developer workflow automation productivity for engineering teams.</description>
+        </item>
+      `).join('');
+
+      return {
+        ok: true,
+        statusText: 'OK',
+        text: async () => `<?xml version="1.0"?><rss version="2.0"><channel>${items}</channel></rss>`,
+      };
+    }));
+
+    const { fetchRssContext } = await import('../src/services/rss-client');
+    const result = await fetchRssContext(['AI', 'developer']);
+
+    expect(result.relatedArticles).toHaveLength(8);
   });
 
   it('strips Hacker News metadata and enriches weak summaries from the article page', async () => {

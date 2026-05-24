@@ -53,6 +53,7 @@ export interface RssContext {
   topicClusters?: RssTopicCluster[];
   sourceErrors?: RssSourceError[];
   summaryErrors?: RssSummaryError[];
+  replacedSummaryErrors?: RssSummaryError[];
   observationWarning?: string;
 }
 
@@ -61,7 +62,8 @@ const DEFAULT_ARTICLE_FETCH_TIMEOUT_MS = 5000;
 const DEFAULT_RSS_FETCH_CONCURRENCY = 3;
 const DEFAULT_ARTICLE_FETCH_CONCURRENCY = 3;
 const DEFAULT_RSS_FEED_CACHE_TTL_MS = 5 * 60 * 1000;
-const DEFAULT_MAX_RELATED_ARTICLES = 8;
+const DEFAULT_DISPLAY_RELATED_ARTICLES = 8;
+const DEFAULT_RELATED_ARTICLE_CANDIDATE_COUNT = 18;
 const DEFAULT_SOURCE_FIRST_PASS_LIMIT = 1;
 const DEFAULT_SOURCE_TOTAL_LIMIT = 3;
 const MIN_USEFUL_SUMMARY_LENGTH = 280;
@@ -117,6 +119,18 @@ function asArray<T>(value: T | T[] | undefined): T[] {
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function relatedArticleCandidateCount(): number {
+  const displayCount = parsePositiveInt(
+    process.env.RSS_DISPLAY_RELATED_ARTICLES ?? process.env.RSS_MAX_RELATED_ARTICLES,
+    DEFAULT_DISPLAY_RELATED_ARTICLES,
+  );
+  const defaultCandidateCount = Math.max(displayCount, DEFAULT_RELATED_ARTICLE_CANDIDATE_COUNT);
+  return Math.max(displayCount, parsePositiveInt(
+    process.env.RSS_RELATED_ARTICLE_CANDIDATE_COUNT,
+    defaultCandidateCount,
+  ));
 }
 
 function parseNonNegativeInt(value: string | undefined, fallback: number): number {
@@ -613,7 +627,7 @@ function rankArticles(articles: RssArticle[], keywords: string[], feeds: PublicF
   const selected: ScoredArticle[] = [];
   const selectedUrls = new Set<string>();
   const sourceCounts = new Map<string, number>();
-  const maxArticles = parsePositiveInt(process.env.RSS_MAX_RELATED_ARTICLES, DEFAULT_MAX_RELATED_ARTICLES);
+  const maxArticles = relatedArticleCandidateCount();
   const firstPassLimit = parsePositiveInt(process.env.RSS_SOURCE_FIRST_PASS_LIMIT, DEFAULT_SOURCE_FIRST_PASS_LIMIT);
   const sourceTotalLimit = Math.max(
     firstPassLimit,
@@ -695,6 +709,6 @@ export async function fetchRssContext(keywords: string[]): Promise<RssContext> {
     ...(observation.warning ? { observationWarning: observation.warning } : {}),
   };
 
-  console.log(`[RSS] Direct RSS: ${relatedArticles.length} articles across ${sourceCount} sources, ${trendingKeywords.length} keywords, ${observation.topics.length} topics`);
+  console.log(`[RSS] Direct RSS: ${relatedArticles.length} candidate articles across ${sourceCount} sources, ${trendingKeywords.length} keywords, ${observation.topics.length} topics`);
   return data;
 }

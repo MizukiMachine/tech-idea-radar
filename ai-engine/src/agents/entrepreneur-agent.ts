@@ -27,7 +27,8 @@ import type { RssArticle, RssContext, RssSummaryError, RssTrendItem } from '../s
 
 const DEFAULT_KEYWORDS = ['AI', 'SaaS', 'developer', 'productivity', 'automation', 'エンジニア', 'プロダクト開発'];
 const MAX_EVIDENCE_URLS = 1;
-const MAX_SUMMARIZED_RSS_ARTICLES = 18;
+const DEFAULT_DISPLAY_RSS_ARTICLES = 8;
+const DEFAULT_SUMMARY_CANDIDATE_RSS_ARTICLES = 18;
 const RSS_SUMMARY_BATCH_SIZE = 4;
 const DEFAULT_RSS_SUMMARY_REQUEST_CONCURRENCY = 2;
 const RSS_SUMMARY_MAX_TOKENS = 7000;
@@ -212,6 +213,35 @@ function titleJaForArticle(article: RssArticle, translation: RssArticleTranslati
   if (containsJapanese(article.title)) return article.title;
   const titleJa = normalizeTitle(translation?.titleJa ?? '');
   return looksLikeJapaneseTitle(titleJa) ? titleJa : '';
+}
+
+function looksLikeBrandTitle(text: string): boolean {
+  const normalized = normalizeTitle(text);
+  if (!normalized || containsJapanese(normalized)) return false;
+  if (/[。！？!?]/.test(normalized)) return false;
+  const words = normalized.split(/\s+/).filter(Boolean);
+  return normalized.length <= 48 && words.length <= 3;
+}
+
+function fallbackTitleJaForArticle(article: RssArticle): string {
+  const title = normalizeTitle(article.title);
+  if (!looksLikeBrandTitle(title)) return '';
+  if (article.source === 'Product Hunt') return `${title}のプロダクト紹介`;
+  return `${title}に関する記事`;
+}
+
+function displayRssArticleLimit(): number {
+  return parsePositiveInt(
+    process.env.RSS_DISPLAY_RELATED_ARTICLES ?? process.env.RSS_MAX_RELATED_ARTICLES,
+    DEFAULT_DISPLAY_RSS_ARTICLES,
+  );
+}
+
+function summaryCandidateRssArticleLimit(): number {
+  return Math.max(
+    displayRssArticleLimit(),
+    parsePositiveInt(process.env.RSS_RELATED_ARTICLE_CANDIDATE_COUNT, DEFAULT_SUMMARY_CANDIDATE_RSS_ARTICLES),
+  );
 }
 
 function rebuildTrendingKeywords(articles: RssArticle[], fallback: RssTrendItem[]): RssTrendItem[] {
@@ -889,7 +919,7 @@ export class EntrepreneurAgent {
     const targets: RssSummaryTarget[] = rssContext.relatedArticles
       .map((article, index) => ({ article, index }))
       .filter(({ article }) => article.title && !article.summaryJa)
-      .slice(0, MAX_SUMMARIZED_RSS_ARTICLES)
+      .slice(0, summaryCandidateRssArticleLimit())
       .map(({ article, index }): RssSummaryTarget => ({
         index,
         title: article.title,
@@ -959,7 +989,7 @@ export class EntrepreneurAgent {
         return requestErrors.get(target.index) ?? 'summary response did not include this article index';
       }
 
-      const titleJa = titleJaForArticle(article, translation);
+      const titleJa = titleJaForArticle(article, translation) || fallbackTitleJaForArticle(article);
       if (!titleJa) return 'titleJa was missing or was not translated into Japanese';
 
       const summary = validateSummaryJa(translation.summaryJa);
@@ -1018,12 +1048,40 @@ export class EntrepreneurAgent {
       );
     }
 
+    const displayArticles = summarizedArticles.slice(0, displayRssArticleLimit());
+    const displayShortfall = displayArticles.length < displayRssArticleLimit();
+    const exposedErrors = displayShortfall ? errors : [];
+    const replacedErrors = displayShortfall ? [] : errors;
+
     return reconcileTopicClustersWithArticles({
       ...rssContext,
-      trendingKeywords: rebuildTrendingKeywords(summarizedArticles, rssContext.trendingKeywords),
-      relatedArticles: summarizedArticles,
-      ...(errors.length > 0 ? { summaryErrors: errors } : {}),
+      trendingKeywords: rebuildTrendingKeywords(displayArticles, rssContext.trendingKeywords),
+      relatedArticles: displayArticles,
+      ...(exposedErrors.length > 0 ? { summaryErrors: exposedErrors } : {}),
+      ...(replacedErrors.length > 0 ? { replacedSummaryErrors: replacedErrors } : {}),
     });
+  }
+
+  private async summarizeTrendScanOutput(result: TrendScanOutput): Promise<TrendScanOutput> {
+    const rssContext = await this.summarizeRssArticles(result.rssContext, result.focusKeywords);
+    const displayLimit = displayRssArticleLimit();
+    const displayShortfall = Math.max(0, displayLimit - rssContext.relatedArticles.length);
+    const warnings = [
+      ...(result.sourceSummary.warnings ?? []),
+      ...(displayShortfall > 0
+        ? [`品質基準を満たすRSS記事が${rssContext.relatedArticles.length}/${displayLimit}件だったため、表示件数が少なくなっています。`]
+        : []),
+    ];
+
+    return {
+      ...result,
+      rssContext,
+      sourceSummary: {
+        ...result.sourceSummary,
+        rssItemCount: rssContext.trendingKeywords.length + rssContext.relatedArticles.length,
+        ...(warnings.length > 0 ? { warnings } : {}),
+      },
+    };
   }
 
   private async scanTrendContext(
@@ -1070,23 +1128,7 @@ export class EntrepreneurAgent {
   async scanTrends(onProgress?: (text: string) => void): Promise<TrendScanOutput> {
     console.log('[TrendScan] Starting trend scan pipeline');
     const result = await this.scanTrendContext(onProgress);
-    const rssContext = await this.summarizeRssArticles(result.rssContext, result.focusKeywords);
-    const summaryFailureCount = rssContext.summaryErrors?.length ?? 0;
-    const warnings = [
-      ...(result.sourceSummary.warnings ?? []),
-      ...(summaryFailureCount > 0
-        ? [`RSS記事の要約生成に失敗した${summaryFailureCount}件をトレンド表示から除外しました。`]
-        : []),
-    ];
-    return {
-      ...result,
-      rssContext,
-      sourceSummary: {
-        ...result.sourceSummary,
-        rssItemCount: rssContext.trendingKeywords.length + rssContext.relatedArticles.length,
-        ...(warnings.length > 0 ? { warnings } : {}),
-      },
-    };
+    return this.summarizeTrendScanOutput(result);
   }
 
   async generateIdeasFromTrendScan(
@@ -1156,7 +1198,9 @@ export class EntrepreneurAgent {
     const startTime = Date.now();
     console.log('[IdeaGeneration] Starting idea generation pipeline');
 
-    const trendScan = await this.scanTrendContext(onProgress, inputFocusKeywords);
+    const trendScan = await this.summarizeTrendScanOutput(
+      await this.scanTrendContext(onProgress, inputFocusKeywords),
+    );
     const result = await this.generateIdeasFromTrendScan(
       trendScan,
       onProgress,
