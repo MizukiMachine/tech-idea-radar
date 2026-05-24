@@ -167,7 +167,7 @@ function userFacingError(message: string): string {
 function App(): JSX.Element {
   const ideaListTopRef = useRef<HTMLDivElement | null>(null);
   const hasMountedIdeaPageRef = useRef(false);
-  const [activeView, setActiveView] = useState<WorkspaceView>('ideas');
+  const [activeView, setActiveView] = useState<WorkspaceView>('trends');
   const [trends, setTrends] = useState<TrendScan | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [trendError, setTrendError] = useState<string | null>(null);
@@ -250,6 +250,7 @@ function App(): JSX.Element {
   }, []);
 
   useEffect(() => {
+    if (activeView === 'trends' || trends) return;
     let cancelled = false;
 
     async function loadTrendPreview() {
@@ -269,7 +270,7 @@ function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeView, trends]);
 
   // Load trends and trend history when switching to trends view
   useEffect(() => {
@@ -431,20 +432,20 @@ function App(): JSX.Element {
           <nav className="workspace-tabs" aria-label="主要機能">
             <button
               type="button"
+              className={`workspace-tabs__item ${activeView === 'trends' ? 'workspace-tabs__item--active' : ''}`}
+              onClick={() => setActiveView('trends')}
+              aria-pressed={activeView === 'trends'}
+            >
+              海外トレンド
+            </button>
+            <button
+              type="button"
               className={`workspace-tabs__item ${activeView === 'ideas' ? 'workspace-tabs__item--active' : ''}`}
               onClick={handleOpenIdeas}
               aria-pressed={activeView === 'ideas'}
             >
               需要アイデア
               {hasIdeas && <span>{ideas.length}</span>}
-            </button>
-            <button
-              type="button"
-              className={`workspace-tabs__item ${activeView === 'trends' ? 'workspace-tabs__item--active' : ''}`}
-              onClick={() => setActiveView('trends')}
-              aria-pressed={activeView === 'trends'}
-            >
-              海外トレンド
             </button>
           </nav>
         </div>
@@ -502,6 +503,7 @@ function App(): JSX.Element {
                           <span className="idea-results-toolbar__search-icon">⌕</span>
                           <input
                             type="text"
+                            aria-label="アイデアをキーワードで絞り込み"
                             placeholder="キーワードで絞り込み"
                             value={searchQuery}
                             onChange={(e) => handleSearch(e.target.value)}

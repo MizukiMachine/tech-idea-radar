@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "../App";
 import { formatBatchTimestamp } from "../utils/batch-time";
 
@@ -8,7 +8,7 @@ const generatedAt = new Date().toISOString();
 const trendBatchTime = "2026-05-23T04:00:00+09:00";
 const summaryPolicy = {
   minItems: 3,
-  maxItems: 6,
+  maxItems: 5,
   minTotalChars: 240,
   maxTotalChars: 1200,
   maxItemChars: 260,
@@ -23,7 +23,6 @@ function validTrendSummary(topic: string): string {
     `・具体例として、複数の情報源を見比べる作業、会議前の論点整理、実装前の技術検証などをAIで補助する場面が示されている。短時間で仮説を比較し、検討漏れを減らす使い方が重要になっており、担当者の準備作業を軽くできる`,
     `・一方で、AIの出力精度、既存ワークフローとの接続、チーム内での責任分界は課題として残る。導入するだけでは成果につながらず、確認やレビューを含めた運用設計が必要になる点が転換点になっており、管理方法も問われる`,
     `・開発者やプロダクト担当者にとっては、流行語として追うより、どの作業の時間を減らし、どの判断の質を高めるかを小さく検証する姿勢が重要になる。失敗時に戻せる運用単位で試すことが示唆になり、導入範囲を絞る判断も必要になる`,
-    `・最終的には、AIを大きく導入する前に、対象業務、確認責任、成功指標を明確にすることが重要になる。小さな検証で効果とリスクを見極めれば、現場に無理なく定着するプロダクト改善につなげやすい`,
   ].join("\n");
 }
 
@@ -222,9 +221,25 @@ beforeEach(() => {
 });
 
 describe("App", () => {
-  it("renders the idea workspace first", async () => {
+  function openIdeasView() {
+    fireEvent.click(screen.getByRole("button", { name: /^需要アイデア/ }));
+  }
+
+  it("renders the trend workspace first", async () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "Lume" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy());
+    const tabs = within(screen.getByRole("navigation", { name: "主要機能" })).getAllByRole("button");
+    expect(tabs[0].textContent).toContain("海外トレンド");
+    expect(tabs[1].textContent).toContain("需要アイデア");
+    expect(tabs[0].getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
+    expect(screen.queryByText("ジャンル・テーマ")).toBeNull();
+  });
+
+  it("renders the idea workspace after switching tabs", async () => {
+    render(<App />);
+    openIdeasView();
     await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
     expect(screen.getByRole("button", { name: /^需要アイデア/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "海外トレンド" })).toBeTruthy();
@@ -242,6 +257,7 @@ describe("App", () => {
     expect(ideaSearchRow?.querySelector(".idea-results-toolbar__count")?.textContent).toBe("1件");
     expect(document.querySelector(".idea-results-toolbar > .idea-results-toolbar__count")).toBeNull();
     expect(screen.getByText(formatBatchTimestamp(trendBatchTime))).toBeTruthy();
+    expect(screen.getByText("小規模な SRE チーム")).toBeTruthy();
   });
 
   it("starts idea generation stream when the cache is empty", async () => {
@@ -278,6 +294,8 @@ describe("App", () => {
 
     render(<App />);
 
+    await waitFor(() => expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/ideas/stream"))).toBe(true));
+    openIdeasView();
     await waitFor(() => expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" })).toBeTruthy());
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/ideas/stream"))).toBe(true);
   });
@@ -416,6 +434,7 @@ describe("App", () => {
 
   it("shows trend evidence on idea cards and detail modal", async () => {
     render(<App />);
+    openIdeasView();
 
     await waitFor(() => expect(screen.getByText("急増トレンド")).toBeTruthy());
     const ideaCard = screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" });
@@ -461,6 +480,7 @@ describe("App", () => {
     });
 
     render(<App />);
+    openIdeasView();
 
     await waitFor(() => expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" })).toBeTruthy());
     await waitFor(() => expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends"))).toBe(true));
@@ -509,6 +529,7 @@ describe("App", () => {
     });
 
     render(<App />);
+    openIdeasView();
 
     await waitFor(() => expect(screen.getByText("新着トレンド")).toBeTruthy());
 
@@ -551,6 +572,7 @@ describe("App", () => {
     });
 
     render(<App />);
+    openIdeasView();
 
     await waitFor(() => expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" })).toBeTruthy());
     expect(screen.queryByText("RSS根拠あり")).toBeNull();
@@ -585,6 +607,7 @@ describe("App", () => {
     });
 
     render(<App />);
+    openIdeasView();
     await waitFor(() => expect(document.querySelector(".idea-grid .idea-card__title")?.textContent).toBe("No Evidence Idea"));
     expect(document.querySelector(".idea-grid .idea-card__title")?.textContent).toBe("No Evidence Idea");
 
@@ -613,6 +636,7 @@ describe("App", () => {
     });
 
     render(<App />);
+    openIdeasView();
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Paged Idea 1 の詳細を開く" })).toBeTruthy());
     expect(document.querySelectorAll(".idea-grid .idea-card")).toHaveLength(15);
@@ -742,12 +766,14 @@ describe("App", () => {
 
   it("renders search input on the ideas view", async () => {
     render(<App />);
+    openIdeasView();
     await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
     expect(screen.getByPlaceholderText("キーワードで絞り込み")).toBeTruthy();
   });
 
   it("renders right panel summary and filters on the ideas view", async () => {
     render(<App />);
+    openIdeasView();
     await waitFor(() => expect(screen.getByText(/注目のアイデア/)).toBeTruthy());
     expect(screen.getByText("よく出るタグ")).toBeTruthy();
     expect(screen.getByText("ジャンル・テーマ")).toBeTruthy();
@@ -793,9 +819,8 @@ describe("App", () => {
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/ideas/filter"))).toBe(false);
   });
 
-  it("fetches trend history when switching to trends view", async () => {
+  it("fetches trend history on the initial trends view", async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
     await waitFor(() => expect(screen.getByRole("button", { name: /^すべて / })).toBeTruthy());
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history"))).toBe(true);
   });

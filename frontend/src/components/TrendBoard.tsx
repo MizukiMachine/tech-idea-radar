@@ -595,6 +595,7 @@ function TrendFeedHeader({
           <span className="tb-feed__search-icon">⌕</span>
           <input
             type="text"
+            aria-label="トレンド記事をキーワードで絞り込み"
             placeholder="キーワードで絞り込み"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
