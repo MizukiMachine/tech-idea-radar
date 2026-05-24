@@ -225,21 +225,20 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /^需要アイデア/ }));
   }
 
-  it("renders the trend workspace first", async () => {
+  it("renders the idea workspace first", async () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: "Lume" })).toBeTruthy();
-    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
     const tabs = within(screen.getByRole("navigation", { name: "主要機能" })).getAllByRole("button");
-    expect(tabs[0].textContent).toContain("海外トレンド");
-    expect(tabs[1].textContent).toContain("需要アイデア");
+    expect(tabs[0].textContent).toContain("需要アイデア");
+    expect(tabs[1].textContent).toContain("海外トレンド");
     expect(tabs[0].getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
-    expect(screen.queryByText("ジャンル・テーマ")).toBeNull();
+    expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" })).toBeTruthy();
+    expect(screen.queryByText("AIエージェントツールがプロダクト業務に広がる")).toBeNull();
   });
 
-  it("renders the idea workspace after switching tabs", async () => {
+  it("renders the idea workspace controls on the default view", async () => {
     render(<App />);
-    openIdeasView();
     await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
     expect(screen.getByRole("button", { name: /^需要アイデア/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: "海外トレンド" })).toBeTruthy();
@@ -819,8 +818,9 @@ describe("App", () => {
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/ideas/filter"))).toBe(false);
   });
 
-  it("fetches trend history on the initial trends view", async () => {
+  it("fetches trend history after opening the trends view", async () => {
     render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
     await waitFor(() => expect(screen.getByRole("button", { name: /^すべて / })).toBeTruthy());
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history"))).toBe(true);
   });
