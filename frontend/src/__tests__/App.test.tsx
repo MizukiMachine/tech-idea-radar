@@ -375,6 +375,50 @@ describe("App", () => {
     expect(screen.getByText(secondSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
   });
 
+  it("filters Japanese sentence endings from trend keywords", async () => {
+    const noisyTrends = {
+      ...trends,
+      rssContext: {
+        ...trends.rssContext,
+        trendingKeywords: [
+          { word: "です", count: 99 },
+          { word: "AI", count: 1 },
+        ],
+        relatedArticles: trends.rssContext.relatedArticles.map((article) => ({
+          ...article,
+          keywords: ["です"],
+        })),
+      },
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = noisyTrends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy());
+    const keywordWords = Array.from(document.querySelectorAll(".tb-keyword"))
+      .map((element) => element.firstChild?.textContent?.trim());
+
+    expect(keywordWords).toContain("AI");
+    expect(keywordWords).not.toContain("です");
+  });
+
   it("filters trend articles by keyword search", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));

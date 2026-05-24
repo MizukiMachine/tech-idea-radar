@@ -24,9 +24,35 @@ const SOURCE_STYLE: Record<string, { color: string; bg: string }> = {
   'Microsoft DevBlogs': { color: '#5A8F62', bg: 'rgba(90,143,98,0.045)' },
 };
 const FALLBACK_SOURCE = { color: '#7B8491', bg: 'rgba(123,132,145,0.045)' };
+const KEYWORD_STOP_WORDS = new Set([
+  'https', 'http', 'www', 'com', 'with', 'from', 'that', 'this', 'your', 'you',
+  'for', 'and', 'the', 'are', 'was', 'were', 'into', 'about', 'using', 'how',
+  'what', 'why', 'new', 'news', 'more', 'after', 'over', 'under', 'their',
+  'they', 'will', 'can', 'has', 'have', 'had', 'not', 'but', 'all',
+  'です', 'ます', 'でした', 'ました', 'する', 'した', 'して', 'いる', 'ある',
+  'ない', 'こと', 'これ', 'それ', 'ため', 'よう', 'など', 'その', 'この',
+  'もの', 'また', 'から', 'まで', 'より', 'として', 'について', '記事',
+  '今回', '紹介', 'では', 'とは', 'にも', 'には', 'への', 'でも', 'という',
+  'そして', 'ただし', '一方', 'できる', 'できた', 'なる', 'なった', 'れる',
+  'られる', 'された', 'される', 'ための', 'ような', '中で', '上で',
+]);
+const NUMBER_ONLY_KEYWORD = /^[\d０-９]+$/;
 
 function sourceStyle(source: string | undefined) {
   return SOURCE_STYLE[source ?? ''] ?? FALLBACK_SOURCE;
+}
+
+function normalizeKeyword(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function isDisplayKeyword(value: string): boolean {
+  const normalized = normalizeKeyword(value);
+  if (!normalized || normalized.length > 32) return false;
+  const key = normalized.toLowerCase();
+  if (KEYWORD_STOP_WORDS.has(key)) return false;
+  if (NUMBER_ONLY_KEYWORD.test(normalized)) return false;
+  return true;
 }
 
 function containsJapanese(text: string): boolean {
@@ -89,7 +115,9 @@ function mergeKeywords(articles: RssArticle[], fallback: TrendScan['rssContext']
   const counts = new Map<string, number>();
   for (const article of articles) {
     for (const keyword of article.keywords ?? []) {
-      counts.set(keyword, (counts.get(keyword) ?? 0) + 1);
+      const normalized = normalizeKeyword(keyword);
+      if (!isDisplayKeyword(normalized)) continue;
+      counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
     }
   }
 
@@ -98,7 +126,12 @@ function mergeKeywords(articles: RssArticle[], fallback: TrendScan['rssContext']
     .slice(0, 20)
     .map(([word, count]) => ({ word, count }));
 
-  return merged.length > 0 ? merged : fallback;
+  const sanitizedFallback = fallback
+    .map(({ word, count }) => ({ word: normalizeKeyword(word), count }))
+    .filter(({ word }) => isDisplayKeyword(word))
+    .slice(0, 20);
+
+  return merged.length > 0 ? merged : sanitizedFallback;
 }
 
 function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {

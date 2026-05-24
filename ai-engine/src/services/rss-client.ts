@@ -95,7 +95,15 @@ const STOP_WORDS = new Set([
   'for', 'and', 'the', 'are', 'was', 'were', 'into', 'about', 'using', 'how',
   'what', 'why', 'new', 'news', 'more', 'after', 'over', 'under', 'their',
   'they', 'will', 'can', 'has', 'have', 'had', 'not', 'but', 'all',
+  'です', 'ます', 'でした', 'ました', 'する', 'した', 'して', 'いる', 'ある',
+  'ない', 'こと', 'これ', 'それ', 'ため', 'よう', 'など', 'その', 'この',
+  'もの', 'また', 'から', 'まで', 'より', 'として', 'について', '記事',
+  '今回', '紹介', 'では', 'とは', 'にも', 'には', 'への', 'でも', 'という',
+  'そして', 'ただし', '一方', 'できる', 'できた', 'なる', 'なった', 'れる',
+  'られる', 'された', 'される', 'ための', 'ような', '中で', '上で',
 ]);
+
+const NUMBER_ONLY_KEYWORD = /^[\d０-９]+$/;
 
 const PRODUCT_SIGNAL_TERMS = [
   'ai', 'agent', 'agents', 'api', 'automation', 'cloud', 'code', 'coding',
@@ -446,16 +454,16 @@ function extractKeywords(text: string, seedKeywords: string[]): string[] {
   const counts = new Map<string, number>();
 
   for (const keyword of seedKeywords) {
-    if (keyword && lower.includes(keyword.toLowerCase())) {
-      counts.set(keyword, (counts.get(keyword) ?? 0) + 3);
+    const normalized = normalizeKeyword(keyword);
+    if (isUsefulKeyword(normalized) && lower.includes(normalized.toLowerCase())) {
+      counts.set(normalized, (counts.get(normalized) ?? 0) + 3);
     }
   }
 
   const matches = text.match(/[A-Za-z][A-Za-z0-9+#.-]{2,}|[ぁ-んァ-ヶ一-龯ー]{2,}/g) ?? [];
   for (const match of matches) {
-    const normalized = match.trim();
-    const key = normalized.toLowerCase();
-    if (STOP_WORDS.has(key) || normalized.length > 32) continue;
+    const normalized = normalizeKeyword(match);
+    if (!isUsefulKeyword(normalized)) continue;
     counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
   }
 
@@ -463,6 +471,19 @@ function extractKeywords(text: string, seedKeywords: string[]): string[] {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([word]) => word);
+}
+
+function normalizeKeyword(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function isUsefulKeyword(value: string): boolean {
+  const normalized = normalizeKeyword(value);
+  if (!normalized || normalized.length > 32) return false;
+  const key = normalized.toLowerCase();
+  if (STOP_WORDS.has(key)) return false;
+  if (NUMBER_ONLY_KEYWORD.test(normalized)) return false;
+  return true;
 }
 
 function parseFeed(xml: string, source: string, sourceUrl: string, seedKeywords: string[]): RssArticle[] {
@@ -554,12 +575,15 @@ function buildTrendingKeywords(articles: RssArticle[], seedKeywords: string[]): 
   const counts = new Map<string, number>();
   for (const article of articles) {
     for (const keyword of article.keywords ?? []) {
-      counts.set(keyword, (counts.get(keyword) ?? 0) + 1);
+      const normalized = normalizeKeyword(keyword);
+      if (!isUsefulKeyword(normalized)) continue;
+      counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
     }
     const text = `${article.title} ${article.summary}`.toLowerCase();
     for (const keyword of seedKeywords) {
-      if (text.includes(keyword.toLowerCase())) {
-        counts.set(keyword, (counts.get(keyword) ?? 0) + 2);
+      const normalized = normalizeKeyword(keyword);
+      if (isUsefulKeyword(normalized) && text.includes(normalized.toLowerCase())) {
+        counts.set(normalized, (counts.get(normalized) ?? 0) + 2);
       }
     }
   }
