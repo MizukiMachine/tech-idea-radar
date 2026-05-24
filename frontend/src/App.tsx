@@ -425,7 +425,7 @@ function App(): JSX.Element {
             <span className="app-header__mark" aria-hidden="true">Lu</span>
             <div>
               <h1>Lume</h1>
-              <p>作るものが決まっていないエンジニアへ</p>
+              <p>トレンドから、次のアイデアを照らす</p>
             </div>
           </div>
 
