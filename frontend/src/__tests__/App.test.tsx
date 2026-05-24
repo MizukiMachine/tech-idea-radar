@@ -257,6 +257,7 @@ describe("App", () => {
     expect(document.querySelector(".idea-results-toolbar > .idea-results-toolbar__count")).toBeNull();
     expect(screen.getByText(formatBatchTimestamp(trendBatchTime))).toBeTruthy();
     expect(screen.getByText("小規模な SRE チーム")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" }).tagName).toBe("ARTICLE");
   });
 
   it("keeps long target users compact on idea cards", async () => {
@@ -375,18 +376,18 @@ describe("App", () => {
     expect(screen.getByText(secondSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
   });
 
-  it("filters Japanese sentence endings from trend keywords", async () => {
+  it("hides the trend keyword panel", async () => {
     const noisyTrends = {
       ...trends,
       rssContext: {
         ...trends.rssContext,
         trendingKeywords: [
-          { word: "です", count: 99 },
+          { word: "which", count: 99 },
           { word: "AI", count: 1 },
         ],
         relatedArticles: trends.rssContext.relatedArticles.map((article) => ({
           ...article,
-          keywords: ["です"],
+          keywords: ["which"],
         })),
       },
     };
@@ -412,11 +413,8 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy());
-    const keywordWords = Array.from(document.querySelectorAll(".tb-keyword"))
-      .map((element) => element.firstChild?.textContent?.trim());
-
-    expect(keywordWords).toContain("AI");
-    expect(keywordWords).not.toContain("です");
+    expect(screen.queryByText("注目キーワード")).toBeNull();
+    expect(document.querySelectorAll(".tb-keyword")).toHaveLength(0);
   });
 
   it("filters trend articles by keyword search", async () => {
@@ -917,6 +915,8 @@ describe("App", () => {
     expect(screen.getByText("よく出るタグ")).toBeTruthy();
     expect(screen.getByText("ジャンル・テーマ")).toBeTruthy();
     expect(screen.queryByText("注目のトレンド")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "注目のアイデア AI Ops Memo の詳細を開く" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
   it("hides generation controls in public readonly mode", async () => {

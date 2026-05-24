@@ -1,3 +1,4 @@
+import type { KeyboardEvent, MouseEvent } from 'react';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { IdeaTrendSignal } from '../types/idea-trend-signal';
 import { formatBatchTimestamp, scheduledBatchTimeJST } from '../utils/batch-time';
@@ -39,12 +40,25 @@ export default function IdeaCard({
     const targetUsers = normalizeTargetUsers(idea.targetUsers);
     const compactTarget = compactTargetUsers(idea.targetUsers);
     const targetTitle = compactTarget !== targetUsers ? targetUsers : undefined;
+    const openIdea = () => onSelect?.(idea);
+    const handleClick = (_event: MouseEvent<HTMLElement>) => {
+        const selection = window.getSelection()?.toString().trim();
+        if (selection) return;
+        openIdea();
+    };
+    const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openIdea();
+    };
 
     return (
-        <button
-            type="button"
+        <article
+            role="button"
+            tabIndex={0}
             className={`idea-card idea-card--${viewMode} ${selected ? 'idea-card--selected' : ''}`}
-            onClick={() => onSelect?.(idea)}
+            onClick={handleClick}
+            onKeyDown={handleKeyDown}
             aria-label={`${idea.title} の詳細を開く`}
         >
             <div className="idea-card__header">
@@ -66,6 +80,6 @@ export default function IdeaCard({
                     {formatBatchTimestamp(batchTime)}
                 </time>
             )}
-        </button>
+        </article>
     );
 }

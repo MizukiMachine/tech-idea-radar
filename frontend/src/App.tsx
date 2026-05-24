@@ -605,6 +605,7 @@ function App(): JSX.Element {
                   <RightPanel
                     ideas={displayedIdeas}
                     featuredIdea={featuredIdea}
+                    onIdeaSelect={handleIdeaSelect}
                     filters={(
                       <Sidebar
                         variant="panel"

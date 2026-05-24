@@ -347,7 +347,6 @@ export default function TrendBoard({
       : displayableArticles
     ).map((article) => articleUrl(article)),
   );
-  const keywords = mergedTrends?.rssContext.trendingKeywords ?? [];
   const topicClusters = (mergedTrends?.rssContext.topicClusters ?? []).filter((topic) => topic.status !== 'stale');
   const articleDisplayStatus = (article: RssArticle) => displayTopicStatus(
     article,
@@ -360,9 +359,6 @@ export default function TrendBoard({
     continuing: rssArticles.filter((article) => articleDisplayStatus(article) === 'continuing').length,
   };
 
-  const maxKeywordCount = keywords.length > 0
-    ? Math.max(...keywords.map((k) => k.count))
-    : 1;
   const sourceRows = Object.entries(
     rssArticles.reduce<Record<string, number>>((acc, article) => {
       const source = article.source || 'RSS';
@@ -454,8 +450,6 @@ export default function TrendBoard({
           pageSize={PAGE_SIZE}
           page={page}
           onPageChange={setPage}
-          keywords={keywords}
-          maxKeywordCount={maxKeywordCount}
           sourceRows={sourceRows}
           summaryArticleUrls={summaryArticleUrls}
           statusFilter={topicFilter}
@@ -484,8 +478,6 @@ interface TrendLayoutProps {
   pageSize: number;
   page: number;
   onPageChange: (page: number) => void;
-  keywords: { word: string; count: number }[];
-  maxKeywordCount: number;
   sourceRows: SourceRow[];
   summaryArticleUrls: Set<string>;
   statusFilter: TopicFilter;
@@ -510,8 +502,6 @@ function TrendCardsLayout({
   pageSize,
   page,
   onPageChange,
-  keywords,
-  maxKeywordCount,
   sourceRows,
   summaryArticleUrls,
   statusFilter,
@@ -590,7 +580,6 @@ function TrendCardsLayout({
             )}
           </div>
         )}
-        <KeywordPanel keywords={keywords} maxKeywordCount={maxKeywordCount} />
         <SourcePanel sourceRows={sourceRows} articleCount={allArticleCount} />
       </aside>
     </div>
@@ -702,35 +691,6 @@ function StatusFilters({
           <span>{counts[item.id]}</span>
         </button>
       ))}
-    </div>
-  );
-}
-
-function KeywordPanel({
-  keywords,
-  maxKeywordCount,
-}: {
-  keywords: { word: string; count: number }[];
-  maxKeywordCount: number;
-}): JSX.Element {
-  return (
-    <div className="tb-panel tb-keywords-panel">
-      <h3 className="tb-panel__title">注目キーワード</h3>
-      <div className="tb-keywords">
-        {keywords.slice(0, 20).map((keyword) => (
-          <span
-            key={keyword.word}
-            className="tb-keyword"
-            style={{
-              fontSize: `${0.75 + (keyword.count / maxKeywordCount) * 0.4}rem`,
-              opacity: 0.62 + (keyword.count / maxKeywordCount) * 0.38,
-            }}
-          >
-            {keyword.word}
-            <strong className="tb-keyword__count">{keyword.count}</strong>
-          </span>
-        ))}
-      </div>
     </div>
   );
 }

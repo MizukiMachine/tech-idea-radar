@@ -16,6 +16,7 @@
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
+    user-select: text;
 }
 
 .idea-card:hover {
@@ -23,6 +24,12 @@
     border-color: var(--border-strong);
     box-shadow: var(--shadow-md);
     transform: translateY(-1px);
+}
+
+.idea-card:focus-visible {
+    border-color: var(--border-active);
+    box-shadow: var(--focus-ring);
+    outline: none;
 }
 
 .idea-card--selected {
