@@ -1,4 +1,12 @@
 import { XMLParser } from 'fast-xml-parser';
+import { isIP } from 'node:net';
+import {
+  observeRssArticles,
+  rssArticleFingerprint,
+  type RssObservationMetadata,
+  type RssTopicCluster,
+  type RssTopicStatus,
+} from './rss-observation';
 
 export interface RssTrendItem {
   word: string;
@@ -16,7 +24,14 @@ export interface RssArticle {
   summaryJa?: string;
   description?: string;
   source: string;
+  sourceUrl?: string;
   keywords?: string[];
+  topicKey?: string;
+  topicStatus?: RssTopicStatus;
+  firstSeenAt?: string;
+  lastSeenAt?: string;
+  topicArticleCount?: number;
+  topicSourceCount?: number;
 }
 
 export interface RssSourceError {
@@ -35,13 +50,20 @@ export interface RssSummaryError {
 export interface RssContext {
   trendingKeywords: RssTrendItem[];
   relatedArticles: RssArticle[];
+  topicClusters?: RssTopicCluster[];
   sourceErrors?: RssSourceError[];
   summaryErrors?: RssSummaryError[];
+  replacedSummaryErrors?: RssSummaryError[];
+  observationWarning?: string;
 }
 
 const DEFAULT_RSS_FETCH_TIMEOUT_MS = 8000;
 const DEFAULT_ARTICLE_FETCH_TIMEOUT_MS = 5000;
-const DEFAULT_MAX_RELATED_ARTICLES = 18;
+const DEFAULT_RSS_FETCH_CONCURRENCY = 3;
+const DEFAULT_ARTICLE_FETCH_CONCURRENCY = 3;
+const DEFAULT_RSS_FEED_CACHE_TTL_MS = 5 * 60 * 1000;
+const DEFAULT_DISPLAY_RELATED_ARTICLES = 8;
+const DEFAULT_RELATED_ARTICLE_CANDIDATE_COUNT = 18;
 const DEFAULT_SOURCE_FIRST_PASS_LIMIT = 1;
 const DEFAULT_SOURCE_TOTAL_LIMIT = 3;
 const MIN_USEFUL_SUMMARY_LENGTH = 280;
@@ -53,6 +75,9 @@ interface PublicFeed {
 
 type ParsedXml = Record<string, unknown>;
 type FeedFetchResult = { articles: RssArticle[]; error?: RssSourceError };
+type CachedFeed = { articles: RssArticle[]; fetchedAt: number };
+
+const feedCache = new Map<string, CachedFeed>();
 
 const DEFAULT_RSS_FEEDS: PublicFeed[] = [
   { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
@@ -63,8 +88,6 @@ const DEFAULT_RSS_FEEDS: PublicFeed[] = [
   { name: 'AWS News Blog', url: 'https://aws.amazon.com/blogs/aws/feed/' },
   { name: 'Microsoft DevBlogs', url: 'https://devblogs.microsoft.com/feed/' },
   { name: 'Product Hunt', url: 'https://www.producthunt.com/feed' },
-  { name: 'Zenn', url: 'https://zenn.dev/feed' },
-  { name: 'Qiita Popular', url: 'https://qiita.com/popular-items/feed' },
 ];
 
 const STOP_WORDS = new Set([
@@ -96,6 +119,125 @@ function asArray<T>(value: T | T[] | undefined): T[] {
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function relatedArticleCandidateCount(): number {
+  const displayCount = parsePositiveInt(
+    process.env.RSS_DISPLAY_RELATED_ARTICLES ?? process.env.RSS_MAX_RELATED_ARTICLES,
+    DEFAULT_DISPLAY_RELATED_ARTICLES,
+  );
+  const defaultCandidateCount = Math.max(displayCount, DEFAULT_RELATED_ARTICLE_CANDIDATE_COUNT);
+  return Math.max(displayCount, parsePositiveInt(
+    process.env.RSS_RELATED_ARTICLE_CANDIDATE_COUNT,
+    defaultCandidateCount,
+  ));
+}
+
+function parseNonNegativeInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function isPrivateIpv4(ip: string): boolean {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) {
+    return true;
+  }
+  const [a, b] = parts;
+  return a === 10
+    || a === 127
+    || a === 0
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168);
+}
+
+function isPrivateIpv6(ip: string): boolean {
+  const normalized = ip.toLowerCase();
+  return normalized === '::1'
+    || normalized.startsWith('fc')
+    || normalized.startsWith('fd')
+    || normalized.startsWith('fe80:');
+}
+
+function isAllowedHttpUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    if (!['http:', 'https:'].includes(url.protocol)) return false;
+
+    const host = url.hostname.toLowerCase();
+    if (!host || host === 'localhost' || host.endsWith('.localhost')) return false;
+
+    const ipVersion = isIP(host);
+    if (ipVersion === 4) return !isPrivateIpv4(host);
+    if (ipVersion === 6) return !isPrivateIpv6(host);
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(items[index], index);
+    }
+  }));
+
+  return results;
+}
+
+function cloneArticle(article: RssArticle): RssArticle {
+  return {
+    ...article,
+    keywords: article.keywords ? [...article.keywords] : undefined,
+  };
+}
+
+function getCachedFeed(url: string): RssArticle[] | undefined {
+  const ttlMs = parseNonNegativeInt(process.env.RSS_FEED_CACHE_TTL_MS, DEFAULT_RSS_FEED_CACHE_TTL_MS);
+  if (ttlMs === 0) return undefined;
+
+  const entry = feedCache.get(url);
+  if (!entry) return undefined;
+  if (Date.now() - entry.fetchedAt > ttlMs) {
+    feedCache.delete(url);
+    return undefined;
+  }
+  return entry.articles.map(cloneArticle);
+}
+
+function setCachedFeed(url: string, articles: RssArticle[]): void {
+  const ttlMs = parseNonNegativeInt(process.env.RSS_FEED_CACHE_TTL_MS, DEFAULT_RSS_FEED_CACHE_TTL_MS);
+  if (ttlMs === 0) return;
+  feedCache.set(url, {
+    articles: articles.map(cloneArticle),
+    fetchedAt: Date.now(),
+  });
+}
+
+function withObservationMetadata(article: RssArticle, metadata?: RssObservationMetadata): RssArticle {
+  if (!metadata) return article;
+  return {
+    ...article,
+    topicKey: metadata.topicKey,
+    topicStatus: metadata.topicStatus,
+    firstSeenAt: metadata.firstSeenAt,
+    lastSeenAt: metadata.lastSeenAt,
+    topicArticleCount: metadata.topicArticleCount,
+    topicSourceCount: metadata.topicSourceCount,
+  };
 }
 
 function configuredFeeds(): PublicFeed[] {
@@ -224,7 +366,7 @@ function extractHtmlExcerpt(html: string): string {
 
 async function fetchArticleExcerpt(article: RssArticle): Promise<string> {
   const targetUrl = article.url || article.link;
-  if (!/^https?:\/\//i.test(targetUrl)) return '';
+  if (!isAllowedHttpUrl(targetUrl)) return '';
 
   const controller = new AbortController();
   const timeoutMs = parsePositiveInt(process.env.RSS_ARTICLE_FETCH_TIMEOUT_MS, DEFAULT_ARTICLE_FETCH_TIMEOUT_MS);
@@ -257,8 +399,9 @@ function needsArticleExcerpt(article: RssArticle): boolean {
 async function enrichArticleSummaries(articles: RssArticle[], keywords: string[]): Promise<RssArticle[]> {
   const shouldFetchExcerpts = process.env.RSS_FETCH_ARTICLE_EXCERPTS !== 'false';
   if (!shouldFetchExcerpts) return articles;
+  const concurrency = parsePositiveInt(process.env.RSS_ARTICLE_FETCH_CONCURRENCY, DEFAULT_ARTICLE_FETCH_CONCURRENCY);
 
-  return Promise.all(articles.map(async (article) => {
+  return mapWithConcurrency(articles, concurrency, async (article) => {
     if (!needsArticleExcerpt(article)) return article;
 
     const excerpt = await fetchArticleExcerpt(article);
@@ -271,7 +414,7 @@ async function enrichArticleSummaries(articles: RssArticle[], keywords: string[]
       description: summary,
       keywords: extractKeywords(`${article.title} ${summary}`, keywords),
     };
-  }));
+  });
 }
 
 function parseDate(value: string): string {
@@ -322,7 +465,7 @@ function extractKeywords(text: string, seedKeywords: string[]): string[] {
     .map(([word]) => word);
 }
 
-function parseFeed(xml: string, source: string, seedKeywords: string[]): RssArticle[] {
+function parseFeed(xml: string, source: string, sourceUrl: string, seedKeywords: string[]): RssArticle[] {
   const parser = new XMLParser({
     ignoreAttributes: false,
     attributeNamePrefix: '',
@@ -365,6 +508,7 @@ function parseFeed(xml: string, source: string, seedKeywords: string[]): RssArti
         summary,
         description: summary,
         source,
+        sourceUrl,
         keywords,
       };
     })
@@ -372,6 +516,16 @@ function parseFeed(xml: string, source: string, seedKeywords: string[]): RssArti
 }
 
 async function fetchFeed(feed: PublicFeed, keywords: string[]): Promise<FeedFetchResult> {
+  if (!isAllowedHttpUrl(feed.url)) {
+    return {
+      articles: [],
+      error: { source: feed.name, message: 'RSS feed URL is not allowed' },
+    };
+  }
+
+  const cached = getCachedFeed(feed.url);
+  if (cached) return { articles: cached };
+
   const controller = new AbortController();
   const timeoutMs = parsePositiveInt(process.env.RSS_FETCH_TIMEOUT_MS, DEFAULT_RSS_FETCH_TIMEOUT_MS);
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -383,8 +537,9 @@ async function fetchFeed(feed: PublicFeed, keywords: string[]): Promise<FeedFetc
     });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     const xml = await response.text();
-    const articles = parseFeed(xml, feed.name, keywords);
+    const articles = parseFeed(xml, feed.name, feed.url, keywords);
     if (articles.length === 0) throw new Error('No valid RSS articles found');
+    setCachedFeed(feed.url, articles);
     return { articles };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
@@ -472,7 +627,7 @@ function rankArticles(articles: RssArticle[], keywords: string[], feeds: PublicF
   const selected: ScoredArticle[] = [];
   const selectedUrls = new Set<string>();
   const sourceCounts = new Map<string, number>();
-  const maxArticles = parsePositiveInt(process.env.RSS_MAX_RELATED_ARTICLES, DEFAULT_MAX_RELATED_ARTICLES);
+  const maxArticles = relatedArticleCandidateCount();
   const firstPassLimit = parsePositiveInt(process.env.RSS_SOURCE_FIRST_PASS_LIMIT, DEFAULT_SOURCE_FIRST_PASS_LIMIT);
   const sourceTotalLimit = Math.max(
     firstPassLimit,
@@ -527,23 +682,33 @@ function rankArticles(articles: RssArticle[], keywords: string[], feeds: PublicF
 
 export async function fetchRssContext(keywords: string[]): Promise<RssContext> {
   const feeds = configuredFeeds();
-  const results = await Promise.all(
-    feeds.map((feed) => fetchFeed(feed, keywords)),
+  const fetchConcurrency = parsePositiveInt(process.env.RSS_FETCH_CONCURRENCY, DEFAULT_RSS_FETCH_CONCURRENCY);
+  const results = await mapWithConcurrency(
+    feeds,
+    fetchConcurrency,
+    (feed) => fetchFeed(feed, keywords),
   );
 
   const articles = results.flatMap((result) => result.articles);
+  const observation = observeRssArticles(articles);
+  const observedArticles = articles.map((article) => withObservationMetadata(
+    article,
+    observation.metadataByFingerprint.get(rssArticleFingerprint(article)),
+  ));
   const sourceErrors = results
     .map((result) => result.error)
     .filter((error): error is RssSourceError => Boolean(error));
-  const relatedArticles = await enrichArticleSummaries(rankArticles(articles, keywords, feeds), keywords);
+  const relatedArticles = await enrichArticleSummaries(rankArticles(observedArticles, keywords, feeds), keywords);
   const trendingKeywords = buildTrendingKeywords(relatedArticles, keywords);
   const sourceCount = new Set(relatedArticles.map((article) => article.source).filter(Boolean)).size;
   const data = {
     trendingKeywords,
     relatedArticles,
+    topicClusters: observation.topics,
     ...(sourceErrors.length > 0 ? { sourceErrors } : {}),
+    ...(observation.warning ? { observationWarning: observation.warning } : {}),
   };
 
-  console.log(`[RSS] Direct RSS: ${relatedArticles.length} articles across ${sourceCount} sources, ${trendingKeywords.length} keywords`);
+  console.log(`[RSS] Direct RSS: ${relatedArticles.length} candidate articles across ${sourceCount} sources, ${trendingKeywords.length} keywords, ${observation.topics.length} topics`);
   return data;
 }

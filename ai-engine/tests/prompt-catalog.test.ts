@@ -9,11 +9,13 @@ describe('prompt catalog', () => {
   it('loads all managed prompt templates from YAML', () => {
     expect(listPromptTemplateKeys()).toEqual([
       'idea_generation',
+      'idea_seed_generation',
+      'idea_detail_generation',
       'semantic_filter',
+      'rss_topic_clustering',
       'rss_article_summary',
       'rss_article_summary_repair',
       'featured_idea_selection',
-      'featured_trend_selection',
     ]);
   });
 
@@ -37,6 +39,32 @@ describe('prompt catalog', () => {
     expect(userPrompt).not.toContain('${');
   });
 
+  it('renders staged idea generation prompts', () => {
+    const seedPrompt = renderPromptRole('idea_seed_generation', 'user', {
+      rss_context: {
+        trendingKeywords: [{ word: 'AI', count: 2 }],
+        relatedArticles: [{ title: 'AI Ops article', url: 'https://example.com/ai-ops' }],
+      },
+      focus_keywords: 'AI, SaaS',
+      requested_idea_count: '4',
+    });
+    const detailPrompt = renderPromptRole('idea_detail_generation', 'user', {
+      rss_context: {
+        trendingKeywords: [{ word: 'AI', count: 2 }],
+        relatedArticles: [{ title: 'AI Ops article', url: 'https://example.com/ai-ops' }],
+      },
+      focus_keywords: 'AI, SaaS',
+      idea_seed: { seedId: 'seed-1', title: 'AI Ops Memo' },
+    });
+
+    expect(seedPrompt).toContain('最大 4 件');
+    expect(seedPrompt).toContain('互いに重複しないアイデア候補');
+    expect(detailPrompt).toContain('"seedId": "seed-1"');
+    expect(detailPrompt).toContain('この候補1件だけ');
+    expect(seedPrompt).not.toContain('${');
+    expect(detailPrompt).not.toContain('${');
+  });
+
   it('rejects missing required runtime inputs', () => {
     expect(() => renderPromptRole('semantic_filter', 'user', { query: 'AI' }))
       .toThrow('Missing prompt variables: candidates');
@@ -47,6 +75,32 @@ describe('prompt catalog', () => {
       idea_summaries: [],
       secret_token: 'do-not-render',
     })).toThrow('Undeclared prompt inputs for featured_idea_selection: secret_token');
+  });
+
+  it('renders the RSS topic clustering prompt with article indexes', () => {
+    const systemPrompt = renderPromptRole('rss_topic_clustering', 'system', {
+      articles: [],
+      existing_topics: [],
+      focus_keywords: 'AI, developer',
+    });
+    const userPrompt = renderPromptRole('rss_topic_clustering', 'user', {
+      articles: [
+        {
+          index: 0,
+          title: 'Take your local GitHub sessions anywhere',
+          source: 'GitHub Blog',
+          summary: 'Remote control for local coding sessions.',
+        },
+      ],
+      existing_topics: [{ topic: 'github sessions', articleCount: 1 }],
+      focus_keywords: 'AI, developer',
+    });
+
+    expect(systemPrompt).toContain('関連記事判定器');
+    expect(systemPrompt).toContain('articleIndexes');
+    expect(userPrompt).toContain('Take your local GitHub sessions anywhere');
+    expect(userPrompt).toContain('github sessions');
+    expect(userPrompt).not.toContain('${');
   });
 
   it('keeps the RSS summary publication policy in the managed prompt', () => {

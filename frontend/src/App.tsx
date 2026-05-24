@@ -1,18 +1,16 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import type { IdeaCandidate } from './types/idea-candidate';
+import { buildIdeaTrendSignal, ideaTrendSignalKey } from './utils/idea-trend-signal';
+import { topicStatusRank } from './utils/trend-status';
 import {
   fetchIdeas,
-  fetchIdeasMeta,
   fetchTrends,
   fetchTrendHistory,
   fetchTrendSnapshot,
+  streamIdeas,
   type SourceSummary,
-  type IdeasMeta,
   type TrendScan,
-  type BatchInfo,
   type TrendHistoryEntry,
-  type FeaturedTrend,
-  type RssArticle,
 } from './api/ai';
 import Sidebar from './components/Sidebar';
 import IdeaCard from './components/IdeaCard';
@@ -23,6 +21,16 @@ import './App.css';
 
 type ViewMode = 'grid' | 'list';
 type WorkspaceView = 'trends' | 'ideas';
+type IdeaSort = 'generated' | 'trend' | 'evidence';
+
+const IDEA_SORTS: { id: IdeaSort; label: string; requiresTrend?: boolean }[] = [
+  { id: 'generated', label: '生成順' },
+  { id: 'trend', label: 'トレンド優先', requiresTrend: true },
+  { id: 'evidence', label: '根拠多い順' },
+];
+
+const IDEAS_PER_PAGE = 15;
+const TREND_DISPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const INTEREST_KEYWORDS: Record<string, string[]> = {
   business: ['業務', '効率', 'SaaS', 'B2B', '自動化', '管理', '営業', '経理', 'バックオフィス'],
@@ -54,6 +62,8 @@ function ideaText(idea: IdeaCandidate): string {
     idea.coreProblem,
     idea.differentiation,
     ...idea.tags,
+    ...idea.sources.rssKeywords,
+    ...(idea.sources.evidenceUrls ?? []).map((source) => source.title),
   ].join(' ');
 }
 
@@ -66,6 +76,10 @@ function isSameIdea(a: IdeaCandidate | null, b: IdeaCandidate): boolean {
   return a.id === b.id
     && a.generatedAt === b.generatedAt
     && (a.batchTime ?? '') === (b.batchTime ?? '');
+}
+
+function ideaEvidenceCount(idea: IdeaCandidate): number {
+  return idea.sources.evidenceUrls?.length ?? 0;
 }
 
 function matchesCategory(idea: IdeaCandidate, category: string): boolean {
@@ -86,6 +100,39 @@ function matchesSearchQuery(text: string, query: string): boolean {
   return terms.every((term) => normalizedText.includes(term));
 }
 
+function parseTime(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
+
+function isWithinTrendDisplayWindow(time: number | null, referenceTime = Date.now()): boolean {
+  return time !== null && referenceTime - time < TREND_DISPLAY_WINDOW_MS;
+}
+
+function paginationItems(totalPages: number, current: number): (number | '...')[] {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, index) => index);
+  }
+
+  const pages: (number | '...')[] = [0];
+  if (current > 2) pages.push('...');
+  for (let page = Math.max(1, current - 1); page <= Math.min(totalPages - 2, current + 1); page += 1) {
+    pages.push(page);
+  }
+  if (current < totalPages - 3) pages.push('...');
+  pages.push(totalPages - 1);
+  return pages;
+}
+
+function trendScanTime(scan: TrendScan): number | null {
+  return parseTime(scan.generatedAt);
+}
+
+function trendHistoryEntryTime(entry: TrendHistoryEntry): number | null {
+  return parseTime(entry.generatedAt) ?? parseTime(entry.scannedAt);
+}
+
 function userFacingError(message: string): string {
   const normalized = message.toLowerCase();
   if (
@@ -101,6 +148,13 @@ function userFacingError(message: string): string {
     }
     return 'バックエンドに接続できません。API サーバーを起動してから、もう一度生成してください。';
   }
+  if (
+    normalized.includes('dev_stack_mismatch')
+    || normalized.includes('dev stack')
+    || normalized.includes('devstack')
+  ) {
+    return 'フロントエンドが起動時に確認したバックエンドと現在の接続先が一致しません。npm run dev でフロントエンドとバックエンドをセットで再起動してください。';
+  }
   if (normalized.includes('zai_api_key')) {
     return 'ZAI_API_KEY が設定されていません。バックエンドの環境変数を確認してください。';
   }
@@ -110,116 +164,102 @@ function userFacingError(message: string): string {
   return message;
 }
 
-function trendArticleUrl(article: RssArticle): string {
-  return article.url || article.link;
-}
-
-function trendSummary(article: RssArticle): string {
-  return article.summaryJa
-    || `${article.titleJa || article.title} に関するトレンドです。`;
-}
-
-function trendPreviewFromScan(scan: TrendScan): FeaturedTrend | null {
-  if (scan.featuredTrend) return scan.featuredTrend;
-  const article = scan.rssContext.relatedArticles[0];
-  if (!article) return null;
-  return {
-    title: article.title,
-    titleJa: article.titleJa,
-    url: trendArticleUrl(article),
-    source: article.source,
-    published: article.publishedAt ?? article.published,
-    summary: trendSummary(article),
-  };
-}
-
-function isIdeasMeta(value: unknown): value is IdeasMeta {
-  if (!value || typeof value !== 'object') return false;
-  const obj = value as Record<string, unknown>;
-  return typeof obj.instanceId === 'string'
-    && typeof obj.pid === 'number'
-    && typeof obj.startedAt === 'string'
-    && typeof obj.cache === 'object'
-    && obj.cache !== null;
-}
-
 function App(): JSX.Element {
+  const ideaListTopRef = useRef<HTMLDivElement | null>(null);
+  const hasMountedIdeaPageRef = useRef(false);
   const [activeView, setActiveView] = useState<WorkspaceView>('ideas');
   const [trends, setTrends] = useState<TrendScan | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [trendError, setTrendError] = useState<string | null>(null);
   const [trendHistory, setTrendHistory] = useState<TrendHistoryEntry[]>([]);
-  const [activeTrendIndex, setActiveTrendIndex] = useState<number>(0);
-  const [trendSnapshotCache, setTrendSnapshotCache] = useState<Map<number, TrendScan>>(new Map());
-  const [featuredTrend, setFeaturedTrend] = useState<FeaturedTrend | null>(null);
+  const [trendSnapshots, setTrendSnapshots] = useState<TrendScan[]>([]);
   const [ideas, setIdeas] = useState<IdeaCandidate[]>([]);
   const [featuredIdea, setFeaturedIdea] = useState<IdeaCandidate | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const error: string | null = null;
-  const progressText: string | null = null;
+  const [error, setError] = useState<string | null>(null);
+  const [progressText, setProgressText] = useState<string | null>(null);
   const [sourceSummary, setSourceSummary] = useState<SourceSummary | null>(null);
-  const [ideasMeta, setIdeasMeta] = useState<IdeasMeta | null>(null);
   const [activeCategory, setActiveCategory] = useState('すべて');
   const [activeInterests, setActiveInterests] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>('grid');
+  const [ideaSort, setIdeaSort] = useState<IdeaSort>('generated');
+  const [ideaPage, setIdeaPage] = useState(0);
   const [selectedIdea, setSelectedIdea] = useState<IdeaCandidate | null>(null);
   const [modalIdea, setModalIdea] = useState<IdeaCandidate | null>(null);
-  const [activeBatch, setActiveBatch] = useState<string | null>(null);
-  const [batches, setBatches] = useState<BatchInfo[]>([]);
-  const refreshIdeasMeta = useCallback((retryUsage = false) => {
-    const update = () => {
-      void fetchIdeasMeta()
-        .then((meta) => { if (isIdeasMeta(meta)) setIdeasMeta(meta); })
-        .catch(() => undefined);
-    };
-    update();
-    if (retryUsage) window.setTimeout(update, 2000);
-  }, []);
-  const publicReadonlyMode = Boolean(ideasMeta?.env?.publicReadonlyMode);
 
-  // Load cached ideas/meta on mount. Fresh generation starts automatically when cache is disabled.
+  // Load cached ideas on mount. Fresh generation starts automatically when cache is disabled.
   useEffect(() => {
     let cancelled = false;
+    let streamController: AbortController | null = null;
 
     async function loadIdeas() {
-      const metaPromise = fetchIdeasMeta().catch(() => null);
       try {
         const result = await fetchIdeas();
-        const meta = await metaPromise;
-        if (!cancelled && isIdeasMeta(meta)) setIdeasMeta(meta);
         if (!cancelled && result.candidates.length > 0) {
+          setError(null);
           setIdeas(result.candidates);
           setFeaturedIdea(result.featuredIdea ?? null);
           setSourceSummary(result.sourceSummary);
-          setBatches(result.batches ?? []);
           setLoading(false);
           return;
         }
-      } catch {
-        const meta = await metaPromise;
-        if (!cancelled && isIdeasMeta(meta)) setIdeasMeta(meta);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'アイデア取得に失敗しました';
+        if (!cancelled) setError(userFacingError(message));
+        if (!cancelled) setLoading(false);
+        return;
       }
 
-      if (!cancelled) setLoading(false);
+      if (cancelled) return;
+      setProgressText('トレンドデータを分析中です。');
+      streamController = streamIdeas({
+        onProgress: (text) => {
+          if (!cancelled) setProgressText(text);
+        },
+        onIdeaGenerated: (idea) => {
+          if (cancelled) return;
+          setError(null);
+          setIdeas((current) => (
+            current.some((existing) => isSameIdea(existing, idea))
+              ? current
+              : [...current, idea]
+          ));
+        },
+        onComplete: (summary) => {
+          if (cancelled) return;
+          setFeaturedIdea(summary.featuredIdea ?? null);
+          setSourceSummary(summary.sourceSummary ?? null);
+          setProgressText(null);
+          setLoading(false);
+        },
+        onError: (message) => {
+          if (cancelled) return;
+          setError(userFacingError(message));
+          setProgressText(null);
+          setLoading(false);
+        },
+      });
     }
 
     void loadIdeas();
     return () => {
       cancelled = true;
+      streamController?.abort();
     };
-  }, [refreshIdeasMeta]);
+  }, []);
 
   useEffect(() => {
+    if (activeView === 'trends' || trends) return;
     let cancelled = false;
 
     async function loadTrendPreview() {
       try {
         const result = await fetchTrends();
         if (!cancelled) {
-          setTrends(result);
-          setFeaturedTrend(trendPreviewFromScan(result));
-          setTrendSnapshotCache(new Map([[0, result]]));
+          const recentTrend = isWithinTrendDisplayWindow(trendScanTime(result)) ? result : null;
+          setTrends(recentTrend);
+          setTrendSnapshots(recentTrend ? [recentTrend] : []);
         }
       } catch {
         // The trends view still performs its own user-facing load and error handling.
@@ -230,7 +270,7 @@ function App(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [activeView, trends]);
 
   // Load trends and trend history when switching to trends view
   useEffect(() => {
@@ -248,12 +288,31 @@ function App(): JSX.Element {
         } catch {
           historyResult = { history: [] };
         }
+
+        const referenceTime = Date.now();
+        const recentHistoryEntries = historyResult.history
+          .map((entry, index) => ({ entry, index }))
+          .filter(({ entry }) => isWithinTrendDisplayWindow(trendHistoryEntryTime(entry), referenceTime));
+        const latestSnapshot = isWithinTrendDisplayWindow(trendScanTime(trendsResult), referenceTime)
+          ? trendsResult
+          : null;
+        const historicalSnapshots = await Promise.all(
+          recentHistoryEntries.slice(1).map(async ({ index }) => {
+            try {
+              return await fetchTrendSnapshot(index);
+            } catch {
+              return null;
+            }
+          }),
+        );
+
         if (!cancelled) {
-          setTrends(trendsResult);
-          setFeaturedTrend(trendPreviewFromScan(trendsResult));
-          setTrendHistory(historyResult.history);
-          setActiveTrendIndex(0);
-          setTrendSnapshotCache(new Map([[0, trendsResult]]));
+          setTrends(latestSnapshot);
+          setTrendHistory(recentHistoryEntries.map(({ entry }) => entry));
+          setTrendSnapshots([
+            ...(latestSnapshot ? [latestSnapshot] : []),
+            ...historicalSnapshots.filter((snapshot): snapshot is TrendScan => Boolean(snapshot)),
+          ]);
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'トレンド取得に失敗しました';
@@ -269,47 +328,41 @@ function App(): JSX.Element {
     };
   }, [activeView]);
 
-  // Handle trend snapshot selection
-  const handleSelectTrendSnapshot = useCallback(async (index: number) => {
-    if (index === activeTrendIndex) return;
-
-    setTrendError(null);
-    const cached = trendSnapshotCache.get(index);
-    if (cached) {
-      setTrends(cached);
-      setActiveTrendIndex(index);
-      setTrendsLoading(false);
-      return;
-    }
-
-    setTrendsLoading(true);
-
-    try {
-      const snapshot = await fetchTrendSnapshot(index);
-      setTrendSnapshotCache((prev) => new Map(prev).set(index, snapshot));
-      setTrends(snapshot);
-      setFeaturedTrend(trendPreviewFromScan(snapshot));
-      setActiveTrendIndex(index);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'スナップショット取得に失敗しました';
-      setTrendError(userFacingError(message));
-    } finally {
-      setTrendsLoading(false);
-    }
-  }, [activeTrendIndex, trendSnapshotCache]);
-
   // Debounced search
   const handleSearch = useCallback((value: string) => {
     setSearchQuery(value);
+    setIdeaPage(0);
   }, []);
 
   const handleOpenIdeas = useCallback(() => {
     setActiveView('ideas');
   }, []);
 
+  const handleCategoryFilter = useCallback((category: string) => {
+    setActiveCategory(category);
+    setIdeaPage(0);
+  }, []);
+
+  const handleInterestChange = useCallback((interests: string[]) => {
+    setActiveInterests(interests);
+    setIdeaPage(0);
+  }, []);
+
+  const handleIdeaSortChange = useCallback((sort: IdeaSort) => {
+    setIdeaSort(sort);
+    setIdeaPage(0);
+  }, []);
+
   const sourceIdeas = ideas;
-  const displayedIdeas = sourceIdeas.filter((idea) => {
-      if (activeBatch && idea.batchTime !== activeBatch) return false;
+  const trendSignalByIdea = useMemo(() => {
+    const signals = new Map<string, ReturnType<typeof buildIdeaTrendSignal>>();
+    for (const idea of sourceIdeas) {
+      signals.set(ideaTrendSignalKey(idea), buildIdeaTrendSignal(idea, trends));
+    }
+    return signals;
+  }, [sourceIdeas, trends]);
+  const hasTrendSignals = [...trendSignalByIdea.values()].some((signal) => signal && signal.status !== 'stale');
+  const filteredIdeas = sourceIdeas.filter((idea) => {
       const text = ideaText(idea);
       const normalizedSearch = searchQuery.trim().toLowerCase();
       if (normalizedSearch && !matchesSearchQuery(text, normalizedSearch)) return false;
@@ -323,21 +376,42 @@ function App(): JSX.Element {
       }
       return true;
     });
+  const displayedIdeas = ideaSort === 'generated'
+    ? filteredIdeas
+    : [...filteredIdeas].sort((a, b) => {
+      const aSignal = trendSignalByIdea.get(ideaTrendSignalKey(a));
+      const bSignal = trendSignalByIdea.get(ideaTrendSignalKey(b));
+      if (ideaSort === 'trend') {
+        return topicStatusRank(bSignal?.status) - topicStatusRank(aSignal?.status)
+          || (bSignal?.sourceCount ?? 0) - (aSignal?.sourceCount ?? 0)
+          || (bSignal?.articleCount ?? 0) - (aSignal?.articleCount ?? 0)
+          || ideaEvidenceCount(b) - ideaEvidenceCount(a);
+      }
+      return ideaEvidenceCount(b) - ideaEvidenceCount(a)
+        || (bSignal?.evidenceCount ?? 0) - (aSignal?.evidenceCount ?? 0)
+        || (bSignal?.articleCount ?? 0) - (aSignal?.articleCount ?? 0);
+    });
+  const totalIdeaPages = Math.ceil(displayedIdeas.length / IDEAS_PER_PAGE);
+  const ideaPageStart = ideaPage * IDEAS_PER_PAGE;
+  const pagedIdeas = displayedIdeas.slice(ideaPageStart, ideaPageStart + IDEAS_PER_PAGE);
+
+  useEffect(() => {
+    setIdeaPage((current) => Math.min(current, Math.max(totalIdeaPages - 1, 0)));
+  }, [totalIdeaPages]);
+
+  useEffect(() => {
+    if (!hasMountedIdeaPageRef.current) {
+      hasMountedIdeaPageRef.current = true;
+      return;
+    }
+    if (activeView === 'ideas') {
+      ideaListTopRef.current?.scrollIntoView?.({ block: 'start' });
+    }
+  }, [activeView, ideaPage]);
 
   const hasIdeas = ideas.length > 0;
   const showDashboard = loading || hasIdeas;
-  const showSetupState = !loading && !hasIdeas;
-  const showIdeaCommandBar = activeView === 'ideas' && (hasIdeas || !publicReadonlyMode);
-  const cacheStatusLabel = ideasMeta?.cache.status === 'cached'
-    ? 'キャッシュ利用中'
-    : ideasMeta?.cache.status === 'stale'
-      ? '更新候補あり'
-      : 'データ準備中';
-  const sourceCountLabel = sourceSummary
-    ? `RSS ${sourceSummary.rssItemCount}件`
-    : trends?.rssContext.relatedArticles.length
-      ? `RSS ${trends.rssContext.relatedArticles.length}件`
-      : 'RSS確認中';
+  const showSetupState = !loading && !hasIdeas && !error;
   const handleIdeaSelect = useCallback((idea: IdeaCandidate) => {
     setSelectedIdea(idea);
     setModalIdea(idea);
@@ -351,7 +425,7 @@ function App(): JSX.Element {
             <span className="app-header__mark" aria-hidden="true">Lu</span>
             <div>
               <h1>Lume</h1>
-              <p>作るものが決まっていないエンジニアへ</p>
+              <p>トレンドから、次のアイデアを照らす</p>
             </div>
           </div>
 
@@ -362,7 +436,7 @@ function App(): JSX.Element {
               onClick={handleOpenIdeas}
               aria-pressed={activeView === 'ideas'}
             >
-              アイデア
+              需要アイデア
               {hasIdeas && <span>{ideas.length}</span>}
             </button>
             <button
@@ -371,51 +445,19 @@ function App(): JSX.Element {
               onClick={() => setActiveView('trends')}
               aria-pressed={activeView === 'trends'}
             >
-              トレンド
+              海外トレンド
             </button>
           </nav>
-
-          <div className="app-header__status" aria-label="データ状態">
-            <span>{cacheStatusLabel}</span>
-            <strong>{sourceCountLabel}</strong>
-          </div>
         </div>
-
-        {showIdeaCommandBar && (
-          <div className="idea-command-bar">
-            <div className="idea-command-bar__search">
-              <span className="idea-command-bar__search-icon">⌕</span>
-              <input
-                type="text"
-                placeholder="キーワードで絞り込み（例: AI ツール、SaaS、副業）"
-                value={searchQuery}
-                onChange={(e) => handleSearch(e.target.value)}
-                disabled={!hasIdeas}
-              />
-              {searchQuery && hasIdeas && (
-                <button
-                  type="button"
-                  className="idea-command-bar__clear"
-                  onClick={() => handleSearch('')}
-                  aria-label="検索条件をクリア"
-                >
-                  ×
-                </button>
-              )}
-            </div>
-          </div>
-        )}
       </header>
 
       <main className="workspace">
         {activeView === 'trends' && (
           <TrendBoard
-            trends={trends}
+            trendSnapshots={trendSnapshots}
             loading={trendsLoading}
             error={trendError}
             trendHistory={trendHistory}
-            activeTrendIndex={activeTrendIndex}
-            onSelectTrend={handleSelectTrendSnapshot}
           />
         )}
 
@@ -453,42 +495,71 @@ function App(): JSX.Element {
 
             {showDashboard && (
               <div className="dashboard">
-                {hasIdeas && (
-                  <Sidebar
-                    onCategoryFilter={setActiveCategory}
-                    onInterestChange={setActiveInterests}
-                    batches={batches}
-                    activeBatch={activeBatch}
-                    onBatchFilter={setActiveBatch}
-                  />
-                )}
-
                 <section className="main-content">
                   {hasIdeas && (
-                    <div className="idea-results-toolbar">
-                      <div className="idea-results-toolbar__summary">
-                        <h3>アイデア一覧</h3>
-                        <span>{displayedIdeas.length}件</span>
+                    <div className="idea-results-toolbar" ref={ideaListTopRef}>
+                      <div className="idea-results-toolbar__search-row">
+                        <div className="idea-results-toolbar__search">
+                          <span className="idea-results-toolbar__search-icon">⌕</span>
+                          <input
+                            type="text"
+                            aria-label="アイデアをキーワードで絞り込み"
+                            placeholder="キーワードで絞り込み"
+                            value={searchQuery}
+                            onChange={(e) => handleSearch(e.target.value)}
+                            disabled={!hasIdeas}
+                          />
+                          {searchQuery && hasIdeas && (
+                            <button
+                              type="button"
+                              className="idea-results-toolbar__clear"
+                              onClick={() => handleSearch('')}
+                              aria-label="検索条件をクリア"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                        <span className="idea-results-toolbar__count">{displayedIdeas.length}件</span>
                       </div>
-                      <div className="idea-results-toolbar__view-toggle" aria-label="表示形式">
-                        <button
-                          type="button"
-                          className={`idea-results-toolbar__view-btn ${viewMode === 'grid' ? 'idea-results-toolbar__view-btn--active' : ''}`}
-                          onClick={() => setViewMode('grid')}
-                          aria-label="グリッド表示"
-                          aria-pressed={viewMode === 'grid'}
-                        >
-                          ▦
-                        </button>
-                        <button
-                          type="button"
-                          className={`idea-results-toolbar__view-btn ${viewMode === 'list' ? 'idea-results-toolbar__view-btn--active' : ''}`}
-                          onClick={() => setViewMode('list')}
-                          aria-label="リスト表示"
-                          aria-pressed={viewMode === 'list'}
-                        >
-                          ☰
-                        </button>
+                      <div className="idea-results-toolbar__controls">
+                        <div className="idea-results-toolbar__sort" aria-label="並び順">
+                          {IDEA_SORTS.map((sort) => (
+                            <button
+                              key={sort.id}
+                              type="button"
+                              className={`idea-results-toolbar__sort-btn ${ideaSort === sort.id ? 'idea-results-toolbar__sort-btn--active' : ''}`}
+                              onClick={() => handleIdeaSortChange(sort.id)}
+                              aria-pressed={ideaSort === sort.id}
+                              disabled={Boolean(sort.requiresTrend && !hasTrendSignals)}
+                              title={sort.requiresTrend && !hasTrendSignals
+                                ? '観測トピックを含むトレンドデータで有効になります'
+                                : sort.label}
+                            >
+                              {sort.label}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="idea-results-toolbar__view-toggle" aria-label="表示形式">
+                          <button
+                            type="button"
+                            className={`idea-results-toolbar__view-btn ${viewMode === 'grid' ? 'idea-results-toolbar__view-btn--active' : ''}`}
+                            onClick={() => setViewMode('grid')}
+                            aria-label="グリッド表示"
+                            aria-pressed={viewMode === 'grid'}
+                          >
+                            ▦
+                          </button>
+                          <button
+                            type="button"
+                            className={`idea-results-toolbar__view-btn ${viewMode === 'list' ? 'idea-results-toolbar__view-btn--active' : ''}`}
+                            onClick={() => setViewMode('list')}
+                            aria-label="リスト表示"
+                            aria-pressed={viewMode === 'list'}
+                          >
+                            ☰
+                          </button>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -502,24 +573,33 @@ function App(): JSX.Element {
                   )}
 
                   {displayedIdeas.length > 0 && (
-                    <div className={`idea-grid idea-grid--${viewMode}`}>
-                      {displayedIdeas.map((idea, index) => (
-                        <IdeaCard
-                          key={ideaRenderKey(idea, index)}
-                          idea={idea}
-                          index={index}
-                          viewMode={viewMode}
-                          selected={isSameIdea(selectedIdea, idea)}
-                          onSelect={handleIdeaSelect}
-                        />
-                      ))}
-                    </div>
+                    <>
+                      <div className={`idea-grid idea-grid--${viewMode}`}>
+                        {pagedIdeas.map((idea, index) => (
+                          <IdeaCard
+                            key={ideaRenderKey(idea, ideaPageStart + index)}
+                            idea={idea}
+                            index={ideaPageStart + index}
+                            viewMode={viewMode}
+                            selected={isSameIdea(selectedIdea, idea)}
+                            trendSignal={trendSignalByIdea.get(ideaTrendSignalKey(idea)) ?? null}
+                            onSelect={handleIdeaSelect}
+                          />
+                        ))}
+                      </div>
+                      <IdeaPagination
+                        total={displayedIdeas.length}
+                        pageSize={IDEAS_PER_PAGE}
+                        current={ideaPage}
+                        onChange={setIdeaPage}
+                      />
+                    </>
                   )}
 
                   {hasIdeas && !loading && displayedIdeas.length === 0 && (
                     <div className="empty-state">
                       <h2>条件に合うアイデアがありません</h2>
-                      <p>検索語や左側のフィルターを緩めると候補が戻ります。</p>
+                      <p>検索語や右側のフィルターを緩めると候補が戻ります。</p>
                     </div>
                   )}
                 </section>
@@ -528,9 +608,13 @@ function App(): JSX.Element {
                   <RightPanel
                     ideas={displayedIdeas}
                     featuredIdea={featuredIdea}
-                    featuredTrend={featuredTrend}
-                    selectedIdea={selectedIdea}
-                    onOpenTrends={() => setActiveView('trends')}
+                    filters={(
+                      <Sidebar
+                        variant="panel"
+                        onCategoryFilter={handleCategoryFilter}
+                        onInterestChange={handleInterestChange}
+                      />
+                    )}
                   />
                 )}
               </div>
@@ -538,8 +622,75 @@ function App(): JSX.Element {
           </>
         )}
       </main>
-      {modalIdea && <IdeaDetailModal idea={modalIdea} onClose={() => setModalIdea(null)} />}
+      {modalIdea && (
+        <IdeaDetailModal
+          idea={modalIdea}
+          trendSignal={trendSignalByIdea.get(ideaTrendSignalKey(modalIdea)) ?? null}
+          onClose={() => setModalIdea(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function IdeaPagination({
+  total,
+  pageSize,
+  current,
+  onChange,
+}: {
+  total: number;
+  pageSize: number;
+  current: number;
+  onChange: (page: number) => void;
+}): JSX.Element {
+  const totalPages = Math.ceil(total / pageSize);
+  if (totalPages <= 1) return <></>;
+
+  const start = current * pageSize + 1;
+  const end = Math.min(total, start + pageSize - 1);
+  const pages = paginationItems(totalPages, current);
+
+  return (
+    <nav className="idea-pagination" aria-label="アイデアページネーション">
+      <span className="idea-pagination__summary">{start}-{end} / {total}件</span>
+      <div className="idea-pagination__controls">
+        <button
+          type="button"
+          className="idea-pagination__btn"
+          disabled={current === 0}
+          onClick={() => onChange(current - 1)}
+          aria-label="前のページ"
+        >
+          ‹
+        </button>
+        {pages.map((page, index) => (
+          page === '...' ? (
+            <span key={`ellipsis-${index}`} className="idea-pagination__ellipsis">…</span>
+          ) : (
+            <button
+              key={page}
+              type="button"
+              className={`idea-pagination__btn ${page === current ? 'idea-pagination__btn--active' : ''}`}
+              onClick={() => onChange(page)}
+              aria-current={page === current ? 'page' : undefined}
+              aria-label={`${page + 1}ページ目`}
+            >
+              {page + 1}
+            </button>
+          )
+        ))}
+        <button
+          type="button"
+          className="idea-pagination__btn"
+          disabled={current === totalPages - 1}
+          onClick={() => onChange(current + 1)}
+          aria-label="次のページ"
+        >
+          ›
+        </button>
+      </div>
+    </nav>
   );
 }
 

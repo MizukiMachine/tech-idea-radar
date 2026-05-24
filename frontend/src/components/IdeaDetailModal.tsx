@@ -1,13 +1,31 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
+import type { IdeaTrendSignal } from '../types/idea-trend-signal';
+import { topicStatusLabel } from '../utils/trend-status';
 import './IdeaDetailModal.css';
 
 interface IdeaDetailModalProps {
     idea: IdeaCandidate;
+    trendSignal?: IdeaTrendSignal | null;
     onClose: () => void;
 }
 
-export default function IdeaDetailModal({ idea, onClose }: IdeaDetailModalProps): JSX.Element {
+function formatDate(value: string | undefined): string {
+    if (!value) return '-';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    });
+}
+
+export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: IdeaDetailModalProps): JSX.Element {
     const evidenceUrls = idea.sources.evidenceUrls ?? [];
+    const visibleTrendSignal = trendSignal?.status === 'stale' ? null : trendSignal;
 
     return (
         <div className="idea-modal" role="dialog" aria-modal="true" aria-labelledby="idea-modal-title">
@@ -27,6 +45,32 @@ export default function IdeaDetailModal({ idea, onClose }: IdeaDetailModalProps)
                         <h3>概要</h3>
                         <p>{idea.description}</p>
                     </section>
+
+                    {visibleTrendSignal && (
+                        <section className="idea-modal__section idea-modal__section--wide idea-modal__trend-section">
+                            <div className="idea-modal__trend-head">
+                                <div>
+                                    <span className={`idea-modal__trend-badge idea-modal__trend-badge--${visibleTrendSignal.status}`}>
+                                        {topicStatusLabel(visibleTrendSignal.status)}トレンド
+                                    </span>
+                                    <h3>トレンド根拠</h3>
+                                </div>
+                                <span className="idea-modal__trend-topic">{visibleTrendSignal.label}</span>
+                            </div>
+                            <div className="idea-modal__trend-metrics">
+                                <span>観測規模 <strong>{visibleTrendSignal.sourceCount}</strong>媒体 / <strong>{visibleTrendSignal.articleCount}</strong>記事</span>
+                                <span>初回 {formatDate(visibleTrendSignal.firstSeenAt)}</span>
+                                <span>最終 {formatDate(visibleTrendSignal.lastSeenAt)}</span>
+                            </div>
+                            {visibleTrendSignal.sources.length > 0 && (
+                                <div className="idea-modal__trend-sources" aria-label="観測媒体">
+                                    {visibleTrendSignal.sources.map((source) => (
+                                        <span key={source}>{source}</span>
+                                    ))}
+                                </div>
+                            )}
+                        </section>
+                    )}
 
                     <section className="idea-modal__section">
                         <h3>対象ユーザー</h3>

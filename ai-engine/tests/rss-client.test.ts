@@ -10,6 +10,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
   process.env = originalEnv;
 });
 
@@ -124,7 +125,7 @@ describe('fetchRssContext', () => {
     ]));
   });
 
-  it('uses ten built-in feeds with only Zenn and Qiita as Japanese sources', async () => {
+  it('uses eight built-in overseas technology feeds by default', async () => {
     delete process.env.RSS_FEEDS;
     process.env.RSS_FETCH_ARTICLE_EXCERPTS = 'false';
 
@@ -151,16 +152,14 @@ describe('fetchRssContext', () => {
     const result = await fetchRssContext(['AI', 'developer']);
     const sources = new Set(result.relatedArticles.map((article) => article.source));
 
-    expect(fetchMock.mock.calls.length).toBe(10);
+    expect(fetchMock.mock.calls.length).toBe(8);
     expect(result.relatedArticles).toHaveLength(18);
-    expect(sources.size).toBe(10);
+    expect(sources.size).toBe(8);
     expect([...sources]).toEqual(expect.arrayContaining([
       'Hacker News',
       'GitHub Blog',
       'Stack Overflow Blog',
       'Product Hunt',
-      'Zenn',
-      'Qiita Popular',
     ]));
     expect([...sources]).not.toEqual(expect.arrayContaining([
       'DEV Community',
@@ -168,10 +167,13 @@ describe('fetchRssContext', () => {
       'Ars Technica',
       'Lobsters',
       'MIT Technology Review',
+      'Zenn',
+      'Qiita Popular',
     ]));
   });
 
   it('keeps one article per source before filling by source-balanced score rounds', async () => {
+    process.env.RSS_MAX_RELATED_ARTICLES = '18';
     process.env.RSS_FEEDS = JSON.stringify(
       Array.from({ length: 6 }, (_, index) => ({
         name: `Source ${index + 1}`,
@@ -213,6 +215,42 @@ describe('fetchRssContext', () => {
     for (let index = 2; index <= 6; index += 1) {
       expect(counts[`Source ${index}`]).toBe(3);
     }
+  });
+
+  it('keeps the RSS candidate pool at least as large as the display article count', async () => {
+    process.env.RSS_MAX_RELATED_ARTICLES = '8';
+    process.env.RSS_RELATED_ARTICLE_CANDIDATE_COUNT = '5';
+    process.env.RSS_FETCH_ARTICLE_EXCERPTS = 'false';
+    process.env.RSS_FEEDS = JSON.stringify(
+      Array.from({ length: 4 }, (_, index) => ({
+        name: `Source ${index + 1}`,
+        url: `https://example.com/min-${index + 1}.xml`,
+      })),
+    );
+
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
+      const sourceMatch = String(input).match(/min-(\d+)/);
+      const sourceNumber = sourceMatch?.[1] ?? '0';
+      const items = Array.from({ length: 3 }, (_, index) => `
+        <item>
+          <title>AI developer workflow candidate ${sourceNumber}-${index + 1}</title>
+          <link>https://example.com/min/${sourceNumber}/${index + 1}</link>
+          <pubDate>Sun, 17 May 2026 1${index}:00:00 GMT</pubDate>
+          <description>AI developer workflow automation productivity for engineering teams.</description>
+        </item>
+      `).join('');
+
+      return {
+        ok: true,
+        statusText: 'OK',
+        text: async () => `<?xml version="1.0"?><rss version="2.0"><channel>${items}</channel></rss>`,
+      };
+    }));
+
+    const { fetchRssContext } = await import('../src/services/rss-client');
+    const result = await fetchRssContext(['AI', 'developer']);
+
+    expect(result.relatedArticles).toHaveLength(8);
   });
 
   it('strips Hacker News metadata and enriches weak summaries from the article page', async () => {
@@ -274,5 +312,145 @@ describe('fetchRssContext', () => {
     expect(article.summary).not.toContain('Article URL');
     expect(article.summary).not.toContain('Comments URL');
     expect(article.summary).not.toContain('Points');
+  });
+
+  it('caches successful feed fetches within the configured TTL', async () => {
+    process.env.RSS_FEEDS = JSON.stringify([
+      { name: 'Cached Feed', url: 'https://example.com/cached.xml' },
+    ]);
+    process.env.RSS_FETCH_ARTICLE_EXCERPTS = 'false';
+    process.env.RSS_FEED_CACHE_TTL_MS = '300000';
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      statusText: 'OK',
+      text: async () => `<?xml version="1.0"?>
+        <rss version="2.0">
+          <channel>
+            <item>
+              <title>AI developer workflow cache signal</title>
+              <link>https://example.com/cached-article</link>
+              <pubDate>Sun, 17 May 2026 12:00:00 GMT</pubDate>
+              <description>AI workflow automation for engineering teams.</description>
+            </item>
+          </channel>
+        </rss>`,
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { fetchRssContext } = await import('../src/services/rss-client');
+    await fetchRssContext(['AI']);
+    await fetchRssContext(['AI']);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('limits concurrent RSS source fetches', async () => {
+    process.env.RSS_FEEDS = JSON.stringify(
+      Array.from({ length: 5 }, (_, index) => ({
+        name: `Concurrent ${index + 1}`,
+        url: `https://example.com/concurrent-${index + 1}.xml`,
+      })),
+    );
+    process.env.RSS_FETCH_ARTICLE_EXCERPTS = 'false';
+    process.env.RSS_FEED_CACHE_TTL_MS = '0';
+    process.env.RSS_FETCH_CONCURRENCY = '2';
+
+    let active = 0;
+    let maxActive = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: unknown) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await Promise.resolve();
+      active -= 1;
+      const source = String(input).match(/concurrent-(\d+)/)?.[1] ?? '0';
+      return {
+        ok: true,
+        statusText: 'OK',
+        text: async () => `<?xml version="1.0"?>
+          <rss version="2.0">
+            <channel>
+              <item>
+                <title>AI developer workflow source ${source}</title>
+                <link>https://example.com/concurrent/${source}</link>
+                <pubDate>Sun, 17 May 2026 12:00:00 GMT</pubDate>
+                <description>AI workflow automation for source ${source}.</description>
+              </item>
+            </channel>
+          </rss>`,
+      };
+    }));
+
+    const { fetchRssContext } = await import('../src/services/rss-client');
+    await fetchRssContext(['AI']);
+
+    expect(maxActive).toBeLessThanOrEqual(2);
+  });
+
+  it('adds observation-backed topic clusters and article topic metadata', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-05-20T00:00:00Z'));
+    process.env.RSS_FEEDS = JSON.stringify([
+      { name: 'Source A', url: 'https://example.com/source-a.xml' },
+      { name: 'Source B', url: 'https://example.com/source-b.xml' },
+    ]);
+    process.env.RSS_FETCH_ARTICLE_EXCERPTS = 'false';
+    process.env.RSS_FEED_CACHE_TTL_MS = '0';
+    process.env.RSS_TOPIC_WINDOW_HOURS = '24';
+
+    const firstScanXml = `<?xml version="1.0"?>
+      <rss version="2.0">
+        <channel>
+          <item>
+            <title>AI developer workflow automation</title>
+            <link>https://example.com/previous</link>
+            <pubDate>Wed, 20 May 2026 00:00:00 GMT</pubDate>
+            <description>AI developer workflow automation is appearing in teams.</description>
+          </item>
+        </channel>
+      </rss>`;
+
+    const secondScan = (source: string) => `<?xml version="1.0"?>
+      <rss version="2.0">
+        <channel>
+          <item>
+            <title>AI developer workflow automation</title>
+            <link>https://example.com/current-${source}</link>
+            <pubDate>Thu, 21 May 2026 01:00:00 GMT</pubDate>
+            <description>AI developer workflow automation is spreading across product teams.</description>
+          </item>
+        </channel>
+      </rss>`;
+
+    const fetchMock = vi.fn(async (input: unknown) => ({
+      ok: true,
+      statusText: 'OK',
+      text: async () => (String(input).includes('source-a') ? firstScanXml : firstScanXml),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { fetchRssContext } = await import('../src/services/rss-client');
+    await fetchRssContext(['AI']);
+
+    vi.setSystemTime(new Date('2026-05-21T01:00:00Z'));
+    fetchMock.mockImplementation(async (input: unknown) => ({
+      ok: true,
+      statusText: 'OK',
+      text: async () => (String(input).includes('source-a') ? secondScan('a') : secondScan('b')),
+    }));
+
+    const result = await fetchRssContext(['AI']);
+
+    expect(result.topicClusters?.length).toBeGreaterThan(0);
+    expect(result.topicClusters?.[0]).toMatchObject({
+      status: 'new',
+      sourceCount: 2,
+    });
+    expect(result.relatedArticles[0]).toMatchObject({
+      topicKey: expect.any(String),
+      topicStatus: 'new',
+      firstSeenAt: expect.any(String),
+      lastSeenAt: expect.any(String),
+    });
   });
 });

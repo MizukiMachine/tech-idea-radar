@@ -2,8 +2,21 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   DEFAULT_IDEA_COUNT,
+  DEFAULT_IDEA_DETAIL_REQUEST_CONCURRENCY,
+  DEFAULT_IDEA_DETAIL_REQUEST_RETRIES,
+  DEFAULT_IDEA_DETAIL_REQUEST_TIMEOUT_MS,
+  DEFAULT_IDEA_DETAIL_TOTAL_TIMEOUT_MS,
+  DEFAULT_IDEA_DETAIL_RETRY_DELAY_MS,
+  DEFAULT_IDEA_DETAIL_RETRY_MAX_DELAY_MS,
+  DEFAULT_IDEA_FALLBACK_REQUEST_TIMEOUT_MS,
+  DEFAULT_IDEA_SEED_REQUEST_TIMEOUT_MS,
+  DEFAULT_FEATURED_IDEA_SELECTION_TIMEOUT_MS,
+  DEFAULT_RSS_SUMMARY_REQUEST_TIMEOUT_MS,
+  DEFAULT_RSS_TOPIC_CLUSTERING_TIMEOUT_MS,
   MAX_BATCHES,
   BATCH_SCHEDULE_HOURS_JST,
+  IDEA_RETENTION_WINDOW_HOURS,
+  TREND_HISTORY_WINDOW_HOURS,
   MAX_TREND_HISTORY,
   RSS_ARTICLE_SUMMARY_POLICY,
   EntrepreneurAgent,
@@ -26,10 +39,56 @@ const PUBLIC_READONLY_MODE = isTruthy(process.env.PUBLIC_READONLY_MODE);
 const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN?.trim() ?? '';
 const PERSISTENT_CACHE_VERSION = 3;
 const TREND_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
+const IDEA_RETENTION_WINDOW_MS = IDEA_RETENTION_WINDOW_HOURS * 60 * 60 * 1000;
+const TREND_HISTORY_WINDOW_MS = TREND_HISTORY_WINDOW_HOURS * 60 * 60 * 1000;
 const WARMUP_ON_START = process.env.IDEA_WARMUP_ON_START === undefined
   ? true
   : isTruthy(process.env.IDEA_WARMUP_ON_START);
 const IDEA_GENERATION_BATCH_SIZE = parsePositiveInt(process.env.IDEA_GENERATION_BATCH_SIZE, DEFAULT_IDEA_COUNT);
+const IDEA_DETAIL_REQUEST_CONCURRENCY = parsePositiveInt(
+  process.env.IDEA_DETAIL_REQUEST_CONCURRENCY,
+  DEFAULT_IDEA_DETAIL_REQUEST_CONCURRENCY,
+);
+const IDEA_DETAIL_REQUEST_RETRIES = parseNonNegativeInt(
+  process.env.IDEA_DETAIL_REQUEST_RETRIES,
+  DEFAULT_IDEA_DETAIL_REQUEST_RETRIES,
+);
+const IDEA_DETAIL_REQUEST_TIMEOUT_MS = parsePositiveInt(
+  process.env.IDEA_DETAIL_REQUEST_TIMEOUT_MS,
+  DEFAULT_IDEA_DETAIL_REQUEST_TIMEOUT_MS,
+);
+const IDEA_DETAIL_TOTAL_TIMEOUT_MS = parsePositiveInt(
+  process.env.IDEA_DETAIL_TOTAL_TIMEOUT_MS,
+  DEFAULT_IDEA_DETAIL_TOTAL_TIMEOUT_MS,
+);
+const IDEA_DETAIL_RETRY_DELAY_MS = parseNonNegativeInt(
+  process.env.IDEA_DETAIL_RETRY_DELAY_MS,
+  DEFAULT_IDEA_DETAIL_RETRY_DELAY_MS,
+);
+const IDEA_DETAIL_RETRY_MAX_DELAY_MS = parseNonNegativeInt(
+  process.env.IDEA_DETAIL_RETRY_MAX_DELAY_MS,
+  DEFAULT_IDEA_DETAIL_RETRY_MAX_DELAY_MS,
+);
+const IDEA_SEED_REQUEST_TIMEOUT_MS = parsePositiveInt(
+  process.env.IDEA_SEED_REQUEST_TIMEOUT_MS,
+  DEFAULT_IDEA_SEED_REQUEST_TIMEOUT_MS,
+);
+const IDEA_FALLBACK_REQUEST_TIMEOUT_MS = parsePositiveInt(
+  process.env.IDEA_FALLBACK_REQUEST_TIMEOUT_MS,
+  DEFAULT_IDEA_FALLBACK_REQUEST_TIMEOUT_MS,
+);
+const FEATURED_IDEA_SELECTION_TIMEOUT_MS = parsePositiveInt(
+  process.env.FEATURED_IDEA_SELECTION_TIMEOUT_MS,
+  DEFAULT_FEATURED_IDEA_SELECTION_TIMEOUT_MS,
+);
+const RSS_TOPIC_CLUSTERING_TIMEOUT_MS = parsePositiveInt(
+  process.env.RSS_TOPIC_CLUSTERING_TIMEOUT_MS,
+  DEFAULT_RSS_TOPIC_CLUSTERING_TIMEOUT_MS,
+);
+const RSS_SUMMARY_REQUEST_TIMEOUT_MS = parsePositiveInt(
+  process.env.RSS_SUMMARY_REQUEST_TIMEOUT_MS,
+  DEFAULT_RSS_SUMMARY_REQUEST_TIMEOUT_MS,
+);
 
 // --- Batch data structure ---
 
@@ -68,6 +127,68 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
   return parsed;
+}
+
+function parseNonNegativeInt(value: string | undefined, fallback: number): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) return fallback;
+  return parsed;
+}
+
+function appendUniqueWarning(warnings: string[], warning: string): string[] {
+  return warnings.includes(warning) ? warnings : [...warnings, warning];
+}
+
+function generationCountWarnings(result: IdeaGenerationOutput, dedupedCount: number): string[] {
+  let warnings = [...(result.sourceSummary.warnings ?? [])];
+  const requestedCount = IDEA_GENERATION_BATCH_SIZE;
+  if (dedupedCount >= requestedCount) return warnings;
+
+  if (result.candidates.length > dedupedCount) {
+    warnings = appendUniqueWarning(
+      warnings,
+      `重複するアイデア候補を除外したため、今回は${dedupedCount}/${requestedCount}件を表示しています。`,
+    );
+  } else {
+    warnings = appendUniqueWarning(
+      warnings,
+      `一部のアイデア生成が完了しなかったため、今回は${dedupedCount}/${requestedCount}件を表示しています。`,
+    );
+  }
+
+  return warnings;
+}
+
+function batchEntryTimeMs(entry: BatchEntry): number {
+  const batchTime = Date.parse(entry.batchTime);
+  if (Number.isFinite(batchTime)) return batchTime;
+  return Date.parse(entry.data.generatedAt);
+}
+
+function pruneIdeaBatches(entries: BatchEntry[], now: Date): BatchEntry[] {
+  const cutoff = now.getTime() - IDEA_RETENTION_WINDOW_MS;
+  return entries
+    .filter((entry) => {
+      const time = batchEntryTimeMs(entry);
+      return Number.isFinite(time) && time >= cutoff;
+    })
+    .slice(0, MAX_BATCHES);
+}
+
+function trendEntryTimeMs(entry: TrendHistoryEntry): number {
+  const generatedAt = Date.parse(entry.data.generatedAt);
+  if (Number.isFinite(generatedAt)) return generatedAt;
+  return Date.parse(entry.scannedAt);
+}
+
+function pruneTrendHistory(entries: TrendHistoryEntry[], now: Date): TrendHistoryEntry[] {
+  const cutoff = now.getTime() - TREND_HISTORY_WINDOW_MS;
+  return entries
+    .filter((entry) => {
+      const time = trendEntryTimeMs(entry);
+      return Number.isFinite(time) && time >= cutoff;
+    })
+    .slice(0, MAX_TREND_HISTORY);
 }
 
 // --- JST schedule helpers ---
@@ -167,9 +288,10 @@ function isPersistentTrendScanOutput(value: unknown): value is TrendScanOutput {
 }
 
 function withSummaryPolicy(data: TrendScanOutput): TrendScanOutput {
+  const { featuredTrend: _featuredTrend, ...cleanData } = data as TrendScanOutput & { featuredTrend?: unknown };
   return {
-    ...data,
-    summaryPolicy: data.summaryPolicy ?? RSS_ARTICLE_SUMMARY_POLICY,
+    ...cleanData,
+    summaryPolicy: cleanData.summaryPolicy ?? RSS_ARTICLE_SUMMARY_POLICY,
   };
 }
 
@@ -332,9 +454,10 @@ function trendSourceNames(result: TrendScanOutput): string[] {
   const failedSources = result.rssContext.sourceErrors
     ?.map((error) => error.source)
     .filter(Boolean) ?? [];
-  const summarySources = result.rssContext.summaryErrors
-    ?.map((error) => error.source)
-    .filter(Boolean) ?? [];
+  const summarySources = [
+    ...(result.rssContext.summaryErrors ?? []),
+    ...(result.rssContext.replacedSummaryErrors ?? []),
+  ].map((error) => error.source).filter(Boolean);
   return [...new Set([...articleSources, ...failedSources, ...summarySources])];
 }
 
@@ -473,8 +596,21 @@ export function getRuntimeMeta(): {
     persistentCacheEnabled: boolean;
     warmupOnStart: boolean;
     ideaGenerationBatchSize: number;
+    ideaDetailRequestConcurrency: number;
+    ideaDetailRequestRetries: number;
+    ideaDetailRequestTimeoutMs: number;
+    ideaDetailTotalTimeoutMs: number;
+    ideaDetailRetryDelayMs: number;
+    ideaDetailRetryMaxDelayMs: number;
+    ideaSeedRequestTimeoutMs: number;
+    ideaFallbackRequestTimeoutMs: number;
+    featuredIdeaSelectionTimeoutMs: number;
+    rssTopicClusteringTimeoutMs: number;
+    rssSummaryRequestTimeoutMs: number;
+    ideaRetentionWindowHours: number;
     batchScheduleHours: readonly number[];
     maxBatches: number;
+    trendHistoryWindowHours: number;
     maxTrendHistory: number;
   };
   cache: {
@@ -502,8 +638,21 @@ export function getRuntimeMeta(): {
       persistentCacheEnabled: isPersistentCacheEnabled(),
       warmupOnStart: WARMUP_ON_START,
       ideaGenerationBatchSize: IDEA_GENERATION_BATCH_SIZE,
+      ideaDetailRequestConcurrency: IDEA_DETAIL_REQUEST_CONCURRENCY,
+      ideaDetailRequestRetries: IDEA_DETAIL_REQUEST_RETRIES,
+      ideaDetailRequestTimeoutMs: IDEA_DETAIL_REQUEST_TIMEOUT_MS,
+      ideaDetailTotalTimeoutMs: IDEA_DETAIL_TOTAL_TIMEOUT_MS,
+      ideaDetailRetryDelayMs: IDEA_DETAIL_RETRY_DELAY_MS,
+      ideaDetailRetryMaxDelayMs: IDEA_DETAIL_RETRY_MAX_DELAY_MS,
+      ideaSeedRequestTimeoutMs: IDEA_SEED_REQUEST_TIMEOUT_MS,
+      ideaFallbackRequestTimeoutMs: IDEA_FALLBACK_REQUEST_TIMEOUT_MS,
+      featuredIdeaSelectionTimeoutMs: FEATURED_IDEA_SELECTION_TIMEOUT_MS,
+      rssTopicClusteringTimeoutMs: RSS_TOPIC_CLUSTERING_TIMEOUT_MS,
+      rssSummaryRequestTimeoutMs: RSS_SUMMARY_REQUEST_TIMEOUT_MS,
+      ideaRetentionWindowHours: IDEA_RETENTION_WINDOW_HOURS,
       batchScheduleHours: BATCH_SCHEDULE_HOURS_JST,
       maxBatches: MAX_BATCHES,
+      trendHistoryWindowHours: TREND_HISTORY_WINDOW_HOURS,
       maxTrendHistory: MAX_TREND_HISTORY,
     },
     cache: cached ? {
@@ -576,7 +725,10 @@ export async function generateAndCacheIdeas(
   useScheduleSlot = true,
 ): Promise<IdeaGenerationOutput> {
   // If already generating, reuse the same promise
-  if (generationLock) return generationLock;
+  if (generationLock) {
+    onProgress?.('既存のアイデア生成処理を待機中...');
+    return generationLock;
+  }
 
   generationLock = (async () => {
     try {
@@ -584,9 +736,10 @@ export async function generateAndCacheIdeas(
       const now = new Date();
       const batchTime = useScheduleSlot ? getCurrentBatchTimeJST(now) : getActualBatchTimeJST(now);
       const agent = new EntrepreneurAgent(getClient());
-      const result = trendScanOverride && !focusKeywords
+      const trendScanForIdeas = trendScanOverride ?? (!focusKeywords ? latestTrend()?.data : undefined);
+      const result = trendScanForIdeas && !focusKeywords
         ? await agent.generateIdeasFromTrendScan(
-          trendScanOverride,
+          withSummaryPolicy(trendScanForIdeas),
           onProgress,
           IDEA_GENERATION_BATCH_SIZE,
           batchTime,
@@ -600,6 +753,7 @@ export async function generateAndCacheIdeas(
 
       // Dedupe within this batch only
       const deduped = dedupeWithinBatch(result.candidates);
+      const warnings = generationCountWarnings(result, deduped.length);
 
       const batchOutput: IdeaGenerationOutput = {
         ...result,
@@ -607,14 +761,15 @@ export async function generateAndCacheIdeas(
         batchTime,
         sourceSummary: {
           ...result.sourceSummary,
+          ...(warnings.length > 0 ? { warnings } : {}),
         },
       };
 
-      // Replace same-slot batch or prepend, trim to MAX_BATCHES
-      batches = [
+      // Replace same-slot batch or prepend, then prune stale batches on cache update.
+      batches = pruneIdeaBatches([
         { batchTime, data: batchOutput },
         ...batches.filter((b) => b.batchTime !== batchTime),
-      ].slice(0, MAX_BATCHES);
+      ], now);
 
       persistCache();
       return batchOutput;
@@ -636,15 +791,21 @@ export async function scanAndCacheTrends(
 
   trendScanLock = (async () => {
     try {
+      loadPersistentCache();
+      const now = new Date();
+      const batchTime = getCurrentBatchTimeJST(now);
       const agent = new EntrepreneurAgent(getClient());
-      const result = withSummaryPolicy(await agent.scanTrends(onProgress));
-      const now = new Date().toISOString();
+      const result = {
+        ...withSummaryPolicy(await agent.scanTrends(onProgress)),
+        batchTime,
+      };
+      const scannedAt = now.toISOString();
 
-      // Prepend to history, deduplicate by generatedAt, trim to MAX_TREND_HISTORY
-      trendHistory = [
-        { scannedAt: now, data: result },
+      // Prepend to history, deduplicate by generatedAt, then prune stale snapshots.
+      trendHistory = pruneTrendHistory([
+        { scannedAt, data: result },
         ...trendHistory.filter((e) => e.data.generatedAt !== result.generatedAt),
-      ].slice(0, MAX_TREND_HISTORY);
+      ], now);
 
       persistCache();
       await notifyTrendSummaryFailures(result);
@@ -660,6 +821,32 @@ export async function scanAndCacheTrends(
   return trendScanLock;
 }
 
+async function refreshEmptyCachesIdeaFirst(useScheduleSlot: boolean): Promise<void> {
+  await generateAndCacheIdeas(undefined, undefined, undefined, useScheduleSlot);
+
+  try {
+    await scanAndCacheTrends();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[Cache] Startup trend refresh failed after ideas were generated: ${message}`);
+  }
+}
+
+async function refreshRequestedCaches(
+  shouldRefreshTrends: boolean,
+  shouldRefreshIdeas: boolean,
+  useScheduleSlot: boolean,
+): Promise<void> {
+  let refreshedTrendScan: TrendScanOutput | undefined;
+
+  if (shouldRefreshTrends) {
+    refreshedTrendScan = await scanAndCacheTrends();
+  }
+  if (shouldRefreshIdeas) {
+    await generateAndCacheIdeas(undefined, undefined, refreshedTrendScan, useScheduleSlot);
+  }
+}
+
 export function refreshCachesInBackground(reason: string, force = false, useScheduleSlot = true): Promise<void> {
   if (backgroundRefreshLock) return backgroundRefreshLock;
 
@@ -668,6 +855,7 @@ export function refreshCachesInBackground(reason: string, force = false, useSche
   const isTrendStale = isTrendEntryStale(latest);
   const shouldRefreshTrends = force || trendHistory.length === 0 || isTrendStale;
   const shouldRefreshIdeas = force || batches.length === 0;
+  const shouldWarmEmptyCachesIdeaFirst = shouldRefreshTrends && shouldRefreshIdeas && trendHistory.length === 0;
 
   if (!shouldRefreshTrends && !shouldRefreshIdeas) {
     console.log(`[Cache] Background refresh skipped (${reason}): cache is fresh`);
@@ -676,13 +864,8 @@ export function refreshCachesInBackground(reason: string, force = false, useSche
 
   backgroundRefreshLock = (async () => {
     console.log(`[Cache] Background refresh started (${reason})`);
-    let refreshedTrendScan: TrendScanOutput | undefined;
-    if (shouldRefreshTrends) {
-      refreshedTrendScan = await scanAndCacheTrends();
-    }
-    if (shouldRefreshIdeas) {
-      await generateAndCacheIdeas(undefined, undefined, refreshedTrendScan, useScheduleSlot);
-    }
+    if (shouldWarmEmptyCachesIdeaFirst) await refreshEmptyCachesIdeaFirst(useScheduleSlot);
+    else await refreshRequestedCaches(shouldRefreshTrends, shouldRefreshIdeas, useScheduleSlot);
     console.log(`[Cache] Background refresh completed (${reason})`);
   })()
     .catch((error: unknown) => {

@@ -1,4 +1,7 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
+import type { IdeaTrendSignal } from '../types/idea-trend-signal';
+import { formatBatchTimestamp, scheduledBatchTimeJST } from '../utils/batch-time';
+import { topicStatusLabel } from '../utils/trend-status';
 import './IdeaCard.css';
 
 const CARD_ICONS = ['AI', 'PR', 'DB', 'UX', 'API', 'SaaS', 'Ops', 'Sc', 'Dev', 'Web', 'Doc', 'Rev', 'Fit', 'CMS', 'BI'];
@@ -16,33 +19,26 @@ function getIconForIdea(id: string, index: number) {
     };
 }
 
-function formatGeneratedAtLabel(generatedAt: string) {
-    try {
-        const date = new Date(generatedAt);
-        if (Number.isNaN(date.getTime())) return generatedAt;
-        return date.toLocaleString('ja-JP', {
-            timeZone: 'Asia/Tokyo',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-        });
-    } catch {
-        return generatedAt;
-    }
-}
-
 interface IdeaCardProps {
     idea: IdeaCandidate;
     index: number;
     viewMode?: 'grid' | 'list';
     selected?: boolean;
+    trendSignal?: IdeaTrendSignal | null;
     onSelect?: (idea: IdeaCandidate) => void;
 }
 
-export default function IdeaCard({ idea, index, viewMode = 'grid', selected = false, onSelect }: IdeaCardProps): JSX.Element {
+export default function IdeaCard({
+    idea,
+    index,
+    viewMode = 'grid',
+    selected = false,
+    trendSignal = null,
+    onSelect,
+}: IdeaCardProps): JSX.Element {
     const { icon, color } = getIconForIdea(idea.id, index);
+    const visibleTrendSignal = trendSignal?.status === 'stale' ? null : trendSignal;
+    const batchTime = idea.batchTime ?? scheduledBatchTimeJST(idea.generatedAt);
 
     return (
         <button
@@ -58,15 +54,20 @@ export default function IdeaCard({ idea, index, viewMode = 'grid', selected = fa
                 <h3 className="idea-card__title">{idea.title}</h3>
             </div>
             <p className="idea-card__tagline">{idea.tagline}</p>
-            <div className="idea-card__meta">
-                <span className="idea-card__type">{idea.productType}</span>
-                {idea.tags.slice(0, 2).map((tag) => (
-                    <span key={tag} className="idea-card__tag">{tag}</span>
-                ))}
-                {idea.batchTime && (
-                    <span className="idea-card__batch">生成 {formatGeneratedAtLabel(idea.batchTime)}</span>
-                )}
-            </div>
+            <p className="idea-card__target">
+                <span className="idea-card__target-label">対象ユーザー</span>
+                <span className="idea-card__target-text">{idea.targetUsers}</span>
+            </p>
+            {visibleTrendSignal && (
+                <div className={`idea-card__trend idea-card__trend--${visibleTrendSignal.status}`}>
+                    <span className="idea-card__trend-badge">{topicStatusLabel(visibleTrendSignal.status)}トレンド</span>
+                </div>
+            )}
+            {batchTime && (
+                <time className="idea-card__batch-time" dateTime={batchTime}>
+                    {formatBatchTimestamp(batchTime)}
+                </time>
+            )}
         </button>
     );
 }

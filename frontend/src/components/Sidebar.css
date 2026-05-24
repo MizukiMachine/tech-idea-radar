@@ -23,6 +23,13 @@
     border-radius: 4px;
 }
 
+.sidebar--panel {
+    width: 100%;
+    min-width: 0;
+    position: static;
+    align-self: stretch;
+}
+
 .sidebar__section {
     margin-bottom: 24px;
 }
@@ -53,6 +60,7 @@
 }
 
 .sidebar__reset-btn {
+    min-height: 32px;
     font-size: 12px;
     color: var(--text-tertiary);
     font-weight: 700;
@@ -119,7 +127,7 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    min-height: 36px;
+    min-height: 42px;
     padding: 0 8px;
     border-radius: 8px;
     font-size: 14px;
@@ -135,8 +143,8 @@
 }
 
 .sidebar__checkbox-label input[type="checkbox"] {
-    width: 17px;
-    height: 17px;
+    width: 32px;
+    height: 32px;
     accent-color: var(--accent-primary);
     cursor: pointer;
     border-radius: 4px;
@@ -222,5 +230,9 @@
 @media (max-width: 1200px) {
     .sidebar {
         display: none;
+    }
+
+    .sidebar--panel {
+        display: block;
     }
 }

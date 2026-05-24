@@ -1,52 +1,65 @@
 # Builder Agent Chain
 
-エンジニアが訪問すると、技術トレンドをもとにプロダクト仮説や開発すると参考になりそうなツール案を確認できるサイト。
+技術ニュースのRSSをもとに、エンジニア向けのプロダクト仮説や作ると面白そうなツール案を表示するアプリです。
 
-- `作るもの提案`: 技術ニュースをもとにしたプロダクト仮説を表示
-- `トレンド`: サブページで各種ニュースサイトの技術トレンドや関連記事を紹介
+## 主な機能
 
-## アプリの使い方と動き
-
-- サイトを開くと、保存済みのプロダクト案が一覧で表示されます。
-- `作るもの提案` では、RSS記事をもとにしたプロダクト仮説を確認できます。
-- `トレンド` では、取得したRSS記事、注目キーワード、記事の要約を確認できます。
-- 各アイデアには、開発規模を★1〜★5で表示します。
-- ★が多い案も除外せず、大きめの構想は検証の起点として扱います。
-- 公開サイトでは、訪問者が勝手にAI生成を実行しないようにできます。
+- `トレンド`: RSSから取得した技術記事、注目キーワード、記事要約を確認できます。
+- `作るもの提案`: RSS記事を根拠にしたプロダクト案を確認できます。
 - 管理者操作や定期更新で、新しいRSS記事を集めてアイデアを追加します。
-- 1回の生成では、たくさん作りすぎず、少数のアイデアだけを追加します。
-- 新しく作ったアイデアは、既存の一覧の先頭に追加されます。
-- 直近のアイデアとかなり似ている案は、できるだけ出さないようにしています。
-- 生成後にも似た内容のアイデアを確認し、近すぎるものは一覧に追加しません。
-- すでにアイデアの根拠として使ったRSS記事は、次回以降の材料から外します。
-- RSS記事が取得できない場合、LLMの一般知識だけでは生成せず、既存キャッシュを維持して管理者へメール通知します。
-- 保存できるアイデア数には上限があり、上限を超えると古いものから押し出されます。
-- 古いアイデアの点数を時間で下げる処理はありません。表示順は主にスコアや画面上の並び替えで決まります。
-- RSS記事もアイデアも、公開運用ではキャッシュとして保存して使います。
-- 定期更新を設定すると、12時間ごとや24時間ごとに少しずつ内容を育てられます。
+- 公開運用では、訪問者が勝手にAI生成やRSS再取得を実行しないようにできます。
+- RSS記事が取得できない場合は、LLMの一般知識だけで生成せず、既存キャッシュを維持します。
 
-## 公開運用向けの設定
+## RSSトレンドの扱い
 
-- `PUBLIC_READONLY_MODE=true`: 訪問者アクセスでは自動生成・再取得せず、キャッシュ済みデータだけを表示
-- `IDEA_CACHE_DISABLED=true`: 当面の運用ではキャッシュを使わず、画面表示用の古い生成結果を復元しない。`false` にすると永続キャッシュ運用に戻せる
-- `ADMIN_API_TOKEN=...`: `Authorization: Bearer ...` 付きの管理リクエストだけ再生成・再取得・AI絞り込みを許可
-- `IDEA_CACHE_FILE=.tmp/idea-cache.json`: アイデアとトレンドのキャッシュをファイルに永続化。`IDEA_CACHE_DISABLED=true` の間は無視される
-- `IDEA_CACHE_TTL_HOURS=24`: キャッシュの有効時間。公開モードのデフォルトは24時間
-- `IDEA_GENERATION_BATCH_SIZE=5`: 1回の生成で追加を試みるアイデア数。定期更新で蓄積する前提のため少数生成
-- `IDEA_MAX_STORED_CANDIDATES=60`: 過去分を含めて保持するアイデア数の上限。新しい非重複アイデアを優先して残す
-- `IDEA_SOURCE_HISTORY_LIMIT=240`: アイデアの根拠として使ったRSS記事URLの保持上限。次回生成では同じ記事を材料から外す
-- `IDEA_WARMUP_ON_START=true`: サーバー起動時にキャッシュが空/期限切れならバックグラウンド生成
-- `IDEA_BACKGROUND_REFRESH_HOURS=12`: 指定した時間ごとに、表示中のキャッシュを残したままバックグラウンド再生成（未設定/0なら定期更新なし）
-- `RSS_FEEDS='[{"name":"Hacker News","url":"https://hnrss.org/frontpage"}]'`: RSSソースのJSON配列。未指定なら既定の主要テックRSSを直接取得
-- `RSS_MAX_RELATED_ARTICLES=18`: トレンドページとアイデア生成に渡すRSS記事数の上限
-- `RSS_SOURCE_FIRST_PASS_LIMIT=1`: 各成功RSSソースから最初に確保する記事数
-- `RSS_SOURCE_TOTAL_LIMIT=3`: 1つのRSSソースから選ぶ記事数の上限。初回確保後はソースごとのラウンドで追加
-- `RSS_FETCH_TIMEOUT_MS=8000`: RSSソース1件あたりの取得タイムアウト
-- `CORS_ORIGIN=https://your-site.example.com`: APIを別ドメインで公開する場合、ブラウザからの許可元をカンマ区切りで指定
-- `SMTP_HOST=smtp.example.com`: RSS取得失敗時の管理者メール通知に使うSMTPホスト
-- `SMTP_PORT=587`: SMTPポート。465の場合は通常 `SMTP_SECURE=true`
-- `SMTP_SECURE=false`: SMTP接続でTLSを最初から使うか
-- `SMTP_USER=...` / `SMTP_PASS=...`: SMTP認証情報
-- `ADMIN_ALERT_EMAIL_FROM=alerts@example.com`: 通知メールのFrom。未指定なら `SMTP_USER` またはローカル既定値
-- `ADMIN_ALERT_EMAIL_TO=admin@example.com`: RSS取得失敗・RSS要約失敗通知の送信先
-- `ADMIN_ALERT_COOLDOWN_MINUTES=60`: 同種のRSS失敗通知を抑制する時間
+RSSは単発の記事一覧としてではなく、継続観測する情報として扱います。
+
+1. 設定されたRSSフィードを並列数を抑えて取得します。
+2. 取得結果は短時間キャッシュし、同じフィードへの連続アクセスを減らします。
+3. 取得した記事はタイトル、URL、配信元、公開日時、概要をもとに正規化します。
+4. 記事ごとに初回観測日時と最終観測日時を記録します。
+5. 直近の観測履歴から、話題を `new` / `spiking` / `continuing` に分類します。
+
+これにより、フロントエンドでは単なる新着記事だけでなく、「新しく出てきた話題」「複数ソースで急に増えている話題」「継続して出ている話題」を表示できます。
+
+## RSS観測履歴
+
+`RSS_OBSERVATIONS_FILE` を指定すると、RSS記事の観測履歴をJSONで保存します。未指定の場合はプロセス内メモリだけで保持します。
+
+保存する主な情報:
+
+- 記事の識別子
+- タイトル、URL、配信元
+- 公開日時
+- 初回観測日時
+- 最終観測日時
+- 概要
+- トピックキー
+
+デフォルトでは、直近24時間、最大5000件、1ソースあたり最大500件を保持します。
+
+## よく使う設定
+
+- `PUBLIC_READONLY_MODE=true`: 公開アクセスではキャッシュ済みデータだけを表示します。
+- `ADMIN_API_TOKEN=...`: 管理者だけが再取得や再生成を実行できるようにします。
+- `IDEA_CACHE_FILE=.tmp/idea-cache.json`: アイデアとトレンドのキャッシュを保存します。
+- `RSS_FEEDS='[{"name":"Hacker News","url":"https://hnrss.org/frontpage"}]'`: 取得するRSSフィードを指定します。
+- `RSS_OBSERVATIONS_FILE=.tmp/rss-observations.json`: RSS観測履歴をJSONで保存します。
+- `RSS_OBSERVATION_RETENTION_HOURS=24`: RSS観測履歴の保持時間を指定します。
+- `RSS_FETCH_CONCURRENCY=3`: RSSフィードの同時取得数を指定します。
+- `RSS_MAX_RELATED_ARTICLES=8`: トレンド表示に使う記事数を指定します。`RSS_DISPLAY_RELATED_ARTICLES` でも指定できます。
+- `RSS_RELATED_ARTICLE_CANDIDATE_COUNT=18`: 要約/日本語化チェックにかけるRSS候補数を指定します。品質基準を通った候補から表示件数を満たします。
+
+## 開発
+
+```bash
+npm install
+npm run dev
+npm run build
+npm run test
+```
+
+`npm run dev` はバックエンドとフロントエンドをセットで起動します。既定ではバックエンドを `127.0.0.1:3010`、フロントエンドを `127.0.0.1:5180` で起動し、フロントエンドの `/api` と `/health` が今回起動したバックエンドに向いていることを確認してからURLを表示します。
+ローカル開発中は dev stack id をフロントエンド、Vite proxy、バックエンドで照合します。別プロセスや古いモックAPIに向いた場合は、ブラウザ内のAPIクライアントとバックエンドの両方で拒否します。また、別ポートに古い `builder-agent-chain` の待受プロセスが残っている場合は起動を止めます。意図的に複数スタックを並行起動する場合だけ `BAC_ALLOW_STALE_BUILDER_PROCESSES=true` を指定してください。フロント単体で起動する場合は `BAC_ALLOW_FRONTEND_SOLO=true` と `VITE_PROXY_TARGET` を明示してください。
+
+静的ビルドやプレビューでも、誤接続を避けるため `VITE_API_BASE_URL` を焼き込むビルドは既定で失敗します。通常は同一オリジンの `/api` proxy を使ってください。別オリジンの本番・ステージングAPIを意図的に使う場合だけ、完全一致するURLを `VITE_ALLOWED_API_BASES` に追加します。プレビューは raw `vite preview` ではなく、dev-stack header を付けてバックエンドを検証する `npm run preview:stack` を使ってください。`npm run dev` が起動中なら、`preview:stack` は `.tmp/dev-stack.json` から現在のバックエンドと stack id を自動で読みます。

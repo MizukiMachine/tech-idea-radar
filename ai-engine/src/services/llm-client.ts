@@ -5,6 +5,11 @@ const MAX_RETRIES = 3;
 const INITIAL_BACKOFF_MS = 1000;
 const TIMEOUT_MS = 600_000;
 
+interface SendOptions {
+  maxAttempts?: number;
+  timeoutMs?: number;
+}
+
 function isRetryable(error: unknown): boolean {
   if (error instanceof Anthropic.APIError) {
     const status = error.status ?? 0;
@@ -73,16 +78,22 @@ export class LLMClient {
     return fullText;
   }
 
-  async send(systemPrompt: string, userPrompt: string, maxTokens?: number): Promise<string> {
+  async send(
+    systemPrompt: string,
+    userPrompt: string,
+    maxTokens?: number,
+    options: SendOptions = {},
+  ): Promise<string> {
     const tokens = maxTokens ?? this.maxTokens;
+    const maxAttempts = Math.max(1, Math.floor(options.maxAttempts ?? MAX_RETRIES));
     const isProd = process.env.NODE_ENV === 'production';
     const promptInfo = isProd
       ? `${userPrompt.length} chars`
       : `"${userPrompt.slice(0, 80).replace(/\n/g, ' ')}..."`;
-    console.log(`[LLMClient] Sending request (model=${this.model}, max_tokens=${tokens}, prompt=${promptInfo})`);
+    console.log(`[LLMClient] Sending request (model=${this.model}, max_tokens=${tokens}, attempts=${maxAttempts}, prompt=${promptInfo})`);
 
     let lastError: unknown;
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       const start = Date.now();
       try {
         const response = await this.client.messages.create({
@@ -92,6 +103,9 @@ export class LLMClient {
           messages: [
             { role: 'user', content: userPrompt },
           ],
+        }, {
+          maxRetries: 0,
+          ...(options.timeoutMs ? { timeout: options.timeoutMs } : {}),
         });
 
         const textBlock = response.content.find(b => b.type === 'text');
@@ -103,13 +117,13 @@ export class LLMClient {
         const elapsed = Date.now() - start;
         const msg = error instanceof Error ? error.message : String(error);
 
-        if (!isRetryable(error) || attempt === MAX_RETRIES) {
-          console.error(`[LLMClient] Request failed (attempt ${attempt}/${MAX_RETRIES}, ${elapsed}ms): ${msg}`);
+        if (!isRetryable(error) || attempt === maxAttempts) {
+          console.error(`[LLMClient] Request failed (attempt ${attempt}/${maxAttempts}, ${elapsed}ms): ${msg}`);
           throw error;
         }
 
         const backoff = INITIAL_BACKOFF_MS * Math.pow(2, attempt - 1);
-        console.warn(`[LLMClient] Retryable error on attempt ${attempt}/${MAX_RETRIES} (${elapsed}ms), retrying in ${backoff}ms: ${msg}`);
+        console.warn(`[LLMClient] Retryable error on attempt ${attempt}/${maxAttempts} (${elapsed}ms), retrying in ${backoff}ms: ${msg}`);
         await sleep(backoff);
       }
     }

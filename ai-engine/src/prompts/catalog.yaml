@@ -94,6 +94,159 @@ prompts:
           上記のRSS記事とトレンドデータをもとに、技術者やプロダクト開発者が検証を始められる魅力的なプロダクト仮説を最大 ${requested_idea_count} 件提案してください。
           JSON配列のみを出力してください。
 
+  idea_seed_generation:
+    id: ai_engine.idea_seed_generation
+    version: 1
+    description: RSSトレンドから並列詳細化のための軽量なアイデア候補を選定する。
+    inputs:
+      - name: rss_context
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+      - name: focus_keywords
+        type: string
+        required: true
+        sensitivity: public
+        render_as: inline
+      - name: requested_idea_count
+        type: string
+        required: true
+        sensitivity: public
+        render_as: inline
+    rules:
+      - JSON配列のみを出力すること。説明文やMarkdownは一切不要。
+      - 各要素は詳細化前の候補であり、完成カード本文を長く書かないこと。
+      - 指定された生成件数を必ず満たすこと。件数に届かない場合は探索範囲を広げてでも埋めること。
+      - 同じRSS記事や同じ課題から表現だけを変えた候補を作らないこと。
+      - 候補ごとにプロダクトタイプ、対象ユーザー、解決課題が明確に異なるようにすること。
+      - sources.evidenceUrlsには入力内の関連RSS URLだけを最大1件入れること。架空URLは絶対に作らないこと。
+    output_format: |
+      {
+        "seedId": "seed-1 のような短い一意ID",
+        "title": "プロダクト仮説の仮タイトル",
+        "tagline": "方向性を示す短い一文",
+        "tags": ["カテゴリ配列"],
+        "productType": "プロダクトタイプ",
+        "targetUsers": "想定ユーザー",
+        "coreProblem": "解決する主要課題",
+        "differentiationHint": "詳細化で伸ばす差別化の方向性",
+        "rssKeywords": ["関連RSSキーワード"],
+        "evidenceUrls": [
+          { "title": "RSS記事タイトル", "url": "https://...", "type": "rss" }
+        ]
+      }
+    messages:
+      - role: system
+        content: |
+          あなたは市場機会スキャナーです。提供されたトレンドデータをもとに、後続の詳細化処理で並列に深掘りできる軽量なプロダクト仮説候補を選定します。
+
+          ## 出力ルール
+          ${rules}
+
+          ## 各候補のJSON形式
+          ```json
+          ${output_format}
+          ```
+      - role: user
+        content: |
+          ## トレンドデータ
+
+          ### RSSコンテキスト
+          ```json
+          ${rss_context}
+          ```
+
+          ### フォーカスキーワード
+          ${focus_keywords}
+
+          ### 今回の候補数
+          最大 ${requested_idea_count} 件
+
+          ---
+
+          上記のRSS記事とトレンドデータをもとに、互いに重複しないアイデア候補を最大 ${requested_idea_count} 件選定してください。
+          JSON配列のみを出力してください。
+
+  idea_detail_generation:
+    id: ai_engine.idea_detail_generation
+    version: 1
+    description: 1件の軽量アイデア候補を完成カード用のIdeaCandidate JSONに詳細化する。
+    inputs:
+      - name: rss_context
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+      - name: focus_keywords
+        type: string
+        required: true
+        sensitivity: public
+        render_as: inline
+      - name: idea_seed
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+    rules:
+      - JSONオブジェクト1件のみを出力すること。配列、説明文、Markdownは一切不要。
+      - 入力されたアイデア候補1件だけを詳細化し、別アイデアに変更しないこと。
+      - RSS記事に基づく課題、対象ユーザー、差別化を具体化すること。
+      - sources.evidenceUrlsには入力内の関連RSS URLだけを最大1件入れること。架空URLは絶対に作らないこと。
+      - 小さな実装だけに寄せず、少人数でも検証できる市場機会として筋の良い具体案にすること。
+    output_format: |
+      {
+        "id": "uuid形式の一意ID",
+        "title": "プロダクト名（簡潔・魅力的）",
+        "tagline": "1行のキャッチコピー",
+        "description": "2〜3文の説明",
+        "tags": ["カテゴリ配列（B2C", "B2B", "SaaS", "AI", "dev-tools" 等）],
+        "productType": "プロダクトタイプ（例: B2Cアプリ、B2B SaaS、開発ツール）",
+        "targetUsers": "ターゲットユーザーの簡潔な説明",
+        "coreProblem": "解決するペインポイント",
+        "differentiation": "差別化要因",
+        "sources": {
+          "rssKeywords": ["関連RSSキーワード"],
+          "evidenceUrls": [
+            { "title": "RSS記事タイトル", "url": "https://...", "type": "rss" }
+          ]
+        },
+        "generatedAt": "ISO 8601形式のタイムスタンプ"
+      }
+    messages:
+      - role: system
+        content: |
+          あなたはプロダクト仮説の編集者です。選定済みの軽量候補を、アイデアページに表示できる完成度のIdeaCandidate JSONへ具体化します。
+
+          ## 出力ルール
+          ${rules}
+
+          ## 出力JSON形式
+          ```json
+          ${output_format}
+          ```
+      - role: user
+        content: |
+          ## トレンドデータ
+
+          ### RSSコンテキスト
+          ```json
+          ${rss_context}
+          ```
+
+          ### フォーカスキーワード
+          ${focus_keywords}
+
+          ### 詳細化するアイデア候補
+          ```json
+          ${idea_seed}
+          ```
+
+          ---
+
+          この候補1件だけを、完成カード用のIdeaCandidate JSONオブジェクトに詳細化してください。
+          JSONオブジェクトのみを出力してください。
+
   semantic_filter:
     id: ai_engine.semantic_filter
     version: 1
@@ -152,6 +305,70 @@ prompts:
 
           ユーザーのクエリ「${query}」に基づいて、上記のアイデア候補を意味的にフィルタリング・再ランク付けしてください。
           関連性の高いものから順に並べてください。JSONのみ出力してください。
+
+  rss_topic_clustering:
+    id: ai_engine.rss_topic_clustering
+    version: 1
+    description: RSS記事同士が同じ具体的な技術トピックに属するかを判定し、関連記事クラスタを作る。
+    inputs:
+      - name: articles
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+      - name: existing_topics
+        type: json
+        required: true
+        sensitivity: public
+        render_as: json
+      - name: focus_keywords
+        type: string
+        required: true
+        sensitivity: public
+        render_as: inline
+    rules:
+      - JSON配列のみを出力すること。説明文やMarkdownは不要。
+      - articleIndexesには、入力articlesのindexだけを入れること。
+      - 1つの記事indexは最大1クラスタにだけ含めること。
+      - 同じ具体的なプロダクト、リリース、技術課題、開発手法、API、ツール、事件、標準、仕様について述べている記事だけを同じクラスタにすること。
+      - AI、developer、tool、SaaS、GitHub、AWSなどの広すぎる単語が共通するだけでは同じクラスタにしないこと。
+      - 類似していない記事を無理に束ねないこと。単独記事は1件だけのクラスタにしてよい。
+      - labelは日本語で短く、画面に表示して意味が通る名前にすること。
+    output_format: |
+      [
+        {
+          "topic": "英数字とハイフンまたは短い英語句の安定ID",
+          "label": "日本語の短いトピック名",
+          "articleIndexes": [0, 2],
+          "confidence": 0.0
+        }
+      ]
+    messages:
+      - role: system
+        content: |
+          あなたは技術RSS記事の関連記事判定器です。記事同士が同じ具体的な技術トピックを扱っているかだけを判断します。
+
+          ## 出力ルール
+          ${rules}
+
+          ## 出力形式
+          ```json
+          ${output_format}
+          ```
+      - role: user
+        content: |
+          ## フォーカスキーワード
+          ${focus_keywords}
+
+          ## 既存の機械的トピック候補
+          ```json
+          ${existing_topics}
+          ```
+
+          ## RSS記事
+          ```json
+          ${articles}
+          ```
 
   rss_article_summary:
     id: ai_engine.rss_article_summary
@@ -311,36 +528,4 @@ prompts:
           ## アイデア候補
           ```json
           ${idea_summaries}
-          ```
-
-  featured_trend_selection:
-    id: ai_engine.featured_trend_selection
-    version: 1
-    description: RSS記事候補からプロダクト仮説の起点になる注目トレンドを1件選ぶ。
-    inputs:
-      - name: trend_summaries
-        type: json
-        required: true
-        sensitivity: public
-        render_as: json
-    rules:
-      - エンジニアがプロダクト仮説を考えるうえで最も気になるトレンドを1つ選ぶこと。
-      - 選定した記事の要点を、日本語で60字以内の自然なサマリーにすること。
-    output_format: |
-      {"index": <number>, "summary": "<summary>"}
-    messages:
-      - role: system
-        content: |
-          あなたは技術トレンドを読むプロダクト編集者です。
-
-          ## 選定ルール
-          ${rules}
-
-          ## 出力形式
-          JSONのみ: ${output_format}
-      - role: user
-        content: |
-          ## RSS記事候補
-          ```json
-          ${trend_summaries}
           ```

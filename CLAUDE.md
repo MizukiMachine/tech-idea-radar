@@ -23,14 +23,18 @@ npm workspaces の monorepo:
 
 ```bash
 npm install                    # 全ワークスペースの依存をインストール
-npm run backend:dev            # バックエンド開発サーバー (port 3001)
-npm run frontend:dev           # フロントエンド開発サーバー (port 5173, proxy → 3001)
-npm run frontend:dev:5180      # ポート5180で起動 (proxy → 3010)
-npm run backend:dev:3010       # ポート3010で起動
+npm run dev                    # フロント + バックエンドをセット起動し、proxy → 今回のbackendを検証
+npm run backend:dev            # npm run dev と同じセット起動
+npm run frontend:dev           # npm run dev と同じセット起動
+npm run frontend:dev:solo      # フロント単体起動。VITE_PROXY_TARGET の明示指定が必要
+npm run backend:dev:solo       # バックエンド単体起動
+npm run preview:stack          # 静的distをdev-stack header付きproxyでプレビュー
 npm run build                  # 全ワークスペースビルド
 npm run test                   # 全ワークスペーステスト (Vitest)
 npm run lint                   # 全ワークスペースlint
 ```
+
+静的ビルドに `VITE_API_BASE_URL` を焼き込むこと、raw `vite preview` で確認することは禁止。バックエンド接続を伴う確認は `npm run dev` か `npm run preview:stack` を使う。別オリジンAPIが必要な本番・ステージングビルドだけ、完全一致URLを `VITE_ALLOWED_API_BASES` に入れて許可する。
 
 ## 環境変数
 
@@ -62,7 +66,7 @@ npm run lint                   # 全ワークスペースlint
 
 ### バッチスケジューラ
 - JST 0, 4, 8, 12, 16, 20時 に自動生成 (1日6回)
-- 最大4バッチ保持 (約60アイデア)
+- 最大7バッチ保持 (約56アイデア)
 - 同一スロットのバッチは置き換え
 - トレンドキャッシュTTL: 4時間
 

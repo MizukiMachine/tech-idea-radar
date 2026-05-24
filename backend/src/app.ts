@@ -57,6 +57,26 @@ function sendServiceInfo(_req: Request, res: Response): void {
 }
 
 app.use("/health", healthRouter);
+app.use("/api", (req, res, next) => {
+  if (process.env.BAC_REQUIRE_DEV_STACK_HEADER !== "true") {
+    next();
+    return;
+  }
+
+  const expectedStackId = process.env.BAC_DEV_STACK_ID;
+  const actualStackId = req.header("X-BAC-Dev-Stack-Id");
+  if (expectedStackId && actualStackId === expectedStackId) {
+    next();
+    return;
+  }
+
+  res.status(409).json({
+    error: "DEV_STACK_MISMATCH",
+    message: "This backend only accepts API requests through the matching local Vite dev stack.",
+    expectedDevStackId: expectedStackId ?? null,
+    receivedDevStackId: actualStackId ?? null,
+  });
+});
 app.use("/api/ai", aiRouter);
 
 if (frontendDistDir) {

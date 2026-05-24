@@ -45,6 +45,7 @@ healthRouter.get("/", (_req, res) => {
       corsConfigured,
       port: process.env.PORT ?? "3001",
       nodeEnv: process.env.NODE_ENV ?? "development",
+      requireDevStackHeader: process.env.BAC_REQUIRE_DEV_STACK_HEADER === "true",
     },
     cache: {
       hasData: Boolean(cached && cached.candidates.length > 0),
@@ -61,6 +62,7 @@ healthRouter.get("/", (_req, res) => {
       pid: process.pid,
       ppid: process.ppid,
       appInstance: process.env.NODE_APP_INSTANCE ?? null,
+      devStackId: process.env.BAC_DEV_STACK_ID ?? null,
     },
   });
 });

@@ -43,6 +43,8 @@
 
   --sidebar-width: 280px;
   --metrics-width: 320px;
+  --workspace-card-gap: 14px;
+  --workspace-column-gap: 18px;
   --header-height: auto;
 
   font-family: "Inter", "Noto Sans JP", system-ui, -apple-system, sans-serif;
@@ -51,8 +53,8 @@
   color: var(--text-primary);
   background-color: var(--bg-primary);
   background-image:
-    linear-gradient(rgba(203, 213, 225, 0.42) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(203, 213, 225, 0.34) 1px, transparent 1px);
+    linear-gradient(rgba(203, 213, 225, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(203, 213, 225, 0.24) 1px, transparent 1px);
   background-size: 28px 28px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;

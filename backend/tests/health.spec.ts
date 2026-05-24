@@ -35,6 +35,7 @@ describe("GET /health", () => {
         config: expect.objectContaining({
           corsConfigured: expect.any(Boolean),
           cacheDisabled: expect.any(Boolean),
+          requireDevStackHeader: expect.any(Boolean),
         }),
       }),
     );

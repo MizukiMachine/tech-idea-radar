@@ -145,6 +145,104 @@
     line-height: 1.8;
 }
 
+.idea-modal__trend-section {
+    background: var(--bg-input);
+}
+
+.idea-modal__trend-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+}
+
+.idea-modal__trend-head h3 {
+    margin-top: 8px;
+    margin-bottom: 0;
+}
+
+.idea-modal__trend-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 0 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.idea-modal__trend-badge--spiking {
+    background: var(--accent-red-glow);
+    color: var(--accent-red);
+}
+
+.idea-modal__trend-badge--new {
+    background: rgba(20, 142, 161, 0.13);
+    color: var(--accent-cyan);
+}
+
+.idea-modal__trend-badge--continuing {
+    background: var(--accent-green-glow);
+    color: var(--accent-green);
+}
+
+.idea-modal__trend-topic {
+    max-width: 48%;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.45;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.idea-modal__trend-metrics {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.idea-modal__trend-metrics span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 28px;
+    padding: 0 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 750;
+}
+
+.idea-modal__trend-metrics strong {
+    margin-right: 3px;
+    color: var(--text-primary);
+    font-weight: 900;
+}
+
+.idea-modal__trend-sources {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.idea-modal__trend-sources span {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 0 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 7px;
+    background: var(--bg-card);
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 800;
+}
+
 .idea-modal__tags {
     display: flex;
     flex-wrap: wrap;
@@ -214,6 +312,15 @@
     .idea-modal__score-row,
     .idea-modal__body {
         grid-template-columns: 1fr;
+    }
+
+    .idea-modal__trend-head {
+        flex-direction: column;
+    }
+
+    .idea-modal__trend-topic {
+        max-width: 100%;
+        text-align: left;
     }
 
     .idea-modal__section--wide {
