@@ -259,6 +259,50 @@ describe("App", () => {
     expect(screen.getByText("小規模な SRE チーム")).toBeTruthy();
   });
 
+  it("keeps long target users compact on idea cards", async () => {
+    const longTargetUsers = "AIを導入したいが専任AIチームを持たずPoC評価に悩むDX担当者";
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [{ ...idea, targetUsers: longTargetUsers }],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    const ideaCard = await screen.findByRole("button", { name: "AI Ops Memo の詳細を開く" });
+    const targetBlock = ideaCard.querySelector(".idea-card__target");
+    const summaryBlock = ideaCard.querySelector(".idea-card__summary");
+    const summaryLabel = ideaCard.querySelector(".idea-card__summary-label");
+    const tagline = ideaCard.querySelector(".idea-card__tagline");
+    const targetText = ideaCard.querySelector(".idea-card__target-text");
+
+    expect(ideaCard.textContent).toContain("対象ユーザー");
+    expect(ideaCard.textContent).toContain("概要");
+    expect(ideaCard.textContent).not.toContain(longTargetUsers);
+    expect(targetBlock?.compareDocumentPosition(summaryBlock as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(summaryLabel?.compareDocumentPosition(tagline as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(targetText?.textContent).toBe("DX担当者");
+    expect(targetText?.getAttribute("title")).toBe(longTargetUsers);
+
+    fireEvent.click(ideaCard);
+    const dialog = await screen.findByRole("dialog");
+    const modalTargetHeading = within(dialog).getByRole("heading", { name: "対象ユーザー" });
+    const modalDetailHeading = within(dialog).getByRole("heading", { name: "詳細" });
+    expect(within(dialog).getByText("概要")).toBeTruthy();
+    expect(modalTargetHeading.compareDocumentPosition(modalDetailHeading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(within(dialog).getByText(longTargetUsers)).toBeTruthy();
+  });
+
   it("starts idea generation stream when the cache is empty", async () => {
     mockFetch.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
@@ -431,19 +475,19 @@ describe("App", () => {
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history/2"))).toBe(false);
   });
 
-  it("shows trend evidence on idea cards and detail modal", async () => {
+  it("hides trend badges on idea cards and shows trend evidence in the detail modal", async () => {
     render(<App />);
     openIdeasView();
 
-    await waitFor(() => expect(screen.getByText("急増トレンド")).toBeTruthy());
-    const ideaCard = screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" });
+    const ideaCard = await screen.findByRole("button", { name: "AI Ops Memo の詳細を開く" });
     expect(ideaCard.textContent).not.toContain("B2B SaaS");
     expect(ideaCard.textContent).not.toContain("2ソース");
     expect(ideaCard.textContent).not.toContain("根拠RSS");
     expect(ideaCard.textContent).not.toContain("登場メディア 2箇所 / 関連記事 2件");
-    expect(ideaCard.textContent).toContain("急増トレンド");
+    expect(ideaCard.textContent).not.toContain("急増トレンド");
 
     fireEvent.click(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" }));
+    await waitFor(() => expect(screen.getByText("急増トレンド")).toBeTruthy());
     await waitFor(() => expect(screen.getByText("トレンド根拠")).toBeTruthy());
     expect(screen.getByText("AIエージェント導入")).toBeTruthy();
     expect(screen.getByText((_, node) => node?.textContent === "観測規模 2媒体 / 2記事")).toBeTruthy();
@@ -530,7 +574,8 @@ describe("App", () => {
     render(<App />);
     openIdeasView();
 
-    await waitFor(() => expect(screen.getByText("新着トレンド")).toBeTruthy());
+    await waitFor(() => expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends"))).toBe(true));
+    expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" }).textContent).not.toContain("新着トレンド");
 
     fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "新着 1" })).toBeTruthy());

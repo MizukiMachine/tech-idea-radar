@@ -35,14 +35,22 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                     <div>
                         <span className="idea-modal__eyebrow">{idea.productType}</span>
                         <h2 id="idea-modal-title" className="idea-modal__title">{idea.title}</h2>
-                        <p className="idea-modal__tagline">{idea.tagline}</p>
+                        <div className="idea-modal__summary">
+                            <span className="idea-modal__summary-label">概要</span>
+                            <p className="idea-modal__tagline">{idea.tagline}</p>
+                        </div>
                     </div>
                     <button type="button" className="idea-modal__close" onClick={onClose} aria-label="閉じる">×</button>
                 </div>
 
                 <div className="idea-modal__body">
+                    <section className="idea-modal__section idea-modal__section--wide idea-modal__section--target">
+                        <h3>対象ユーザー</h3>
+                        <p>{idea.targetUsers}</p>
+                    </section>
+
                     <section className="idea-modal__section idea-modal__section--wide">
-                        <h3>概要</h3>
+                        <h3>詳細</h3>
                         <p>{idea.description}</p>
                     </section>
 
@@ -71,11 +79,6 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                             )}
                         </section>
                     )}
-
-                    <section className="idea-modal__section">
-                        <h3>対象ユーザー</h3>
-                        <p>{idea.targetUsers}</p>
-                    </section>
 
                     <section className="idea-modal__section">
                         <h3>解く課題</h3>
