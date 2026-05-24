@@ -10,7 +10,7 @@ export interface RssArticleSummaryPolicy {
 
 export const RSS_ARTICLE_SUMMARY_POLICY: RssArticleSummaryPolicy = {
   minItems: 3,
-  maxItems: 6,
+  maxItems: 5,
   minTotalChars: 240,
   maxTotalChars: 1200,
   maxItemChars: 260,

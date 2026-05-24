@@ -70,7 +70,7 @@ function trendOutput(): TrendScanOutput {
     sourceSummary: { rssItemCount: 2, usedLLMFallback: false },
     summaryPolicy: {
       minItems: 3,
-      maxItems: 6,
+      maxItems: 5,
       minTotalChars: 240,
       maxTotalChars: 1200,
       maxItemChars: 260,
