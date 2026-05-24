@@ -502,8 +502,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 34px;
+  padding: 0 12px;
   border-radius: 6px;
   color: var(--text-secondary);
   font-size: 12px;
@@ -561,7 +561,7 @@
 
 .idea-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--workspace-card-gap);
   min-width: 0;
 }
@@ -648,7 +648,7 @@
 /* ===== Responsive ===== */
 @media (max-width: 1550px) {
   .idea-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 

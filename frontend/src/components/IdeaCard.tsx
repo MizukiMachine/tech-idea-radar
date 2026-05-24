@@ -55,7 +55,7 @@ export default function IdeaCard({
             </div>
             <p className="idea-card__tagline">{idea.tagline}</p>
             <p className="idea-card__target">
-                <span className="idea-card__target-label">対象</span>
+                <span className="idea-card__target-label">対象ユーザー</span>
                 <span className="idea-card__target-text">{idea.targetUsers}</span>
             </p>
             {visibleTrendSignal && (

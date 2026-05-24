@@ -364,8 +364,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-height: 30px;
-  padding: 0 10px;
+  min-height: 34px;
+  padding: 0 12px;
   border-radius: 6px;
   color: var(--text-secondary);
   font-size: 12px;
@@ -565,8 +565,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
-  padding: 0 11px;
+  min-height: 34px;
+  padding: 0 12px;
   border-radius: 8px;
   font-size: 12px;
   font-weight: 800;
@@ -895,6 +895,12 @@
   .tb-article--card .tb-article__rank {
     position: static;
     order: -1;
+  }
+
+  .tb-article--card .tb-article__title {
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: unset;
   }
 
   .tb-article__meta {
