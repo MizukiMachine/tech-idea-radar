@@ -78,8 +78,9 @@
 
 .idea-card__target {
     display: flex;
+    flex-direction: column;
     align-items: flex-start;
-    gap: 8px;
+    gap: 6px;
     margin: 0;
     color: var(--text-secondary);
     font-size: 14px;
