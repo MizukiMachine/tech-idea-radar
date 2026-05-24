@@ -510,13 +510,64 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "すべて 3" })).toBeTruthy());
-    expect(screen.getByText("履歴2回")).toBeTruthy();
+    expect(screen.getByText("直近2回を統合・重複除外")).toBeTruthy();
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     expect(screen.getByText("開発ワークフローの自動化が進む")).toBeTruthy();
     expect(screen.getByText("前回取得分だけにある記事")).toBeTruthy();
     expect(screen.queryByText("古い重複記事")).toBeNull();
     expect(screen.getByRole("button", { name: "新着 1" })).toBeTruthy();
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history/2"))).toBe(false);
+  });
+
+  it("does not report history snapshots that add no visible articles", async () => {
+    const previousGeneratedAt = new Date(Date.parse(generatedAt) - 4 * 60 * 60 * 1000).toISOString();
+    const historyWithPrevious = {
+      history: [
+        trendHistory.history[0],
+        {
+          scannedAt: previousGeneratedAt,
+          generatedAt: previousGeneratedAt,
+          articleCount: 2,
+          keywordCount: 1,
+        },
+      ],
+    };
+    const duplicatePreviousTrends = {
+      ...trends,
+      generatedAt: previousGeneratedAt,
+      rssContext: {
+        ...trends.rssContext,
+        relatedArticles: trends.rssContext.relatedArticles.map((article) => ({
+          ...article,
+          firstSeenAt: undefined,
+          lastSeenAt: undefined,
+        })),
+      },
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends/history/1")) body = duplicatePreviousTrends;
+      else if (url.includes("/api/ai/trends/history")) body = historyWithPrevious;
+      else if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy());
+    expect(screen.queryByText("直近2回を統合・重複除外")).toBeNull();
   });
 
   it("hides trend badges on idea cards and shows trend evidence in the detail modal", async () => {

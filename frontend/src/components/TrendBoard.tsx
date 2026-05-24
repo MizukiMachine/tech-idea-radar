@@ -3,7 +3,6 @@ import type {
   RssArticle,
   RssArticleSummaryPolicy,
   TrendScan,
-  TrendHistoryEntry,
   RssTopicStatus,
 } from '../api/ai';
 import { formatBatchTimestamp, scheduledBatchTimeJST } from '../utils/batch-time';
@@ -312,14 +311,12 @@ interface TrendBoardProps {
   trendSnapshots: TrendScan[];
   loading: boolean;
   error: string | null;
-  trendHistory: TrendHistoryEntry[];
 }
 
 export default function TrendBoard({
   trendSnapshots,
   loading,
   error,
-  trendHistory,
 }: TrendBoardProps): JSX.Element {
   const [expandedArticleUrls, setExpandedArticleUrls] = useState<Set<string>>(() => new Set());
   const [topicFilter, setTopicFilter] = useState<TopicFilter>('all');
@@ -380,6 +377,9 @@ export default function TrendBoard({
     : rssArticles.filter((article) => articleDisplayStatus(article) === topicFilter);
   const filteredArticles = statusFilteredArticles.filter((article) => matchesTrendSearch(article, trendSearchQuery));
   const visibleArticles = filteredArticles.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const contributingSnapshotCount = new Set(
+    rssArticles.map((article) => articleTrendReferenceDate(article, mergedTrends?.generatedAt)).filter(Boolean),
+  ).size;
 
   const handleToggleArticle = (article: RssArticle) => {
     const url = articleUrl(article);
@@ -468,7 +468,7 @@ export default function TrendBoard({
           trendGeneratedAt={mergedTrends.generatedAt}
           observationWarning={mergedTrends.rssContext.observationWarning}
           showTopicUnavailable={topicClusters.length === 0}
-          snapshotCount={trendHistory.length || trendSnapshots.length}
+          snapshotCount={contributingSnapshotCount}
         />
       )}
     </section>
@@ -651,7 +651,12 @@ function TrendFeedHeader({
           {filtered || searched ? `${count}/${totalCount}件` : `${count}件`}
         </span>
         {snapshotCount > 1 && (
-          <span className="tb-feed__count">履歴{snapshotCount}回</span>
+          <span
+            className="tb-feed__count"
+            title="直近の取得結果をまとめ、同じ記事URLは1件にしています"
+          >
+            直近{snapshotCount}回を統合・重複除外
+          </span>
         )}
         {filtered && (
           <span className="tb-feed__active-filter">
