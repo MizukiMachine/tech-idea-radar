@@ -700,7 +700,13 @@ function candidateText(candidate: IdeaCandidate): string {
 }
 
 function scoreArticleForCandidate(article: RssArticle, text: string): number {
-  const articleText = `${article.title} ${article.summary} ${(article.keywords ?? []).join(' ')}`;
+  const articleText = [
+    article.title,
+    article.titleJa,
+    article.summary,
+    article.summaryJa,
+    ...(article.keywords ?? []),
+  ].filter(Boolean).join(' ');
   let score = evidenceOverlapScore(articleText, text);
   for (const keyword of article.keywords ?? []) {
     const normalized = normalizeEvidenceText(keyword);
@@ -711,6 +717,10 @@ function scoreArticleForCandidate(article: RssArticle, text: string): number {
 
 type CandidateEvidenceUrl = NonNullable<IdeaCandidate['sources']['evidenceUrls']>[number];
 type ScoredEvidenceUrl = CandidateEvidenceUrl & { score: number };
+
+function evidenceTitle(article: RssArticle): string {
+  return article.titleJa || article.title;
+}
 
 function scoreExistingEvidenceForCandidate(
   source: CandidateEvidenceUrl,
@@ -809,10 +819,15 @@ function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssConte
     const text = candidateText(candidate);
     const existing = (candidate.sources.evidenceUrls ?? [])
       .filter((source) => allowedUrls.has(source.url))
-      .map((source): ScoredEvidenceUrl => ({
-        ...source,
-        score: scoreExistingEvidenceForCandidate(source, text, articleByUrl),
-      }))
+      .map((source): ScoredEvidenceUrl => {
+        const article = articleByUrl.get(source.url);
+        return {
+          title: article ? evidenceTitle(article) : source.title,
+          url: source.url,
+          type: source.type,
+          score: scoreExistingEvidenceForCandidate(source, text, articleByUrl),
+        };
+      })
       .filter((source) => source.score > 0);
 
     const used = new Set(existing.map((source) => source.url));
@@ -821,7 +836,7 @@ function attachTrustedEvidence(candidates: IdeaCandidate[], rssContext: RssConte
       .sort((a, b) => b.score - a.score)
       .filter(({ article }) => !used.has(article.url ?? article.link))
       .map(({ article, score }) => ({
-        title: article.title,
+        title: evidenceTitle(article),
         url: article.url ?? article.link,
         type: 'rss' as const,
         score,

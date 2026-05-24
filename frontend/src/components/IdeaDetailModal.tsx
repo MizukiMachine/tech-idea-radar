@@ -1,5 +1,6 @@
 import type { IdeaCandidate } from '../types/idea-candidate';
 import type { IdeaTrendSignal } from '../types/idea-trend-signal';
+import { cleanDisplayText } from '../utils/html-text';
 import { topicStatusLabel } from '../utils/trend-status';
 import './IdeaDetailModal.css';
 
@@ -23,6 +24,28 @@ function formatDate(value: string | undefined): string {
     });
 }
 
+function normalizeUrl(value: string): string {
+    try {
+        const url = new URL(value);
+        url.hash = '';
+        for (const key of [...url.searchParams.keys()]) {
+            if (key.toLowerCase().startsWith('utm_')) url.searchParams.delete(key);
+        }
+        return url.toString();
+    } catch {
+        return value.trim();
+    }
+}
+
+function evidenceTitle(
+    source: NonNullable<IdeaCandidate['sources']['evidenceUrls']>[number],
+    trendSignal: IdeaTrendSignal | null,
+): string {
+    const sourceUrl = normalizeUrl(source.url);
+    const trendArticle = trendSignal?.evidenceArticles.find((article) => normalizeUrl(article.url) === sourceUrl);
+    return cleanDisplayText(trendArticle?.title || source.title || source.url);
+}
+
 export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: IdeaDetailModalProps): JSX.Element {
     const evidenceUrls = idea.sources.evidenceUrls ?? [];
     const visibleTrendSignal = trendSignal?.status === 'stale' ? null : trendSignal;
@@ -35,14 +58,22 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                     <div>
                         <span className="idea-modal__eyebrow">{idea.productType}</span>
                         <h2 id="idea-modal-title" className="idea-modal__title">{idea.title}</h2>
-                        <p className="idea-modal__tagline">{idea.tagline}</p>
+                        <div className="idea-modal__summary">
+                            <span className="idea-modal__summary-label">概要</span>
+                            <p className="idea-modal__tagline">{idea.tagline}</p>
+                        </div>
                     </div>
                     <button type="button" className="idea-modal__close" onClick={onClose} aria-label="閉じる">×</button>
                 </div>
 
                 <div className="idea-modal__body">
+                    <section className="idea-modal__section idea-modal__section--wide idea-modal__section--target">
+                        <h3>対象ユーザー</h3>
+                        <p>{idea.targetUsers}</p>
+                    </section>
+
                     <section className="idea-modal__section idea-modal__section--wide">
-                        <h3>概要</h3>
+                        <h3>詳細</h3>
                         <p>{idea.description}</p>
                     </section>
 
@@ -73,11 +104,6 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                     )}
 
                     <section className="idea-modal__section">
-                        <h3>対象ユーザー</h3>
-                        <p>{idea.targetUsers}</p>
-                    </section>
-
-                    <section className="idea-modal__section">
                         <h3>解く課題</h3>
                         <p>{idea.coreProblem}</p>
                     </section>
@@ -101,7 +127,7 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                                 {evidenceUrls.map((source) => (
                                     <a key={source.url} href={source.url} target="_blank" rel="noopener noreferrer">
                                         <span>{source.type}</span>
-                                        {source.title || source.url}
+                                        {evidenceTitle(source, visibleTrendSignal)}
                                     </a>
                                 ))}
                             </div>

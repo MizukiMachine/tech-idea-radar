@@ -83,6 +83,7 @@ function trendOutput(): TrendScanOutput {
 describe("background cache refresh", () => {
   afterEach(() => {
     restoreEnv();
+    vi.useRealTimers();
     vi.doUnmock("ai-engine");
     vi.resetModules();
   });
@@ -127,7 +128,7 @@ describe("background cache refresh", () => {
     delete process.env.IDEA_CACHE_FILE;
 
     const cache = await import("../src/services/idea-cache");
-    const refresh = cache.refreshCachesInBackground("startup", false, false);
+    const refresh = cache.refreshCachesInBackground("startup", false);
     await Promise.resolve();
     await Promise.resolve();
 
@@ -143,5 +144,46 @@ describe("background cache refresh", () => {
     expect(events).toEqual(["ideas-start", "ideas-finish", "trend-start", "trend-finish"]);
     expect(cache.getCachedIdeas()?.candidates.map((idea) => idea.id)).toEqual(["idea-background"]);
     expect(cache.getTrendHistory()).toHaveLength(1);
+  });
+
+  it("uses scheduled JST slots for startup warmup ideas", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-24T13:41:11+09:00"));
+
+    vi.doMock("ai-engine", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("ai-engine")>();
+      return {
+        ...actual,
+        LLMClient: class {},
+        EntrepreneurAgent: class {
+          async scanTrends(): Promise<TrendScanOutput> {
+            return trendOutput();
+          }
+
+          async generateIdeas(
+            _onProgress?: (text: string) => void,
+            _focusKeywords?: string[],
+            _count?: number,
+            batchTime?: string,
+          ): Promise<IdeaGenerationOutput> {
+            return ideaOutput(batchTime);
+          }
+        },
+      };
+    });
+
+    vi.resetModules();
+    process.env.IDEA_CACHE_DISABLED = "1";
+    process.env.IDEA_WARMUP_ON_START = "true";
+    process.env.ZAI_API_KEY = "test-key";
+    delete process.env.IDEA_CACHE_FILE;
+
+    const cache = await import("../src/services/idea-cache");
+    cache.startBackgroundCacheRefresh();
+    await cache.waitForCacheActivity(1000);
+
+    expect(cache.getCachedIdeas()?.batchTime).toBe("2026-05-24T12:00:00+09:00");
+    expect(cache.getCachedIdeas()?.candidates[0].batchTime).toBe("2026-05-24T12:00:00+09:00");
+    cache.flushPersistentCache();
   });
 });

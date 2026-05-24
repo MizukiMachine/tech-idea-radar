@@ -55,11 +55,25 @@
     overflow-wrap: anywhere;
 }
 
+.idea-modal__summary {
+    display: grid;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.idea-modal__summary-label {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.2;
+}
+
 .idea-modal__tagline {
-    margin: 10px 0 0;
+    margin: 0;
     color: var(--text-secondary);
     font-size: 15px;
     font-weight: 600;
+    line-height: 1.65;
 }
 
 .idea-modal__close {
@@ -143,6 +157,17 @@
     color: var(--text-secondary);
     font-size: 14px;
     line-height: 1.8;
+}
+
+.idea-modal__section--target h3 {
+    font-size: 15px;
+}
+
+.idea-modal__section--target p {
+    color: var(--text-primary);
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 1.65;
 }
 
 .idea-modal__trend-section {

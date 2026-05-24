@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import App from "../App";
-import { formatBatchTimestamp } from "../utils/batch-time";
+import { formatBatchTimestamp, scheduledBatchTimeJST } from "../utils/batch-time";
 
 const mockFetch = vi.fn();
 const generatedAt = new Date().toISOString();
-const trendBatchTime = "2026-05-23T04:00:00+09:00";
+const trendBatchTime = scheduledBatchTimeJST(generatedAt) ?? generatedAt;
 const summaryPolicy = {
   minItems: 3,
   maxItems: 5,
@@ -257,6 +257,51 @@ describe("App", () => {
     expect(document.querySelector(".idea-results-toolbar > .idea-results-toolbar__count")).toBeNull();
     expect(screen.getByText(formatBatchTimestamp(trendBatchTime))).toBeTruthy();
     expect(screen.getByText("小規模な SRE チーム")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" }).tagName).toBe("ARTICLE");
+  });
+
+  it("keeps long target users compact on idea cards", async () => {
+    const longTargetUsers = "AIを導入したいが専任AIチームを持たずPoC評価に悩むDX担当者";
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [{ ...idea, targetUsers: longTargetUsers }],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    const ideaCard = await screen.findByRole("button", { name: "AI Ops Memo の詳細を開く" });
+    const targetBlock = ideaCard.querySelector(".idea-card__target");
+    const summaryBlock = ideaCard.querySelector(".idea-card__summary");
+    const summaryLabel = ideaCard.querySelector(".idea-card__summary-label");
+    const tagline = ideaCard.querySelector(".idea-card__tagline");
+    const targetText = ideaCard.querySelector(".idea-card__target-text");
+
+    expect(ideaCard.textContent).toContain("対象ユーザー");
+    expect(ideaCard.textContent).toContain("概要");
+    expect(ideaCard.textContent).not.toContain(longTargetUsers);
+    expect(targetBlock?.compareDocumentPosition(summaryBlock as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(summaryLabel?.compareDocumentPosition(tagline as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(targetText?.textContent).toBe("DX担当者");
+    expect(targetText?.getAttribute("title")).toBe(longTargetUsers);
+
+    fireEvent.click(ideaCard);
+    const dialog = await screen.findByRole("dialog");
+    const modalTargetHeading = within(dialog).getByRole("heading", { name: "対象ユーザー" });
+    const modalDetailHeading = within(dialog).getByRole("heading", { name: "詳細" });
+    expect(within(dialog).getByText("概要")).toBeTruthy();
+    expect(modalTargetHeading.compareDocumentPosition(modalDetailHeading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(within(dialog).getByText(longTargetUsers)).toBeTruthy();
   });
 
   it("starts idea generation stream when the cache is empty", async () => {
@@ -329,6 +374,47 @@ describe("App", () => {
     fireEvent.click(buttons[1]);
     expect(screen.getByText(firstSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
     expect(screen.getByText(secondSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
+  });
+
+  it("hides the trend keyword panel", async () => {
+    const noisyTrends = {
+      ...trends,
+      rssContext: {
+        ...trends.rssContext,
+        trendingKeywords: [
+          { word: "which", count: 99 },
+          { word: "AI", count: 1 },
+        ],
+        relatedArticles: trends.rssContext.relatedArticles.map((article) => ({
+          ...article,
+          keywords: ["which"],
+        })),
+      },
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = noisyTrends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy());
+    expect(screen.queryByText("注目キーワード")).toBeNull();
+    expect(document.querySelectorAll(".tb-keyword")).toHaveLength(0);
   });
 
   it("filters trend articles by keyword search", async () => {
@@ -422,7 +508,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "すべて 3" })).toBeTruthy());
-    expect(screen.getByText("履歴2回")).toBeTruthy();
+    expect(screen.getByText("直近2回を統合・重複除外")).toBeTruthy();
     expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
     expect(screen.getByText("開発ワークフローの自動化が進む")).toBeTruthy();
     expect(screen.getByText("前回取得分だけにある記事")).toBeTruthy();
@@ -431,26 +517,77 @@ describe("App", () => {
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history/2"))).toBe(false);
   });
 
-  it("shows trend evidence on idea cards and detail modal", async () => {
+  it("does not report history snapshots that add no visible articles", async () => {
+    const previousGeneratedAt = new Date(Date.parse(generatedAt) - 4 * 60 * 60 * 1000).toISOString();
+    const historyWithPrevious = {
+      history: [
+        trendHistory.history[0],
+        {
+          scannedAt: previousGeneratedAt,
+          generatedAt: previousGeneratedAt,
+          articleCount: 2,
+          keywordCount: 1,
+        },
+      ],
+    };
+    const duplicatePreviousTrends = {
+      ...trends,
+      generatedAt: previousGeneratedAt,
+      rssContext: {
+        ...trends.rssContext,
+        relatedArticles: trends.rssContext.relatedArticles.map((article) => ({
+          ...article,
+          firstSeenAt: undefined,
+          lastSeenAt: undefined,
+        })),
+      },
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends/history/1")) body = duplicatePreviousTrends;
+      else if (url.includes("/api/ai/trends/history")) body = historyWithPrevious;
+      else if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy());
+    expect(screen.queryByText("直近2回を統合・重複除外")).toBeNull();
+  });
+
+  it("hides trend badges on idea cards and shows trend evidence in the detail modal", async () => {
     render(<App />);
     openIdeasView();
 
-    await waitFor(() => expect(screen.getByText("急増トレンド")).toBeTruthy());
-    const ideaCard = screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" });
+    const ideaCard = await screen.findByRole("button", { name: "AI Ops Memo の詳細を開く" });
     expect(ideaCard.textContent).not.toContain("B2B SaaS");
     expect(ideaCard.textContent).not.toContain("2ソース");
     expect(ideaCard.textContent).not.toContain("根拠RSS");
     expect(ideaCard.textContent).not.toContain("登場メディア 2箇所 / 関連記事 2件");
-    expect(ideaCard.textContent).toContain("急増トレンド");
+    expect(ideaCard.textContent).not.toContain("急増トレンド");
 
     fireEvent.click(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" }));
+    await waitFor(() => expect(screen.getByText("急増トレンド")).toBeTruthy());
     await waitFor(() => expect(screen.getByText("トレンド根拠")).toBeTruthy());
     expect(screen.getByText("AIエージェント導入")).toBeTruthy();
     expect(screen.getByText((_, node) => node?.textContent === "観測規模 2媒体 / 2記事")).toBeTruthy();
     expect(screen.getByLabelText("観測媒体").textContent).toContain("Example RSS");
     expect(screen.getByLabelText("観測媒体").textContent).toContain("TechCrunch");
-    expect(screen.queryByRole("link", { name: /AIエージェントツールがプロダクト業務に広がる/ })).toBeNull();
-    expect(screen.getByRole("link", { name: /AI agent tools are moving into product workflows/ })).toBeTruthy();
+    expect(screen.getByRole("link", { name: /AIエージェントツールがプロダクト業務に広がる/ })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /AI agent tools are moving into product workflows/ })).toBeNull();
     expect(screen.queryByText((_, node) => node?.textContent === "このアイデアの根拠 RSS 1件")).toBeNull();
   });
 
@@ -530,7 +667,8 @@ describe("App", () => {
     render(<App />);
     openIdeasView();
 
-    await waitFor(() => expect(screen.getByText("新着トレンド")).toBeTruthy());
+    await waitFor(() => expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends"))).toBe(true));
+    expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" }).textContent).not.toContain("新着トレンド");
 
     fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "新着 1" })).toBeTruthy());
@@ -777,6 +915,8 @@ describe("App", () => {
     expect(screen.getByText("よく出るタグ")).toBeTruthy();
     expect(screen.getByText("ジャンル・テーマ")).toBeTruthy();
     expect(screen.queryByText("注目のトレンド")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "注目のアイデア AI Ops Memo の詳細を開く" }));
+    expect(await screen.findByRole("dialog")).toBeTruthy();
   });
 
   it("hides generation controls in public readonly mode", async () => {

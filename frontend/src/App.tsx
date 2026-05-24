@@ -171,7 +171,6 @@ function App(): JSX.Element {
   const [trends, setTrends] = useState<TrendScan | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(true);
   const [trendError, setTrendError] = useState<string | null>(null);
-  const [trendHistory, setTrendHistory] = useState<TrendHistoryEntry[]>([]);
   const [trendSnapshots, setTrendSnapshots] = useState<TrendScan[]>([]);
   const [ideas, setIdeas] = useState<IdeaCandidate[]>([]);
   const [featuredIdea, setFeaturedIdea] = useState<IdeaCandidate | null>(null);
@@ -308,7 +307,6 @@ function App(): JSX.Element {
 
         if (!cancelled) {
           setTrends(latestSnapshot);
-          setTrendHistory(recentHistoryEntries.map(({ entry }) => entry));
           setTrendSnapshots([
             ...(latestSnapshot ? [latestSnapshot] : []),
             ...historicalSnapshots.filter((snapshot): snapshot is TrendScan => Boolean(snapshot)),
@@ -457,7 +455,6 @@ function App(): JSX.Element {
             trendSnapshots={trendSnapshots}
             loading={trendsLoading}
             error={trendError}
-            trendHistory={trendHistory}
           />
         )}
 
@@ -608,6 +605,7 @@ function App(): JSX.Element {
                   <RightPanel
                     ideas={displayedIdeas}
                     featuredIdea={featuredIdea}
+                    onIdeaSelect={handleIdeaSelect}
                     filters={(
                       <Sidebar
                         variant="panel"

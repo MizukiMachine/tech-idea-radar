@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import type { IdeaCandidate } from '../types/idea-candidate';
 import './RightPanel.css';
 
@@ -27,20 +27,38 @@ interface RightPanelProps {
     ideas: IdeaCandidate[];
     featuredIdea: IdeaCandidate | null;
     filters?: ReactNode;
+    onIdeaSelect?: (idea: IdeaCandidate) => void;
 }
 
 export default function RightPanel({
     ideas,
     featuredIdea,
     filters,
+    onIdeaSelect,
 }: RightPanelProps): JSX.Element {
     const tagData = buildTagData(ideas);
     const latestIdea = ideas[0];
     const highlightIdea = featuredIdea ?? latestIdea;
+    const openHighlightIdea = () => {
+        if (highlightIdea) onIdeaSelect?.(highlightIdea);
+    };
+    const handleHighlightKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openHighlightIdea();
+    };
 
     return (
         <aside className="right-panel">
-            <div className="right-panel__card right-panel__card--highlight">
+            <article
+                role="button"
+                tabIndex={highlightIdea ? 0 : -1}
+                className="right-panel__card right-panel__card--highlight right-panel__highlight-action"
+                onClick={openHighlightIdea}
+                onKeyDown={handleHighlightKeyDown}
+                aria-disabled={!highlightIdea}
+                aria-label={highlightIdea ? `注目のアイデア ${highlightIdea.title} の詳細を開く` : '注目のアイデア'}
+            >
                 <div className="right-panel__card-badge">注目のアイデア</div>
                 <h3 className="right-panel__card-title">{highlightIdea?.title ?? '-'}</h3>
                 <p className="right-panel__card-desc">
@@ -49,7 +67,7 @@ export default function RightPanel({
                 {highlightIdea?.tags[0] && (
                     <span className="right-panel__card-tag">{highlightIdea.tags[0]}</span>
                 )}
-            </div>
+            </article>
 
             <div className="right-panel__card">
                 <h4 className="right-panel__chart-title">よく出るタグ</h4>

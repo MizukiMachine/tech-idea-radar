@@ -3,10 +3,10 @@ import type {
   RssArticle,
   RssArticleSummaryPolicy,
   TrendScan,
-  TrendHistoryEntry,
   RssTopicStatus,
 } from '../api/ai';
-import { formatBatchTimestamp, scheduledBatchTimeJST } from '../utils/batch-time';
+import { formatBatchTimestamp, normalizeBatchTimeJST } from '../utils/batch-time';
+import { cleanDisplayText } from '../utils/html-text';
 import { displayTopicStatus, topicStatusLabel } from '../utils/trend-status';
 import './TrendBoard.css';
 
@@ -24,9 +24,35 @@ const SOURCE_STYLE: Record<string, { color: string; bg: string }> = {
   'Microsoft DevBlogs': { color: '#5A8F62', bg: 'rgba(90,143,98,0.045)' },
 };
 const FALLBACK_SOURCE = { color: '#7B8491', bg: 'rgba(123,132,145,0.045)' };
+const KEYWORD_STOP_WORDS = new Set([
+  'https', 'http', 'www', 'com', 'with', 'from', 'that', 'this', 'your', 'you',
+  'for', 'and', 'the', 'are', 'was', 'were', 'into', 'about', 'using', 'how',
+  'what', 'why', 'new', 'news', 'more', 'after', 'over', 'under', 'their',
+  'they', 'will', 'can', 'has', 'have', 'had', 'not', 'but', 'all',
+  'です', 'ます', 'でした', 'ました', 'する', 'した', 'して', 'いる', 'ある',
+  'ない', 'こと', 'これ', 'それ', 'ため', 'よう', 'など', 'その', 'この',
+  'もの', 'また', 'から', 'まで', 'より', 'として', 'について', '記事',
+  '今回', '紹介', 'では', 'とは', 'にも', 'には', 'への', 'でも', 'という',
+  'そして', 'ただし', '一方', 'できる', 'できた', 'なる', 'なった', 'れる',
+  'られる', 'された', 'される', 'ための', 'ような', '中で', '上で',
+]);
+const NUMBER_ONLY_KEYWORD = /^[\d０-９]+$/;
 
 function sourceStyle(source: string | undefined) {
   return SOURCE_STYLE[source ?? ''] ?? FALLBACK_SOURCE;
+}
+
+function normalizeKeyword(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function isDisplayKeyword(value: string): boolean {
+  const normalized = normalizeKeyword(value);
+  if (!normalized || normalized.length > 32) return false;
+  const key = normalized.toLowerCase();
+  if (KEYWORD_STOP_WORDS.has(key)) return false;
+  if (NUMBER_ONLY_KEYWORD.test(normalized)) return false;
+  return true;
 }
 
 function containsJapanese(text: string): boolean {
@@ -70,6 +96,10 @@ function articleIdentity(article: RssArticle): string {
   return url || `${article.source}:${article.title}:${article.publishedAt ?? article.published}`;
 }
 
+function articleDisplayTitle(article: RssArticle): string {
+  return cleanDisplayText(article.titleJa || article.title);
+}
+
 type MergedRssArticle = RssArticle & {
   trendSnapshotGeneratedAt?: string;
   trendSnapshotBatchTime?: string;
@@ -82,14 +112,16 @@ function articleTrendReferenceDate(article: RssArticle, fallback?: string): stri
 function articleBatchTime(article: RssArticle, fallback?: string): string | undefined {
   const merged = article as MergedRssArticle;
   return merged.trendSnapshotBatchTime
-    ?? scheduledBatchTimeJST(article.lastSeenAt ?? articleTrendReferenceDate(article, fallback));
+    ?? normalizeBatchTimeJST(undefined, article.lastSeenAt ?? articleTrendReferenceDate(article, fallback));
 }
 
 function mergeKeywords(articles: RssArticle[], fallback: TrendScan['rssContext']['trendingKeywords']) {
   const counts = new Map<string, number>();
   for (const article of articles) {
     for (const keyword of article.keywords ?? []) {
-      counts.set(keyword, (counts.get(keyword) ?? 0) + 1);
+      const normalized = normalizeKeyword(keyword);
+      if (!isDisplayKeyword(normalized)) continue;
+      counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
     }
   }
 
@@ -98,7 +130,12 @@ function mergeKeywords(articles: RssArticle[], fallback: TrendScan['rssContext']
     .slice(0, 20)
     .map(([word, count]) => ({ word, count }));
 
-  return merged.length > 0 ? merged : fallback;
+  const sanitizedFallback = fallback
+    .map(({ word, count }) => ({ word: normalizeKeyword(word), count }))
+    .filter(({ word }) => isDisplayKeyword(word))
+    .slice(0, 20);
+
+  return merged.length > 0 ? merged : sanitizedFallback;
 }
 
 function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {
@@ -122,7 +159,7 @@ function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {
       relatedArticles.push({
         ...article,
         trendSnapshotGeneratedAt: snapshot.generatedAt,
-        trendSnapshotBatchTime: snapshot.batchTime ?? scheduledBatchTimeJST(snapshot.generatedAt),
+        trendSnapshotBatchTime: normalizeBatchTimeJST(snapshot.batchTime, snapshot.generatedAt),
       });
     }
 
@@ -160,7 +197,7 @@ function mergeTrendSnapshots(snapshots: TrendScan[]): TrendScan | null {
 }
 
 function articleSummary(article: RssArticle): string {
-  const displayTitle = article.titleJa || article.title;
+  const displayTitle = articleDisplayTitle(article);
   const summary = article.summaryJa || '';
   const normalized = summary
     .replace(/^(?:はじめに|概要|要約|導入|introduction)\s*[：:]\s*/i, '')
@@ -279,14 +316,12 @@ interface TrendBoardProps {
   trendSnapshots: TrendScan[];
   loading: boolean;
   error: string | null;
-  trendHistory: TrendHistoryEntry[];
 }
 
 export default function TrendBoard({
   trendSnapshots,
   loading,
   error,
-  trendHistory,
 }: TrendBoardProps): JSX.Element {
   const [expandedArticleUrls, setExpandedArticleUrls] = useState<Set<string>>(() => new Set());
   const [topicFilter, setTopicFilter] = useState<TopicFilter>('all');
@@ -317,7 +352,6 @@ export default function TrendBoard({
       : displayableArticles
     ).map((article) => articleUrl(article)),
   );
-  const keywords = mergedTrends?.rssContext.trendingKeywords ?? [];
   const topicClusters = (mergedTrends?.rssContext.topicClusters ?? []).filter((topic) => topic.status !== 'stale');
   const articleDisplayStatus = (article: RssArticle) => displayTopicStatus(
     article,
@@ -330,9 +364,6 @@ export default function TrendBoard({
     continuing: rssArticles.filter((article) => articleDisplayStatus(article) === 'continuing').length,
   };
 
-  const maxKeywordCount = keywords.length > 0
-    ? Math.max(...keywords.map((k) => k.count))
-    : 1;
   const sourceRows = Object.entries(
     rssArticles.reduce<Record<string, number>>((acc, article) => {
       const source = article.source || 'RSS';
@@ -347,6 +378,9 @@ export default function TrendBoard({
     : rssArticles.filter((article) => articleDisplayStatus(article) === topicFilter);
   const filteredArticles = statusFilteredArticles.filter((article) => matchesTrendSearch(article, trendSearchQuery));
   const visibleArticles = filteredArticles.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const contributingSnapshotCount = new Set(
+    rssArticles.map((article) => articleTrendReferenceDate(article, mergedTrends?.generatedAt)).filter(Boolean),
+  ).size;
 
   const handleToggleArticle = (article: RssArticle) => {
     const url = articleUrl(article);
@@ -421,8 +455,6 @@ export default function TrendBoard({
           pageSize={PAGE_SIZE}
           page={page}
           onPageChange={setPage}
-          keywords={keywords}
-          maxKeywordCount={maxKeywordCount}
           sourceRows={sourceRows}
           summaryArticleUrls={summaryArticleUrls}
           statusFilter={topicFilter}
@@ -435,7 +467,7 @@ export default function TrendBoard({
           trendGeneratedAt={mergedTrends.generatedAt}
           observationWarning={mergedTrends.rssContext.observationWarning}
           showTopicUnavailable={topicClusters.length === 0}
-          snapshotCount={trendHistory.length || trendSnapshots.length}
+          snapshotCount={contributingSnapshotCount}
         />
       )}
     </section>
@@ -451,8 +483,6 @@ interface TrendLayoutProps {
   pageSize: number;
   page: number;
   onPageChange: (page: number) => void;
-  keywords: { word: string; count: number }[];
-  maxKeywordCount: number;
   sourceRows: SourceRow[];
   summaryArticleUrls: Set<string>;
   statusFilter: TopicFilter;
@@ -477,8 +507,6 @@ function TrendCardsLayout({
   pageSize,
   page,
   onPageChange,
-  keywords,
-  maxKeywordCount,
   sourceRows,
   summaryArticleUrls,
   statusFilter,
@@ -557,7 +585,6 @@ function TrendCardsLayout({
             )}
           </div>
         )}
-        <KeywordPanel keywords={keywords} maxKeywordCount={maxKeywordCount} />
         <SourcePanel sourceRows={sourceRows} articleCount={allArticleCount} />
       </aside>
     </div>
@@ -618,7 +645,12 @@ function TrendFeedHeader({
           {filtered || searched ? `${count}/${totalCount}件` : `${count}件`}
         </span>
         {snapshotCount > 1 && (
-          <span className="tb-feed__count">履歴{snapshotCount}回</span>
+          <span
+            className="tb-feed__count"
+            title="直近の取得結果をまとめ、同じ記事URLは1件にしています"
+          >
+            直近{snapshotCount}回を統合・重複除外
+          </span>
         )}
         {filtered && (
           <span className="tb-feed__active-filter">
@@ -664,35 +696,6 @@ function StatusFilters({
           <span>{counts[item.id]}</span>
         </button>
       ))}
-    </div>
-  );
-}
-
-function KeywordPanel({
-  keywords,
-  maxKeywordCount,
-}: {
-  keywords: { word: string; count: number }[];
-  maxKeywordCount: number;
-}): JSX.Element {
-  return (
-    <div className="tb-panel tb-keywords-panel">
-      <h3 className="tb-panel__title">注目キーワード</h3>
-      <div className="tb-keywords">
-        {keywords.slice(0, 20).map((keyword) => (
-          <span
-            key={keyword.word}
-            className="tb-keyword"
-            style={{
-              fontSize: `${0.75 + (keyword.count / maxKeywordCount) * 0.4}rem`,
-              opacity: 0.62 + (keyword.count / maxKeywordCount) * 0.38,
-            }}
-          >
-            {keyword.word}
-            <strong className="tb-keyword__count">{keyword.count}</strong>
-          </span>
-        ))}
-      </div>
     </div>
   );
 }
@@ -753,7 +756,7 @@ function TrendArticleCard({
   displayStatus: RssTopicStatus | null;
   batchTime?: string;
 }): JSX.Element {
-  const displayTitle = article.titleJa || article.title;
+  const displayTitle = articleDisplayTitle(article);
   const style = sourceStyle(article.source);
   const summaryItems = articleSummaryItems(article);
   const summaryIsList = summaryItems.some((item) => item.bullet);

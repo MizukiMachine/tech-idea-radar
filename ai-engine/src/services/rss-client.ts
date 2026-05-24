@@ -95,7 +95,60 @@ const STOP_WORDS = new Set([
   'for', 'and', 'the', 'are', 'was', 'were', 'into', 'about', 'using', 'how',
   'what', 'why', 'new', 'news', 'more', 'after', 'over', 'under', 'their',
   'they', 'will', 'can', 'has', 'have', 'had', 'not', 'but', 'all',
+  'です', 'ます', 'でした', 'ました', 'する', 'した', 'して', 'いる', 'ある',
+  'ない', 'こと', 'これ', 'それ', 'ため', 'よう', 'など', 'その', 'この',
+  'もの', 'また', 'から', 'まで', 'より', 'として', 'について', '記事',
+  '今回', '紹介', 'では', 'とは', 'にも', 'には', 'への', 'でも', 'という',
+  'そして', 'ただし', '一方', 'できる', 'できた', 'なる', 'なった', 'れる',
+  'られる', 'された', 'される', 'ための', 'ような', '中で', '上で',
 ]);
+
+const NUMBER_ONLY_KEYWORD = /^[\d０-９]+$/;
+const HTML_ENTITIES: Record<string, string> = {
+  amp: '&',
+  apos: "'",
+  copy: '(c)',
+  euro: 'EUR',
+  gt: '>',
+  hellip: '...',
+  laquo: '«',
+  ldquo: '"',
+  lsquo: "'",
+  lt: '<',
+  mdash: '-',
+  nbsp: ' ',
+  ndash: '-',
+  quot: '"',
+  raquo: '»',
+  reg: '(R)',
+  rdquo: '"',
+  rsquo: "'",
+  trade: 'TM',
+};
+
+const HTML_TAG_NAMES = [
+  'a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base',
+  'bdi', 'bdo', 'blockquote', 'br', 'button', 'canvas', 'caption', 'cite',
+  'code', 'col', 'colgroup', 'data', 'datalist', 'dd', 'del', 'details',
+  'dfn', 'dialog', 'div', 'dl', 'dt', 'em', 'embed', 'fieldset',
+  'figcaption', 'figure', 'footer', 'form', 'h1', 'h2', 'h3', 'h4', 'h5',
+  'h6', 'head', 'header', 'hr', 'html', 'i', 'iframe', 'img', 'input',
+  'ins', 'kbd', 'label', 'legend', 'li', 'link', 'main', 'map', 'mark',
+  'meta', 'meter', 'nav', 'noscript', 'object', 'ol', 'optgroup', 'option',
+  'output', 'p', 'param', 'picture', 'pre', 'progress', 'q', 'rp', 'rt',
+  'ruby', 's', 'samp', 'script', 'section', 'select', 'slot', 'small',
+  'source', 'span', 'strong', 'style', 'sub', 'summary', 'sup', 'svg',
+  'table', 'tbody', 'td', 'template', 'textarea', 'tfoot', 'th', 'thead',
+  'time', 'title', 'tr', 'track', 'u', 'ul', 'var', 'video', 'wbr',
+] as const;
+const HTML_TAG_PATTERN = new RegExp(
+  `</?(?:${HTML_TAG_NAMES.join('|')})(?:\\s[^<>]*)?/?>`,
+  'gi',
+);
+const HTML_BLOCK_TAG_PATTERN = new RegExp(
+  `<(?:script|style|template)(?:\\s[^<>]*)?>[\\s\\S]*?</(?:script|style|template)>`,
+  'gi',
+);
 
 const PRODUCT_SIGNAL_TERMS = [
   'ai', 'agent', 'agents', 'api', 'automation', 'cloud', 'code', 'coding',
@@ -289,16 +342,38 @@ function textValue(value: unknown): string {
   return '';
 }
 
+function decodeHtmlEntities(value: string): string {
+  return value.replace(/&(#x[\da-f]+|#\d+|[a-z][a-z0-9]+);/gi, (entity, body: string) => {
+    if (body.startsWith('#x') || body.startsWith('#X')) {
+      const codePoint = Number.parseInt(body.slice(2), 16);
+      return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : entity;
+    }
+    if (body.startsWith('#')) {
+      const codePoint = Number.parseInt(body.slice(1), 10);
+      return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : entity;
+    }
+    return HTML_ENTITIES[body.toLowerCase()] ?? entity;
+  });
+}
+
 function cleanText(value: string): string {
+  const withoutCdata = value.replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1');
+  return decodeHtmlEntities(stripHtmlTags(withoutCdata))
+    .replace(HTML_BLOCK_TAG_PATTERN, ' ')
+    .replace(HTML_TAG_PATTERN, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function stripHtmlTags(value: string): string {
   return value
+    .replace(HTML_BLOCK_TAG_PATTERN, ' ')
     .replace(/<!\[CDATA\[(.*?)\]\]>/gs, '$1')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
+    .replace(HTML_TAG_PATTERN, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -446,16 +521,16 @@ function extractKeywords(text: string, seedKeywords: string[]): string[] {
   const counts = new Map<string, number>();
 
   for (const keyword of seedKeywords) {
-    if (keyword && lower.includes(keyword.toLowerCase())) {
-      counts.set(keyword, (counts.get(keyword) ?? 0) + 3);
+    const normalized = normalizeKeyword(keyword);
+    if (isUsefulKeyword(normalized) && lower.includes(normalized.toLowerCase())) {
+      counts.set(normalized, (counts.get(normalized) ?? 0) + 3);
     }
   }
 
   const matches = text.match(/[A-Za-z][A-Za-z0-9+#.-]{2,}|[ぁ-んァ-ヶ一-龯ー]{2,}/g) ?? [];
   for (const match of matches) {
-    const normalized = match.trim();
-    const key = normalized.toLowerCase();
-    if (STOP_WORDS.has(key) || normalized.length > 32) continue;
+    const normalized = normalizeKeyword(match);
+    if (!isUsefulKeyword(normalized)) continue;
     counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
   }
 
@@ -463,6 +538,19 @@ function extractKeywords(text: string, seedKeywords: string[]): string[] {
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
     .map(([word]) => word);
+}
+
+function normalizeKeyword(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function isUsefulKeyword(value: string): boolean {
+  const normalized = normalizeKeyword(value);
+  if (!normalized || normalized.length > 32) return false;
+  const key = normalized.toLowerCase();
+  if (STOP_WORDS.has(key)) return false;
+  if (NUMBER_ONLY_KEYWORD.test(normalized)) return false;
+  return true;
 }
 
 function parseFeed(xml: string, source: string, sourceUrl: string, seedKeywords: string[]): RssArticle[] {
@@ -554,12 +642,15 @@ function buildTrendingKeywords(articles: RssArticle[], seedKeywords: string[]): 
   const counts = new Map<string, number>();
   for (const article of articles) {
     for (const keyword of article.keywords ?? []) {
-      counts.set(keyword, (counts.get(keyword) ?? 0) + 1);
+      const normalized = normalizeKeyword(keyword);
+      if (!isUsefulKeyword(normalized)) continue;
+      counts.set(normalized, (counts.get(normalized) ?? 0) + 1);
     }
     const text = `${article.title} ${article.summary}`.toLowerCase();
     for (const keyword of seedKeywords) {
-      if (text.includes(keyword.toLowerCase())) {
-        counts.set(keyword, (counts.get(keyword) ?? 0) + 2);
+      const normalized = normalizeKeyword(keyword);
+      if (isUsefulKeyword(normalized) && text.includes(normalized.toLowerCase())) {
+        counts.set(normalized, (counts.get(normalized) ?? 0) + 2);
       }
     }
   }

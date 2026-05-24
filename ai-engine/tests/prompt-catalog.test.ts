@@ -32,6 +32,10 @@ describe('prompt catalog', () => {
 
     expect(systemPrompt).toContain('## 出力ルール');
     expect(systemPrompt).toContain('"generatedAt": "ISO 8601形式のタイムスタンプ"');
+    expect(systemPrompt).toContain('targetUsersはカード一覧で先に読む');
+    expect(systemPrompt).toContain('利用状況、悩み、条件節、文末の助詞は書かない');
+    expect(systemPrompt).toContain('悪い例: AIコーディングアシスタントを導入済みだが');
+    expect(systemPrompt).toContain('18文字以内の短い対象ユーザー名詞句');
     expect(systemPrompt).not.toContain('${');
     expect(userPrompt).toContain('### RSSコンテキスト');
     expect(userPrompt).toContain('"AI Ops article"');
@@ -40,6 +44,8 @@ describe('prompt catalog', () => {
   });
 
   it('renders staged idea generation prompts', () => {
+    const seedSystemPrompt = renderPromptRole('idea_seed_generation', 'system');
+    const detailSystemPrompt = renderPromptRole('idea_detail_generation', 'system');
     const seedPrompt = renderPromptRole('idea_seed_generation', 'user', {
       rss_context: {
         trendingKeywords: [{ word: 'AI', count: 2 }],
@@ -59,8 +65,12 @@ describe('prompt catalog', () => {
 
     expect(seedPrompt).toContain('最大 4 件');
     expect(seedPrompt).toContain('互いに重複しないアイデア候補');
+    expect(seedSystemPrompt).toContain('targetUsersは「誰向けか」だけ');
+    expect(detailSystemPrompt).toContain('targetUsersはカード一覧で先に読む');
     expect(detailPrompt).toContain('"seedId": "seed-1"');
     expect(detailPrompt).toContain('この候補1件だけ');
+    expect(seedSystemPrompt).not.toContain('${');
+    expect(detailSystemPrompt).not.toContain('${');
     expect(seedPrompt).not.toContain('${');
     expect(detailPrompt).not.toContain('${');
   });
