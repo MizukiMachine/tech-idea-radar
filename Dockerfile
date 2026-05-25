@@ -36,7 +36,8 @@ RUN apk add --no-cache tini
 COPY --from=builder /app/backend/package.json ./backend/
 COPY --from=builder /app/ai-engine/dist ./ai-engine/dist
 COPY --from=builder /app/ai-engine/package.json ./ai-engine/
-RUN cd backend && npm install --omit=dev --ignore-scripts
+RUN cd ai-engine && npm install --omit=dev --ignore-scripts \
+  && cd ../backend && npm install --omit=dev --ignore-scripts
 
 # Copy runtime artifacts
 COPY --from=builder /app/backend/dist ./backend/dist
@@ -58,7 +59,7 @@ EXPOSE 3001
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:3001/health || exit 1
+  CMD wget -qO- "http://127.0.0.1:${PORT:-3001}/health" || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "backend/dist/server.js"]
