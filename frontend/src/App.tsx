@@ -390,12 +390,9 @@ function App(): JSX.Element {
         || (bSignal?.articleCount ?? 0) - (aSignal?.articleCount ?? 0);
     });
   const totalIdeaPages = Math.ceil(displayedIdeas.length / IDEAS_PER_PAGE);
-  const ideaPageStart = ideaPage * IDEAS_PER_PAGE;
+  const currentIdeaPage = Math.min(ideaPage, Math.max(totalIdeaPages - 1, 0));
+  const ideaPageStart = currentIdeaPage * IDEAS_PER_PAGE;
   const pagedIdeas = displayedIdeas.slice(ideaPageStart, ideaPageStart + IDEAS_PER_PAGE);
-
-  useEffect(() => {
-    setIdeaPage((current) => Math.min(current, Math.max(totalIdeaPages - 1, 0)));
-  }, [totalIdeaPages]);
 
   useEffect(() => {
     if (!hasMountedIdeaPageRef.current) {
@@ -405,7 +402,7 @@ function App(): JSX.Element {
     if (activeView === 'ideas') {
       ideaListTopRef.current?.scrollIntoView?.({ block: 'start' });
     }
-  }, [activeView, ideaPage]);
+  }, [activeView, currentIdeaPage]);
 
   const hasIdeas = ideas.length > 0;
   const showDashboard = loading || hasIdeas;
@@ -587,7 +584,7 @@ function App(): JSX.Element {
                       <IdeaPagination
                         total={displayedIdeas.length}
                         pageSize={IDEAS_PER_PAGE}
-                        current={ideaPage}
+                        current={currentIdeaPage}
                         onChange={setIdeaPage}
                       />
                     </>
