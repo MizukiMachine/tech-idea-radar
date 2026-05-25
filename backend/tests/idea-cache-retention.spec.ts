@@ -92,9 +92,9 @@ describe("idea cache retention", () => {
     const cache = await import("../src/services/idea-cache");
     const ideas = cache.getCachedIdeas();
 
-    expect(cache.getRuntimeMeta().env.ideaRetentionWindowHours).toBe(24);
-    expect(cache.getRuntimeMeta().env.maxBatches).toBe(7);
-    expect(cache.getBatchInfos()).toHaveLength(7);
+    expect(cache.getRuntimeMeta().env.ideaRetentionWindowHours).toBe(365 * 24);
+    expect(cache.getRuntimeMeta().env.maxBatches).toBe(366);
+    expect(cache.getBatchInfos()).toHaveLength(2);
     expect(ideas?.candidates.map((idea) => idea.id)).toEqual([
       "idea-now",
       "idea-4h",
@@ -125,16 +125,16 @@ describe("idea cache retention", () => {
     const cache = await import("../src/services/idea-cache");
     const ideas = cache.getCachedIdeas();
 
-    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T12:00:00+09:00");
-    expect(ideas?.batchTime).toBe("2026-05-24T12:00:00+09:00");
-    expect(ideas?.candidates[0].batchTime).toBe("2026-05-24T12:00:00+09:00");
+    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
+    expect(ideas?.batchTime).toBe("2026-05-24T00:00:00+09:00");
+    expect(ideas?.candidates[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
   });
 
   it("keeps the previous scheduled batch slot when generation crosses a boundary", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-cross-boundary-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
-    const generatedAt = "2026-05-24T11:35:00.000Z";
-    const batch = ideaBatch("2026-05-24T16:00:00+09:00", "idea-cross-boundary");
+    const generatedAt = "2026-05-24T15:35:00.000Z";
+    const batch = ideaBatch("2026-05-24T00:00:00+09:00", "idea-cross-boundary");
     batch.data.generatedAt = generatedAt;
     batch.data.candidates[0].generatedAt = generatedAt;
 
@@ -147,25 +147,22 @@ describe("idea cache retention", () => {
     const cache = await import("../src/services/idea-cache");
     const ideas = cache.getCachedIdeas();
 
-    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T16:00:00+09:00");
-    expect(ideas?.batchTime).toBe("2026-05-24T16:00:00+09:00");
-    expect(ideas?.candidates[0].batchTime).toBe("2026-05-24T16:00:00+09:00");
+    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
+    expect(ideas?.batchTime).toBe("2026-05-24T00:00:00+09:00");
+    expect(ideas?.candidates[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
   });
 
-  it("drops batches older than 24 hours when a new idea batch is cached", async () => {
+  it("drops batches older than 365 days when a new idea batch is cached", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-18T04:00:00+09:00"));
+    vi.setSystemTime(new Date("2026-05-18T00:00:00+09:00"));
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-update-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
 
     writeCache(cacheFile, [
-      ideaBatch("2026-05-18T00:00:00+09:00", "idea-4h"),
-      ideaBatch("2026-05-17T20:00:00+09:00", "idea-8h"),
-      ideaBatch("2026-05-17T16:00:00+09:00", "idea-12h"),
-      ideaBatch("2026-05-17T12:00:00+09:00", "idea-16h"),
-      ideaBatch("2026-05-17T08:00:00+09:00", "idea-20h"),
-      ideaBatch("2026-05-17T04:00:00+09:00", "idea-24h"),
-      ideaBatch("2026-05-17T00:00:00+09:00", "idea-28h"),
+      ideaBatch("2026-05-17T00:00:00+09:00", "idea-1d"),
+      ideaBatch("2026-01-01T00:00:00+09:00", "idea-this-year"),
+      ideaBatch("2025-05-18T00:00:00+09:00", "idea-365d"),
+      ideaBatch("2025-05-17T23:59:59+09:00", "idea-too-old"),
     ]);
 
     vi.doMock("ai-engine", async (importOriginal) => {
@@ -214,14 +211,11 @@ describe("idea cache retention", () => {
 
     expect(cache.getCachedIdeas()?.candidates.map((idea) => idea.id)).toEqual([
       "idea-new",
-      "idea-4h",
-      "idea-8h",
-      "idea-12h",
-      "idea-16h",
-      "idea-20h",
-      "idea-24h",
+      "idea-1d",
+      "idea-this-year",
+      "idea-365d",
     ]);
-    expect(cache.getCachedIdeas()?.candidates.map((idea) => idea.id)).not.toContain("idea-28h");
+    expect(cache.getCachedIdeas()?.candidates.map((idea) => idea.id)).not.toContain("idea-too-old");
   });
 
   it("uses the current scheduled JST slot when generating ideas", async () => {
@@ -272,8 +266,69 @@ describe("idea cache retention", () => {
     const cache = await import("../src/services/idea-cache");
     await cache.generateAndCacheIdeas();
 
-    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T16:00:00+09:00");
-    expect(cache.getCachedIdeas()?.candidates[0].batchTime).toBe("2026-05-24T16:00:00+09:00");
+    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
+    expect(cache.getCachedIdeas()?.candidates[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
+  });
+
+  it("replaces legacy same-day slots when generating the current daily batch", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-24T19:51:08+09:00"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-same-day-"));
+    const cacheFile = path.join(tmpDir, "idea-cache.json");
+
+    writeCache(cacheFile, [
+      ideaBatch("2026-05-24T00:00:00+09:00", "idea-midnight"),
+      ideaBatch("2026-05-24T04:00:00+09:00", "idea-legacy-4h"),
+    ]);
+
+    vi.doMock("ai-engine", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("ai-engine")>();
+      return {
+        ...actual,
+        EntrepreneurAgent: class {
+          async generateIdeas(
+            _onProgress?: (text: string) => void,
+            _focusKeywords?: string[],
+            _count?: number,
+            batchTime?: string,
+          ): Promise<IdeaGenerationOutput> {
+            const generatedAt = new Date().toISOString();
+            return {
+              generatedAt,
+              batchTime,
+              sourceSummary: { rssItemCount: 1, usedLLMFallback: false },
+              candidates: [{
+                id: "idea-new-day",
+                title: "idea-new-day",
+                tagline: "New daily batch",
+                description: "Replaces same-day legacy slots",
+                tags: ["schedule"],
+                productType: "SaaS",
+                targetUsers: "Builders",
+                coreProblem: "Legacy same-day slots duplicate daily results",
+                differentiation: "Keeps one active daily batch",
+                sources: { rssKeywords: ["schedule"], evidenceUrls: [] },
+                generatedAt,
+                batchTime,
+              }],
+            };
+          }
+        },
+      };
+    });
+
+    vi.resetModules();
+    delete process.env.IDEA_CACHE_DISABLED;
+    process.env.IDEA_CACHE_FILE = cacheFile;
+    process.env.ZAI_API_KEY = "test-key";
+
+    const cache = await import("../src/services/idea-cache");
+    await cache.generateAndCacheIdeas();
+
+    const ids = cache.getCachedIdeas()?.candidates.map((idea) => idea.id) ?? [];
+    expect(ids).toEqual(["idea-new-day"]);
+    expect(ids).not.toContain("idea-midnight");
+    expect(ids).not.toContain("idea-legacy-4h");
   });
 
   it("does not age out loaded ideas on read without a cache update", async () => {

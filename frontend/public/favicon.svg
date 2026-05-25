@@ -1,33 +1,31 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>Lume favicon</title>
+  <desc>Square Lume app icon using the header logo's radar sweep mark.</desc>
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#435f1c"/>
-      <stop offset="100%" stop-color="#5d7d2b"/>
+    <linearGradient id="lume-mark-core" x1="20" y1="18" x2="45" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#14956E"/>
+      <stop offset="0.54" stop-color="#5D7D2B"/>
+      <stop offset="1" stop-color="#435F1C"/>
     </linearGradient>
-    <filter id="backgroundShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="0.46" stdDeviation="0.53" flood-color="#000000" flood-opacity="0.106"/>
-    </filter>
-    <filter id="contentShadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="0" dy="0.17" stdDeviation="0.21" flood-color="#000000" flood-opacity="0.091"/>
-    </filter>
-    <radialGradient id="innerGlow" cx="50%" cy="35%" r="75%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.034"/>
-      <stop offset="58%" stop-color="#ffffff" stop-opacity="0"/>
-      <stop offset="100%" stop-color="#000000" stop-opacity="0.017"/>
-    </radialGradient>
-    <linearGradient id="surfaceHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.106"/>
-      <stop offset="52%" stop-color="#ffffff" stop-opacity="0"/>
-      <stop offset="100%" stop-color="#000000" stop-opacity="0.034"/>
+    <linearGradient id="lume-sweep" x1="22" y1="43" x2="46" y2="18" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#148EA1"/>
+      <stop offset="0.58" stop-color="#5D7D2B"/>
+      <stop offset="1" stop-color="#D89614"/>
     </linearGradient>
-    <filter id="surfaceNoise" x="0" y="0" width="100%" height="100%">
-      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7"/>
-      <feColorMatrix type="saturate" values="0"/>
+    <linearGradient id="lume-tile" x1="8" y1="7" x2="56" y2="57" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F2F7E9"/>
+    </linearGradient>
+    <filter id="lume-shadow" x="-12" y="-12" width="88" height="88" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.8" flood-color="#172033" flood-opacity="0.14"/>
     </filter>
   </defs>
-  <rect width="32" height="32" rx="7.0" fill="url(#bg)" filter="url(#backgroundShadow)"/>
-  <rect width="32" height="32" rx="7.0" fill="url(#innerGlow)"/>
-  <rect width="32" height="32" rx="7.0" fill="url(#surfaceHighlight)"/>
-  <rect width="32" height="32" rx="7.0" filter="url(#surfaceNoise)" opacity="0.005" style="mix-blend-mode:overlay"/>
-  <text x="16" y="16" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="18" font-weight="bold" text-anchor="middle" dominant-baseline="central" fill="#f8fafc" filter="url(#contentShadow)">L</text>
+
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#lume-tile)" stroke="#BCD59C" stroke-width="2" filter="url(#lume-shadow)"/>
+  <path d="M21 43V18" stroke="url(#lume-mark-core)" stroke-width="9.5" stroke-linecap="round"/>
+  <path d="M21 43H42" stroke="url(#lume-mark-core)" stroke-width="9.5" stroke-linecap="round"/>
+  <path d="M21 43C24.5 34.2 32.1 27.1 41 24.5" stroke="#BCD59C" stroke-width="3" stroke-linecap="round" opacity="0.95"/>
+  <path d="M21 43L45 18.5" stroke="url(#lume-sweep)" stroke-width="4.4" stroke-linecap="round"/>
+  <circle cx="45" cy="18.5" r="4.2" fill="#D89614"/>
+  <path d="M45 10.8V14.7M45 22.3V26.2M37.3 18.5H41.1M48.9 18.5H52.7" stroke="#D89614" stroke-width="1.8" stroke-linecap="round" opacity="0.88"/>
 </svg>

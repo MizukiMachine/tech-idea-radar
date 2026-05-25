@@ -31,7 +31,8 @@ const IDEA_SORTS: { id: IdeaSort; label: string; requiresTrend?: boolean }[] = [
 ];
 
 const IDEAS_PER_PAGE = 15;
-const TREND_DISPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const TREND_DISPLAY_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
+const TREND_SNAPSHOT_FETCH_LIMIT = 30;
 const PUBLIC_READONLY_RETRY_MS = 15_000;
 
 const INTEREST_KEYWORDS: Record<string, string[]> = {
@@ -319,7 +320,7 @@ function App(): JSX.Element {
           ? trendsResult
           : null;
         const historicalSnapshots = await Promise.all(
-          recentHistoryEntries.slice(1).map(async ({ index }) => {
+          recentHistoryEntries.slice(1, TREND_SNAPSHOT_FETCH_LIMIT).map(async ({ index }) => {
             try {
               return await fetchTrendSnapshot(index);
             } catch {
@@ -439,9 +440,9 @@ function App(): JSX.Element {
       <header className="app-header">
         <div className="app-header__top">
           <div className="app-header__brand">
-            <span className="app-header__mark" aria-hidden="true">Lu</span>
-            <div>
-              <h1>Lume</h1>
+            <img className="app-header__logo" src="/brand-logo.svg" alt="" aria-hidden="true" />
+            <div className="app-header__brand-copy">
+              <h1 className="app-header__brand-title">Lume</h1>
               <p>トレンドから、次のアイデアを照らす</p>
             </div>
           </div>

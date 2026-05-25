@@ -21,7 +21,7 @@ services:
     volumes:
       - cache-data:/var/lib/builder-agent-chain
     environment:
-      - IDEA_CACHE_DISABLED=true
+      - IDEA_CACHE_DISABLED=false
       - IDEA_CACHE_FILE=/var/lib/builder-agent-chain/idea-cache.json
       - FRONTEND_DIST_DIR=/app/frontend
     healthcheck:

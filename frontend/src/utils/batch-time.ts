@@ -1,6 +1,6 @@
-const BATCH_SCHEDULE_HOURS_JST = [0, 4, 8, 12, 16, 20] as const;
+const BATCH_SCHEDULE_HOURS_JST = [0] as const;
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-const BATCH_SLOT_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const BATCH_SLOT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const BATCH_SLOT_FUTURE_GRACE_MS = 5 * 60 * 1000;
 
 export function formatBatchTimestamp(value: string | null | undefined): string {
