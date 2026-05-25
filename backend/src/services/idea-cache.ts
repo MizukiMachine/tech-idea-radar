@@ -38,10 +38,10 @@ const FILE_CACHE_DISABLED = CACHE_DISABLED || !PERSISTENT_CACHE_FILE;
 const PUBLIC_READONLY_MODE = isTruthy(process.env.PUBLIC_READONLY_MODE);
 const ADMIN_API_TOKEN = process.env.ADMIN_API_TOKEN?.trim() ?? '';
 const PERSISTENT_CACHE_VERSION = 3;
-const TREND_CACHE_TTL_MS = 4 * 60 * 60 * 1000;
+const TREND_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const IDEA_RETENTION_WINDOW_MS = IDEA_RETENTION_WINDOW_HOURS * 60 * 60 * 1000;
 const TREND_HISTORY_WINDOW_MS = TREND_HISTORY_WINDOW_HOURS * 60 * 60 * 1000;
-const BATCH_SLOT_INTERVAL_MS = 4 * 60 * 60 * 1000;
+const BATCH_SLOT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const BATCH_SLOT_FUTURE_GRACE_MS = 5 * 60 * 1000;
 const WARMUP_ON_START = process.env.IDEA_WARMUP_ON_START === undefined
   ? true
@@ -298,6 +298,39 @@ function normalizeIdeaBatchEntry(entry: BatchEntry): BatchEntry {
   };
 }
 
+function mergeIdeaBatchEntries(primary: BatchEntry, duplicate: BatchEntry): BatchEntry {
+  const seen = new Set<string>();
+  const candidates = [...primary.data.candidates, ...duplicate.data.candidates].filter((candidate) => {
+    const key = `${candidate.id}:${candidate.generatedAt}:${candidate.batchTime ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return {
+    ...primary,
+    data: {
+      ...primary.data,
+      candidates,
+    },
+  };
+}
+
+function normalizeIdeaBatchEntries(entries: BatchEntry[]): BatchEntry[] {
+  const byBatchTime = new Map<string, BatchEntry>();
+
+  for (const entry of entries) {
+    const normalized = normalizeIdeaBatchEntry(entry);
+    const existing = byBatchTime.get(normalized.batchTime);
+    byBatchTime.set(
+      normalized.batchTime,
+      existing ? mergeIdeaBatchEntries(existing, normalized) : normalized,
+    );
+  }
+
+  return [...byBatchTime.values()].slice(0, MAX_BATCHES);
+}
+
 function normalizeTrendScanBatchTime(data: TrendScanOutput): TrendScanOutput {
   const batchTime = normalizeScheduledBatchTimeJST(data.batchTime, data.generatedAt)
     ?? data.batchTime;
@@ -382,7 +415,7 @@ function loadPersistentCache(): void {
     if (version === PERSISTENT_CACHE_VERSION) {
       // v3: batch-based cache + trend history
       nextBatches = Array.isArray(raw.batches)
-        ? raw.batches.filter(isPersistentBatchEntry).slice(0, MAX_BATCHES)
+        ? raw.batches.filter(isPersistentBatchEntry)
         : [];
       nextTrendHistory = Array.isArray(raw.trendHistory)
         ? raw.trendHistory.filter(isPersistentTrendHistoryEntry).slice(0, MAX_TREND_HISTORY)
@@ -391,7 +424,7 @@ function loadPersistentCache(): void {
       // v2 → v3 migration: convert single trendCache to trendHistory[0]
       migrated = true;
       nextBatches = Array.isArray(raw.batches)
-        ? raw.batches.filter(isPersistentBatchEntry).slice(0, MAX_BATCHES)
+        ? raw.batches.filter(isPersistentBatchEntry)
         : [];
       const v2TrendCache = isPersistentV2TrendCache(raw.trends) ? raw.trends : null;
       if (v2TrendCache) {
@@ -419,7 +452,7 @@ function loadPersistentCache(): void {
       }
     }
 
-    batches = nextBatches.map(normalizeIdeaBatchEntry);
+    batches = normalizeIdeaBatchEntries(nextBatches);
     trendHistory = nextTrendHistory.map((entry) => ({
       ...entry,
       data: normalizeTrendScanBatchTime(entry.data),
@@ -466,6 +499,13 @@ function isTrendEntryStale(entry: TrendHistoryEntry | null): boolean {
   if (!entry) return true;
   const scannedAt = new Date(entry.scannedAt).getTime();
   return Number.isNaN(scannedAt) || Date.now() - scannedAt > TREND_CACHE_TTL_MS;
+}
+
+function hasCurrentIdeaBatch(now: Date): boolean {
+  const currentBatchTime = getCurrentBatchTimeJST(now);
+  return batches
+    .map(normalizeIdeaBatchEntry)
+    .some((entry) => entry.batchTime === currentBatchTime);
 }
 
 function isBackgroundCacheOwner(): boolean {
@@ -825,7 +865,9 @@ export async function generateAndCacheIdeas(
       // Replace same-slot batch or prepend, then prune stale batches on cache update.
       batches = pruneIdeaBatches([
         { batchTime, data: batchOutput },
-        ...batches.filter((b) => b.batchTime !== batchTime),
+        ...batches
+          .map(normalizeIdeaBatchEntry)
+          .filter((b) => b.batchTime !== batchTime),
       ], now);
 
       persistCache();
@@ -907,10 +949,11 @@ export function refreshCachesInBackground(reason: string, force = false): Promis
   if (backgroundRefreshLock) return backgroundRefreshLock;
 
   loadPersistentCache();
+  const now = new Date();
   const latest = latestTrend();
   const isTrendStale = isTrendEntryStale(latest);
   const shouldRefreshTrends = force || trendHistory.length === 0 || isTrendStale;
-  const shouldRefreshIdeas = force || batches.length === 0;
+  const shouldRefreshIdeas = force || batches.length === 0 || !hasCurrentIdeaBatch(now);
   const shouldWarmEmptyCachesIdeaFirst = shouldRefreshTrends && shouldRefreshIdeas && trendHistory.length === 0;
 
   if (!shouldRefreshTrends && !shouldRefreshIdeas) {
