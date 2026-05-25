@@ -9,6 +9,7 @@
     "prebuild": "npm run build --workspace ai-engine",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
+    "pretest": "npm run build --workspace ai-engine",
     "test": "vitest run",
     "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" --max-warnings=0"
   },
