@@ -26,6 +26,8 @@ const ARTICLE_DESCRIPTION_CHAR_LIMIT = 240;
 const TOPIC_LIMIT = 8;
 const IDEA_SEED_MAX_TOKENS = 8192;
 const IDEA_DETAIL_MAX_TOKENS = 4096;
+const DETAIL_BULLET_MAX_ITEMS = 5;
+const DETAIL_BULLET_MAX_CHARS = 70;
 
 type CandidateEvidenceUrl = NonNullable<IdeaCandidate['sources']['evidenceUrls']>[number];
 
@@ -89,6 +91,42 @@ function textArray(value: unknown): string[] {
   return value
     .map((item) => textField(item))
     .filter((item): item is string => Boolean(item));
+}
+
+function trimBulletSentenceEnd(value: string): string {
+  return value
+    .replace(/^[\s・\-*•]+/, '')
+    .trim()
+    .replace(/[。．.]+$/u, '')
+    .trim();
+}
+
+function compactBulletItem(value: string): string {
+  const trimmed = trimBulletSentenceEnd(value);
+  const chars = Array.from(trimmed);
+  if (chars.length <= DETAIL_BULLET_MAX_CHARS) return trimmed;
+  return trimBulletSentenceEnd(`${chars.slice(0, DETAIL_BULLET_MAX_CHARS - 1).join('').trimEnd()}…`);
+}
+
+function normalizeBulletDescription(value: string): string {
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const alreadyList = lines.length > 1 || lines.some((line) => /^[・\-*•]/.test(line));
+  const rawItems = alreadyList
+    ? lines
+    : value
+      .replace(/\r?\n/g, ' ')
+      .split(/。|．|(?:\.(?:\s+|$))/u);
+  const items = rawItems
+    .map(compactBulletItem)
+    .filter(Boolean);
+
+  return (items.length > 0 ? items : [compactBulletItem(value)])
+    .slice(0, DETAIL_BULLET_MAX_ITEMS)
+    .map((item) => `・${item}`)
+    .join('\n');
 }
 
 function normalizeEvidenceUrl(value: unknown): CandidateEvidenceUrl | undefined {
@@ -209,7 +247,7 @@ function completeIdeaCandidate(raw: Record<string, unknown>, seed: IdeaSeed, ind
     id: textField(raw.id) ?? seed.seedId ?? `idea-${index + 1}`,
     title,
     tagline,
-    description,
+    description: normalizeBulletDescription(description),
     tags: finalTags,
     productType,
     targetUsers,
@@ -419,7 +457,12 @@ export class IdeaGenerationAgent extends BaseAgent<IdeaGenerationInput, IdeaCand
 
   async execute(input: IdeaGenerationInput, onProgress?: (text: string) => void): Promise<IdeaCandidate[]> {
     this.assertRssArticlesAvailable(input);
-    return super.execute(input, onProgress);
+    const parsed = await super.execute(input, onProgress) as unknown;
+    const candidates = normalizeFallbackCandidates(parsed);
+    if (candidates.length === 0) {
+      throw new Error(`${this.name}: response contained no complete idea candidates`);
+    }
+    return candidates;
   }
 
   async executeStaged(input: IdeaGenerationInput, onProgress?: (text: string) => void): Promise<IdeaCandidate[]> {
