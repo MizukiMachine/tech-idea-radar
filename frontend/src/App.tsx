@@ -171,7 +171,7 @@ function userFacingError(message: string): string {
 
 function App(): JSX.Element {
   const ideaListTopRef = useRef<HTMLDivElement | null>(null);
-  const hasMountedIdeaPageRef = useRef(false);
+  const previousIdeaPageRef = useRef(0);
   const [activeView, setActiveView] = useState<WorkspaceView>('ideas');
   const [trends, setTrends] = useState<TrendScan | null>(null);
   const [trendsLoading, setTrendsLoading] = useState(true);
@@ -418,11 +418,10 @@ function App(): JSX.Element {
   const pagedIdeas = displayedIdeas.slice(ideaPageStart, ideaPageStart + IDEAS_PER_PAGE);
 
   useEffect(() => {
-    if (!hasMountedIdeaPageRef.current) {
-      hasMountedIdeaPageRef.current = true;
-      return;
-    }
-    if (activeView === 'ideas') {
+    const previousIdeaPage = previousIdeaPageRef.current;
+    previousIdeaPageRef.current = currentIdeaPage;
+
+    if (activeView === 'ideas' && previousIdeaPage !== currentIdeaPage) {
       ideaListTopRef.current?.scrollIntoView?.({ block: 'start' });
     }
   }, [activeView, currentIdeaPage]);

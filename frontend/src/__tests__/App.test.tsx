@@ -4,6 +4,7 @@ import App from "../App";
 import { formatBatchTimestamp, scheduledBatchTimeJST } from "../utils/batch-time";
 
 const mockFetch = vi.fn();
+const scrollIntoViewMock = vi.fn();
 const generatedAt = new Date().toISOString();
 const trendBatchTime = scheduledBatchTimeJST(generatedAt) ?? generatedAt;
 const summaryPolicy = {
@@ -201,6 +202,11 @@ function streamResponse(events: string[]): Response {
 
 beforeEach(() => {
   mockFetch.mockReset();
+  scrollIntoViewMock.mockReset();
+  Object.defineProperty(Element.prototype, "scrollIntoView", {
+    configurable: true,
+    value: scrollIntoViewMock,
+  });
   mockFetch.mockImplementation((input: RequestInfo | URL) => {
     const url = String(input);
     let body: unknown = {
@@ -235,6 +241,20 @@ describe("App", () => {
     expect(tabs[0].getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" })).toBeTruthy();
     expect(screen.queryByText("AIエージェントツールがプロダクト業務に広がる")).toBeNull();
+  });
+
+  it("keeps the current scroll position when returning from trends to ideas", async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText("ジャンル・テーマ")).toBeTruthy());
+    scrollIntoViewMock.mockClear();
+
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /^すべて / })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: /^需要アイデア/ }));
+    await waitFor(() => expect(screen.getByPlaceholderText("キーワードで絞り込み")).toBeTruthy());
+
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
 
   it("renders the idea workspace controls on the default view", async () => {
@@ -826,12 +846,14 @@ describe("App", () => {
     expect(screen.getByText("1-15 / 16件")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Paged Idea 16 の詳細を開く" })).toBeNull();
 
+    scrollIntoViewMock.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "次のページ" }));
 
     expect(screen.getByText("16-16 / 16件")).toBeTruthy();
     expect(document.querySelectorAll(".idea-grid .idea-card")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Paged Idea 16 の詳細を開く" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Paged Idea 1 の詳細を開く" })).toBeNull();
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: "start" });
   });
 
   it("keeps legacy trend summaries clickable when the API omits the summary policy", async () => {
