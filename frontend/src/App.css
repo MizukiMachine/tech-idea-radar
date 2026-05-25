@@ -31,38 +31,46 @@
 
 .app-header__brand {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: 12px;
+  gap: 3px;
   min-width: 0;
   text-align: left;
 }
 
-.app-header__mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 42px;
-  height: 42px;
-  border: 1px solid var(--accent-primary-border);
-  border-radius: 10px;
-  background: linear-gradient(145deg, #fff 0%, var(--accent-primary-soft) 100%);
-  color: var(--accent-primary-hover);
-  font-family: "Outfit", "Inter", "Noto Sans JP", system-ui, sans-serif;
-  font-size: 15px;
-  font-weight: 900;
-  box-shadow: var(--shadow-sm);
+.app-header__logo {
+  display: block;
+  width: 156px;
+  height: auto;
   flex: 0 0 auto;
+}
+
+.app-header__brand-copy {
+  min-width: 0;
+  padding-left: 53px;
 }
 
 .app-header__brand h1 {
   margin: 0 0 6px;
   color: var(--text-primary);
   font-family: "Outfit", "Inter", "Noto Sans JP", system-ui, sans-serif;
-  font-size: 27px;
+  font-size: 30px;
   font-weight: 900;
   line-height: 1;
   letter-spacing: 0;
+}
+
+.app-header__brand-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .app-header__brand p {
@@ -742,7 +750,7 @@
   }
 
   .app-header__brand h1 {
-    font-size: 22px;
+    font-size: 24px;
   }
 
   .app-header__brand p {
@@ -750,9 +758,12 @@
     white-space: normal;
   }
 
-  .app-header__mark {
-    width: 38px;
-    height: 38px;
+  .app-header__logo {
+    width: 148px;
+  }
+
+  .app-header__brand-copy {
+    padding-left: 50px;
   }
 
   .workspace {

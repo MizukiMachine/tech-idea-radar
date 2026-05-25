@@ -440,9 +440,9 @@ function App(): JSX.Element {
       <header className="app-header">
         <div className="app-header__top">
           <div className="app-header__brand">
-            <span className="app-header__mark" aria-hidden="true">Lu</span>
-            <div>
-              <h1>Lume</h1>
+            <img className="app-header__logo" src="/brand-logo.svg" alt="" aria-hidden="true" />
+            <div className="app-header__brand-copy">
+              <h1 className="app-header__brand-title">Lume</h1>
               <p>トレンドから、次のアイデアを照らす</p>
             </div>
           </div>
