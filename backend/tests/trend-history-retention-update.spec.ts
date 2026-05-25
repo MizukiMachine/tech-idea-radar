@@ -65,7 +65,7 @@ describe("trend history update retention", () => {
   it("drops trend history entries older than 24 hours when a new scan is cached", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-17T04:00:00.000Z"));
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-trend-update-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-trend-update-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
     const recentGeneratedAt = "2026-05-17T00:00:00.000Z";
     const boundaryGeneratedAt = "2026-05-16T04:00:00.000Z";

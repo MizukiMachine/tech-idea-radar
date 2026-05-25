@@ -1,8 +1,8 @@
 # ============================================
-# Builder Agent Chain - Multi-stage Dockerfile
+# Lume / tech-idea-radar - Multi-stage Dockerfile
 # ============================================
-# Build:  docker build -t builder-agent-chain .
-# Run:    docker run -p 3001:3001 --env-file .env builder-agent-chain
+# Build:  docker build -t tech-idea-radar .
+# Run:    docker run -p 3001:3001 --env-file .env tech-idea-radar
 #
 
 # --- Stage 1: Build ---
@@ -46,8 +46,8 @@ COPY --from=builder /app/ecosystem.config.cjs ./
 
 # Create non-root user
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup
-RUN mkdir -p /app/backend/logs /var/lib/builder-agent-chain \
-  && chown -R appuser:appgroup /app/backend/logs /var/lib/builder-agent-chain
+RUN mkdir -p /app/backend/logs /var/lib/tech-idea-radar \
+  && chown -R appuser:appgroup /app/backend/logs /var/lib/tech-idea-radar
 USER appuser
 
 # Default env

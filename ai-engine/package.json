@@ -2,7 +2,7 @@
   "name": "ai-engine",
   "private": true,
   "version": "0.1.0",
-  "description": "AI Engine for Builder Agent Chain - TypeScript agent orchestration with ZAI GLM-5 API",
+  "description": "AI engine for Lume - RSS trend analysis and product idea generation",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

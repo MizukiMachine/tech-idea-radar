@@ -2,7 +2,7 @@
   "name": "frontend",
   "private": true,
   "version": "0.1.0",
-  "description": "React SPA for the Builder Agent Chain platform",
+  "description": "React SPA for Lume",
   "type": "module",
   "scripts": {
     "dev": "node ../scripts/require-proxy-target.mjs && vite",

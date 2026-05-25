@@ -13,7 +13,7 @@ function jsonResponse(body: unknown, init?: { ok?: boolean; status?: number }): 
 function health(stackId: string | null, requireDevStackHeader = true) {
   return {
     status: 'ok',
-    service: 'builder-agent-chain-backend',
+    service: 'tech-idea-radar-backend',
     config: {
       requireDevStackHeader,
     },

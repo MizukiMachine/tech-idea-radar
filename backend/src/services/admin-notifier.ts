@@ -54,7 +54,7 @@ function getEmailConfig(): EmailConfig | null {
     secure,
     user,
     pass,
-    from: process.env.ADMIN_ALERT_EMAIL_FROM?.trim() || user || 'builder-agent-chain@localhost',
+    from: process.env.ADMIN_ALERT_EMAIL_FROM?.trim() || user || 'tech-idea-radar@localhost',
     to,
   };
 }
@@ -98,8 +98,8 @@ function alertTitle(alert: RssFailureAlert): string {
 
 function alertLead(alert: RssFailureAlert): string {
   return alert.operation.includes('summary')
-    ? 'Builder Agent Chain のRSS記事要約または日本語変換に失敗したため、該当記事をトレンド表示から除外しました。'
-    : 'Builder Agent Chain のRSS取得に失敗したため、LLMアイデア生成を停止しました。';
+    ? 'Lume のRSS記事要約または日本語変換に失敗したため、該当記事をトレンド表示から除外しました。'
+    : 'Lume のRSS取得に失敗したため、LLMアイデア生成を停止しました。';
 }
 
 function buildAlertText(alert: RssFailureAlert): string {
@@ -168,7 +168,7 @@ export async function notifyAdminOfRssFailure(alert: RssFailureAlert): Promise<v
       await transporter.sendMail({
         from: config.from,
         to: config.to,
-        subject: `[Builder Agent Chain] ${alertTitle(alert)}: ${alert.operation}`,
+        subject: `[Lume] ${alertTitle(alert)}: ${alert.operation}`,
         text: buildAlertText(alert),
       });
     } catch (error) {
@@ -191,7 +191,7 @@ function buildWebhookPayload(alert: RssFailureAlert, webhookUrl: string): Record
   const isDiscord = webhookUrl.includes('discord.com');
 
   const text = [
-    `**[Builder Agent Chain] ${alertTitle(alert)}: ${alert.operation}**`,
+    `**[Lume] ${alertTitle(alert)}: ${alert.operation}**`,
     `発生時刻: ${alert.occurredAt}`,
     `エラー: ${alert.errorMessage}`,
     `RSS記事数: ${details.rssArticleCount ?? '-'}`,
@@ -204,14 +204,14 @@ function buildWebhookPayload(alert: RssFailureAlert, webhookUrl: string): Record
   if (isDiscord) {
     return {
       content: text,
-      username: 'Builder Agent Chain Alert',
+      username: 'Lume Alert',
     };
   }
 
   // Slack format
   return {
     text,
-    username: 'Builder Agent Chain Alert',
+    username: 'Lume Alert',
     icon_emoji: ':warning:',
   };
 }

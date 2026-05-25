@@ -21,7 +21,7 @@ describe("disabled idea cache", () => {
   });
 
   it("does not expose persisted cache data when cache is disabled", async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-cache-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-cache-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
     fs.writeFileSync(cacheFile, JSON.stringify({
       version: 2,

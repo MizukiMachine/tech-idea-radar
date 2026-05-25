@@ -7,7 +7,7 @@ const ALLOWED_API_BASES = String(import.meta.env.VITE_ALLOWED_API_BASES ?? '')
   .split(',')
   .map((value: string) => normalizeApiBase(value.trim()))
   .filter(Boolean);
-const BACKEND_SERVICE_NAME = 'builder-agent-chain-backend';
+const BACKEND_SERVICE_NAME = 'tech-idea-radar-backend';
 const HEALTH_CHECK_TIMEOUT_MS = 5_000;
 
 export function getApiBase(): string {

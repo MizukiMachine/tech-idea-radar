@@ -21,7 +21,7 @@ healthRouter.get("/", (_req, res) => {
 
   res.status(200).json({
     status: "ok",
-    service: "builder-agent-chain-backend",
+    service: "tech-idea-radar-backend",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     system: {

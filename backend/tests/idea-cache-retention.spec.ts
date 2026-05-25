@@ -72,7 +72,7 @@ describe("idea cache retention", () => {
   it("does not age out batches when loading cached ideas for read", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-18T04:00:00+09:00"));
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-ideas-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
 
     writeCache(cacheFile, [
@@ -107,7 +107,7 @@ describe("idea cache retention", () => {
   });
 
   it("normalizes cached idea batch times to scheduled JST slots on read", async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-ideas-normalize-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-normalize-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
     const generatedAt = "2026-05-24T04:41:11.695Z";
     const batch = ideaBatch("2026-05-24T13:00:00+09:00", "idea-startup");
@@ -131,7 +131,7 @@ describe("idea cache retention", () => {
   });
 
   it("keeps the previous scheduled batch slot when generation crosses a boundary", async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-ideas-cross-boundary-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-cross-boundary-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
     const generatedAt = "2026-05-24T11:35:00.000Z";
     const batch = ideaBatch("2026-05-24T16:00:00+09:00", "idea-cross-boundary");
@@ -155,7 +155,7 @@ describe("idea cache retention", () => {
   it("drops batches older than 24 hours when a new idea batch is cached", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-18T04:00:00+09:00"));
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-ideas-update-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-update-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
 
     writeCache(cacheFile, [
@@ -279,7 +279,7 @@ describe("idea cache retention", () => {
   it("does not age out loaded ideas on read without a cache update", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-18T04:00:00+09:00"));
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-ideas-stable-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-stable-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
 
     writeCache(cacheFile, [
@@ -302,7 +302,7 @@ describe("idea cache retention", () => {
   it("records a warning when fewer ideas are cached than requested", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-18T04:00:00+09:00"));
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-ideas-short-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-short-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
 
     vi.doMock("ai-engine", async (importOriginal) => {

@@ -25,7 +25,7 @@ describe("GET /health", () => {
     expect(body).toEqual(
       expect.objectContaining({
         status: "ok",
-        service: "builder-agent-chain-backend",
+        service: "tech-idea-radar-backend",
         cache: expect.objectContaining({
           hasData: expect.any(Boolean),
           batchCount: expect.any(Number),

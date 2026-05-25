@@ -2,7 +2,7 @@
   "name": "backend",
   "private": true,
   "version": "0.0.0",
-  "description": "Express-based API service for the Builder Agent Chain platform",
+  "description": "Express API service for Lume",
   "type": "commonjs",
   "scripts": {
     "dev": "npm run build --workspace ai-engine && nodemon --watch src --ext ts --exec ts-node src/server.ts",

@@ -53,7 +53,7 @@ describe("trend history persistent cache", () => {
   });
 
   it("loads v3 trend history entries from persistent cache", async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-trends-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-trends-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
     const generatedAt = "2026-05-17T00:00:00.000Z";
 
@@ -85,7 +85,7 @@ describe("trend history persistent cache", () => {
   });
 
   it("hydrates legacy trend history entries that are missing the summary policy", async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-legacy-trends-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-legacy-trends-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
     const generatedAt = "2026-05-17T00:00:00.000Z";
     const legacyTrendScan = trendScan(generatedAt) as Record<string, unknown>;
@@ -112,7 +112,7 @@ describe("trend history persistent cache", () => {
   });
 
   it("strips deprecated featured trend data from persistent trend cache", async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-deprecated-trends-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-deprecated-trends-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
     const generatedAt = "2026-05-17T00:00:00.000Z";
     const legacyTrendScan = {
@@ -144,7 +144,7 @@ describe("trend history persistent cache", () => {
   });
 
   it("does not age out trend history entries when loading persistent cache for read", async () => {
-    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "builder-agent-chain-old-trends-"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-old-trends-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
     const recentGeneratedAt = "2026-05-17T04:00:00.000Z";
     const boundaryGeneratedAt = "2026-05-16T04:00:00.000Z";

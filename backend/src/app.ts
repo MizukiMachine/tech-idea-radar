@@ -53,7 +53,7 @@ app.use((_req, res, next) => {
 });
 
 function sendServiceInfo(_req: Request, res: Response): void {
-  res.json({ message: "Builder Agent Chain backend service" });
+  res.json({ message: "Lume backend service" });
 }
 
 app.use("/health", healthRouter);

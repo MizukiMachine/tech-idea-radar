@@ -449,7 +449,7 @@ async function fetchArticleExcerpt(article: RssArticle): Promise<string> {
 
   try {
     const response = await fetch(targetUrl, {
-      headers: { 'User-Agent': 'builder-agent-chain/0.1 article excerpt reader' },
+      headers: { 'User-Agent': 'tech-idea-radar/0.1 article excerpt reader' },
       signal: controller.signal,
     });
     if (!response.ok) return '';
@@ -620,7 +620,7 @@ async function fetchFeed(feed: PublicFeed, keywords: string[]): Promise<FeedFetc
 
   try {
     const response = await fetch(feed.url, {
-      headers: { 'User-Agent': 'builder-agent-chain/0.1 RSS reader' },
+      headers: { 'User-Agent': 'tech-idea-radar/0.1 RSS reader' },
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);

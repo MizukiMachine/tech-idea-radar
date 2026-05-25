@@ -1,4 +1,6 @@
-# Builder Agent Chain
+# Lume
+
+Repository and deployment slug: `tech-idea-radar`.
 
 ## アプリ概要
 
