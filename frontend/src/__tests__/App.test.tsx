@@ -33,7 +33,7 @@ const idea = {
   id: "idea-1",
   title: "AI Ops Memo",
   tagline: "障害対応メモを自動整理",
-  description: "SRE チーム向けに障害対応ログを分類します。",
+  description: "SRE チーム向けに障害対応ログを分類します。再発防止策を提案します。",
   tags: ["AI", "SaaS"],
   productType: "B2B SaaS",
   targetUsers: "小規模な SRE チーム",
@@ -282,11 +282,19 @@ describe("App", () => {
 
   it("keeps long target users compact on idea cards", async () => {
     const longTargetUsers = "AIを導入したいが専任AIチームを持たずPoC評価に悩むDX担当者";
+    const longDescription = [
+      "SRE チーム向けに障害対応ログを分類し、初動の時系列と担当者の判断材料を自動で整理します",
+      "障害後の振り返りで再発防止策の候補を提示し、過去の対応履歴と関連するメモをまとめます",
+      "Slack や監視通知の断片を読み込み、原因仮説と確認すべき証跡を担当者ごとに並べます",
+      "まずは小規模なオンコールチームで一週間分の障害対応を取り込み、分類精度を検証します",
+      "導入後は対応ログの検索時間を減らし、新人でも過去事例に沿って初動判断できる状態を目指します",
+      "管理者向けにはチーム全体の未解決課題と改善アクションを週次で確認できる画面を用意します",
+    ].join("。");
     mockFetch.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
       let body: unknown = {
         status: "cached",
-        candidates: [{ ...idea, targetUsers: longTargetUsers }],
+        candidates: [{ ...idea, targetUsers: longTargetUsers, description: longDescription }],
         generatedAt,
         sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
       };
@@ -317,11 +325,27 @@ describe("App", () => {
 
     fireEvent.click(ideaCard);
     const dialog = await screen.findByRole("dialog");
-    const modalTargetHeading = within(dialog).getByRole("heading", { name: "対象ユーザー" });
+    const modalTitle = within(dialog).getByRole("heading", { name: "AI Ops Memo" });
+    const modalTargetLabel = within(dialog).getByText("対象ユーザー");
+    const modalSummaryLabel = within(dialog).getByText("概要");
     const modalDetailHeading = within(dialog).getByRole("heading", { name: "詳細" });
-    expect(within(dialog).getByText("概要")).toBeTruthy();
-    expect(modalTargetHeading.compareDocumentPosition(modalDetailHeading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    const detailList = dialog.querySelector(".idea-modal__detail-list") as HTMLElement;
+    expect(modalTitle.compareDocumentPosition(modalTargetLabel)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(modalTargetLabel.compareDocumentPosition(modalSummaryLabel)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(modalSummaryLabel.compareDocumentPosition(modalDetailHeading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(within(dialog).getByText(longTargetUsers)).toBeTruthy();
+    const detailItems = [...detailList.querySelectorAll("li")];
+    expect(detailItems).toHaveLength(5);
+    detailItems.forEach((item) => {
+      expect(Array.from(item.textContent ?? "").length).toBeLessThanOrEqual(70);
+    });
+    expect(detailList.textContent).not.toContain("。");
+    expect(within(dialog).queryByRole("heading", { name: "解く課題" })).toBeNull();
+    expect(within(dialog).queryByRole("heading", { name: "差別化" })).toBeNull();
+    expect(within(dialog).getByRole("heading", { name: "参照トレンド" })).toBeTruthy();
+    expect(within(dialog).getByText("トピック")).toBeTruthy();
+    expect(within(dialog).getByText(/配信元/)).toBeTruthy();
+    expect(within(dialog).getByText(/関連記事/)).toBeTruthy();
   });
 
   it("starts idea generation stream when the cache is empty", async () => {
@@ -646,11 +670,13 @@ describe("App", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" }));
     await waitFor(() => expect(screen.getByText("急増トレンド")).toBeTruthy());
-    await waitFor(() => expect(screen.getByText("トレンド根拠")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("参照トレンド")).toBeTruthy());
+    expect(screen.getByText("トピック")).toBeTruthy();
     expect(screen.getByText("AIエージェント導入")).toBeTruthy();
-    expect(screen.getByText((_, node) => node?.textContent === "観測規模 2媒体 / 2記事")).toBeTruthy();
-    expect(screen.getByLabelText("観測媒体").textContent).toContain("Example RSS");
-    expect(screen.getByLabelText("観測媒体").textContent).toContain("TechCrunch");
+    expect(screen.getByText((_, node) => node?.textContent === "配信元 2媒体")).toBeTruthy();
+    expect(screen.getByText((_, node) => node?.textContent === "関連記事 2件")).toBeTruthy();
+    expect(screen.getByLabelText("配信元").textContent).toContain("Example RSS");
+    expect(screen.getByLabelText("配信元").textContent).toContain("TechCrunch");
     expect(screen.getByRole("link", { name: /AIエージェントツールがプロダクト業務に広がる/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /AI agent tools are moving into product workflows/ })).toBeNull();
     expect(screen.queryByText((_, node) => node?.textContent === "このアイデアの根拠 RSS 1件")).toBeNull();

@@ -10,6 +10,9 @@ interface IdeaDetailModalProps {
     onClose: () => void;
 }
 
+const DETAIL_BULLET_MAX_ITEMS = 5;
+const DETAIL_BULLET_MAX_CHARS = 70;
+
 function formatDate(value: string | undefined): string {
     if (!value) return '-';
     const date = new Date(value);
@@ -46,18 +49,56 @@ function evidenceTitle(
     return cleanDisplayText(trendArticle?.title || source.title || source.url);
 }
 
+function trimDetailItem(value: string): string {
+    return value
+        .replace(/^[\s・\-*•]+/, '')
+        .trim()
+        .replace(/[。．.]+$/u, '')
+        .trim();
+}
+
+function compactDetailItem(value: string): string {
+    const trimmed = trimDetailItem(value);
+    const chars = Array.from(trimmed);
+    if (chars.length <= DETAIL_BULLET_MAX_CHARS) return trimmed;
+    return trimDetailItem(`${chars.slice(0, DETAIL_BULLET_MAX_CHARS - 1).join('').trimEnd()}…`);
+}
+
+function detailItems(description: string): string[] {
+    const lines = description
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+    const alreadyList = lines.length > 1 || lines.some((line) => /^[・\-*•]/.test(line));
+    const rawItems = alreadyList
+        ? lines
+        : description
+            .replace(/\r?\n/g, ' ')
+            .split(/。|．|(?:\.(?:\s+|$))/u);
+    const items = rawItems
+        .map(compactDetailItem)
+        .filter(Boolean);
+
+    return (items.length > 0 ? items : [compactDetailItem(description)])
+        .slice(0, DETAIL_BULLET_MAX_ITEMS);
+}
+
 export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: IdeaDetailModalProps): JSX.Element {
     const evidenceUrls = idea.sources.evidenceUrls ?? [];
     const visibleTrendSignal = trendSignal?.status === 'stale' ? null : trendSignal;
+    const details = detailItems(idea.description);
 
     return (
         <div className="idea-modal" role="dialog" aria-modal="true" aria-labelledby="idea-modal-title">
             <button type="button" className="idea-modal__backdrop" onClick={onClose} aria-label="閉じる" />
             <section className="idea-modal__panel">
                 <div className="idea-modal__header">
-                    <div>
-                        <span className="idea-modal__eyebrow">{idea.productType}</span>
+                    <div className="idea-modal__heading">
                         <h2 id="idea-modal-title" className="idea-modal__title">{idea.title}</h2>
+                        <div className="idea-modal__target">
+                            <span className="idea-modal__summary-label">対象ユーザー</span>
+                            <p className="idea-modal__target-text">{idea.targetUsers}</p>
+                        </div>
                         <div className="idea-modal__summary">
                             <span className="idea-modal__summary-label">概要</span>
                             <p className="idea-modal__tagline">{idea.tagline}</p>
@@ -67,14 +108,11 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                 </div>
 
                 <div className="idea-modal__body">
-                    <section className="idea-modal__section idea-modal__section--wide idea-modal__section--target">
-                        <h3>対象ユーザー</h3>
-                        <p>{idea.targetUsers}</p>
-                    </section>
-
-                    <section className="idea-modal__section idea-modal__section--wide">
+                    <section className="idea-modal__section idea-modal__section--wide idea-modal__section--detail">
                         <h3>詳細</h3>
-                        <p>{idea.description}</p>
+                        <ul className="idea-modal__detail-list">
+                            {details.map((item, index) => <li key={`${index}-${item}`}>{item}</li>)}
+                        </ul>
                     </section>
 
                     {visibleTrendSignal && (
@@ -84,17 +122,21 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                                     <span className={`idea-modal__trend-badge idea-modal__trend-badge--${visibleTrendSignal.status}`}>
                                         {topicStatusLabel(visibleTrendSignal.status)}トレンド
                                     </span>
-                                    <h3>トレンド根拠</h3>
+                                    <h3>参照トレンド</h3>
                                 </div>
-                                <span className="idea-modal__trend-topic">{visibleTrendSignal.label}</span>
                             </div>
+                            <p className="idea-modal__trend-topic">
+                                <span>トピック</span>
+                                {visibleTrendSignal.label}
+                            </p>
                             <div className="idea-modal__trend-metrics">
-                                <span>観測規模 <strong>{visibleTrendSignal.sourceCount}</strong>媒体 / <strong>{visibleTrendSignal.articleCount}</strong>記事</span>
-                                <span>初回 {formatDate(visibleTrendSignal.firstSeenAt)}</span>
-                                <span>最終 {formatDate(visibleTrendSignal.lastSeenAt)}</span>
+                                <span>配信元 <strong>{visibleTrendSignal.sourceCount}</strong>媒体</span>
+                                <span>関連記事 <strong>{visibleTrendSignal.articleCount}</strong>件</span>
+                                <span>初回観測 {formatDate(visibleTrendSignal.firstSeenAt)}</span>
+                                <span>最新観測 {formatDate(visibleTrendSignal.lastSeenAt)}</span>
                             </div>
                             {visibleTrendSignal.sources.length > 0 && (
-                                <div className="idea-modal__trend-sources" aria-label="観測媒体">
+                                <div className="idea-modal__trend-sources" aria-label="配信元">
                                     {visibleTrendSignal.sources.map((source) => (
                                         <span key={source}>{source}</span>
                                     ))}
@@ -102,16 +144,6 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                             )}
                         </section>
                     )}
-
-                    <section className="idea-modal__section">
-                        <h3>解く課題</h3>
-                        <p>{idea.coreProblem}</p>
-                    </section>
-
-                    <section className="idea-modal__section">
-                        <h3>差別化</h3>
-                        <p>{idea.differentiation}</p>
-                    </section>
 
                     <section className="idea-modal__section">
                         <h3>タグ</h3>

@@ -36,6 +36,10 @@ describe('prompt catalog', () => {
     expect(systemPrompt).toContain('利用状況、悩み、条件節、文末の助詞は書かない');
     expect(systemPrompt).toContain('悪い例: AIコーディングアシスタントを導入済みだが');
     expect(systemPrompt).toContain('18文字以内の短い対象ユーザー名詞句');
+    expect(systemPrompt).toContain('descriptionは最大5項目の箇条書き');
+    expect(systemPrompt).toContain('1項目70文字以内');
+    expect(systemPrompt).toContain('文末に「。」や「.」を付けない');
+    expect(systemPrompt).toContain('20〜35字程度の短い課題メモ');
     expect(systemPrompt).not.toContain('${');
     expect(userPrompt).toContain('### RSSコンテキスト');
     expect(userPrompt).toContain('"AI Ops article"');
@@ -67,6 +71,8 @@ describe('prompt catalog', () => {
     expect(seedPrompt).toContain('互いに重複しないアイデア候補');
     expect(seedSystemPrompt).toContain('targetUsersは「誰向けか」だけ');
     expect(detailSystemPrompt).toContain('targetUsersはカード一覧で先に読む');
+    expect(detailSystemPrompt).toContain('descriptionは最大5項目の箇条書き');
+    expect(seedSystemPrompt).toContain('短いメモに留める');
     expect(detailPrompt).toContain('"seedId": "seed-1"');
     expect(detailPrompt).toContain('この候補1件だけ');
     expect(seedSystemPrompt).not.toContain('${');

@@ -127,7 +127,15 @@ afterEach(() => {
 
 describe('IdeaGenerationAgent', () => {
   it('builds a RSS trend-aware prompt and parses idea candidates', async () => {
-    const client = createMockClient(JSON.stringify([candidate]));
+    const longDescription = [
+      '障害対応ログを分類し、初動の時系列と担当者の判断材料を自動で整理する',
+      '振り返りで再発防止策の候補を提示し、過去の対応履歴と関連メモをまとめる',
+      '監視通知の断片を読み込み、原因仮説と確認すべき証跡を担当者ごとに並べる',
+      '小規模オンコールチームで一週間分の障害対応を取り込み、分類精度を検証する',
+      '対応ログの検索時間を減らし、新人でも過去事例に沿って初動判断できる状態を目指す',
+      '週次で未解決課題と改善アクションを管理者が確認できる画面を用意する',
+    ].join('。');
+    const client = createMockClient(JSON.stringify([{ ...candidate, description: longDescription }]));
     const agent = new IdeaGenerationAgent(client);
 
     const result = await agent.execute({
@@ -148,6 +156,13 @@ describe('IdeaGenerationAgent', () => {
     });
 
     expect(result[0].title).toBe('AI Ops Memo');
+    const descriptionItems = result[0].description.split('\n');
+    expect(descriptionItems).toHaveLength(5);
+    for (const item of descriptionItems) {
+      expect(item.startsWith('・')).toBe(true);
+      expect(item).not.toContain('。');
+      expect(Array.from(item.replace(/^・/, '')).length).toBeLessThanOrEqual(70);
+    }
     expect(client.send).toHaveBeenCalledOnce();
     const prompt = vi.mocked(client.send).mock.calls[0]?.[1] ?? '';
     expect(prompt).toContain('AI, SaaS');

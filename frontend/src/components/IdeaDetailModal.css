@@ -36,6 +36,11 @@
     border-bottom: 1px solid var(--border-color);
 }
 
+.idea-modal__heading {
+    min-width: 0;
+    flex: 1;
+}
+
 .idea-modal__eyebrow {
     display: inline-flex;
     padding: 4px 10px;
@@ -61,11 +66,26 @@
     margin-top: 12px;
 }
 
+.idea-modal__target {
+    display: grid;
+    gap: 6px;
+    margin-top: 16px;
+}
+
 .idea-modal__summary-label {
     color: var(--text-tertiary);
     font-size: 12px;
     font-weight: 800;
     line-height: 1.2;
+}
+
+.idea-modal__target-text {
+    margin: 0;
+    color: var(--text-primary);
+    font-size: 17px;
+    font-weight: 800;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
 }
 
 .idea-modal__tagline {
@@ -159,15 +179,34 @@
     line-height: 1.8;
 }
 
-.idea-modal__section--target h3 {
-    font-size: 15px;
+.idea-modal__section--detail {
+    background: var(--bg-input);
 }
 
-.idea-modal__section--target p {
-    color: var(--text-primary);
-    font-size: 17px;
-    font-weight: 800;
-    line-height: 1.65;
+.idea-modal__detail-list {
+    display: grid;
+    gap: 10px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.idea-modal__detail-list li {
+    position: relative;
+    padding-left: 18px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    font-weight: 650;
+    line-height: 1.75;
+    overflow-wrap: anywhere;
+}
+
+.idea-modal__detail-list li::before {
+    content: "・";
+    position: absolute;
+    left: 0;
+    color: var(--accent-primary);
+    font-weight: 900;
 }
 
 .idea-modal__trend-section {
@@ -179,7 +218,7 @@
     align-items: flex-start;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
 }
 
 .idea-modal__trend-head h3 {
@@ -214,13 +253,27 @@
 }
 
 .idea-modal__trend-topic {
-    max-width: 48%;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0 0 12px;
     color: var(--text-primary);
     font-size: 13px;
     font-weight: 800;
     line-height: 1.45;
-    text-align: right;
     overflow-wrap: anywhere;
+}
+
+.idea-modal__trend-topic span {
+    flex: 0 0 auto;
+    padding: 2px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background: var(--bg-card);
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.35;
 }
 
 .idea-modal__trend-metrics {
@@ -339,13 +392,8 @@
         grid-template-columns: 1fr;
     }
 
-    .idea-modal__trend-head {
-        flex-direction: column;
-    }
-
     .idea-modal__trend-topic {
-        max-width: 100%;
-        text-align: left;
+        flex-direction: column;
     }
 
     .idea-modal__section--wide {
