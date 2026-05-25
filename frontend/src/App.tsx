@@ -4,6 +4,7 @@ import { buildIdeaTrendSignal, ideaTrendSignalKey } from './utils/idea-trend-sig
 import { topicStatusRank } from './utils/trend-status';
 import {
   fetchIdeas,
+  fetchIdeasMeta,
   fetchTrends,
   fetchTrendHistory,
   fetchTrendSnapshot,
@@ -31,6 +32,7 @@ const IDEA_SORTS: { id: IdeaSort; label: string; requiresTrend?: boolean }[] = [
 
 const IDEAS_PER_PAGE = 15;
 const TREND_DISPLAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+const PUBLIC_READONLY_RETRY_MS = 15_000;
 
 const INTEREST_KEYWORDS: Record<string, string[]> = {
   business: ['業務', '効率', 'SaaS', 'B2B', '自動化', '管理', '営業', '経理', 'バックオフィス'],
@@ -158,6 +160,9 @@ function userFacingError(message: string): string {
   if (normalized.includes('zai_api_key')) {
     return 'ZAI_API_KEY が設定されていません。バックエンドの環境変数を確認してください。';
   }
+  if (normalized.includes('admin token required')) {
+    return '公開版ではキャッシュ済みのアイデアのみ表示しています。初回データを準備中です。';
+  }
   if (normalized.includes('ideas not yet generated')) {
     return 'まだアイデアが生成されていません。先に生成を実行してください。';
   }
@@ -191,6 +196,7 @@ function App(): JSX.Element {
   useEffect(() => {
     let cancelled = false;
     let streamController: AbortController | null = null;
+    let retryTimer: number | null = null;
 
     async function loadIdeas() {
       try {
@@ -211,6 +217,22 @@ function App(): JSX.Element {
       }
 
       if (cancelled) return;
+      const meta = await fetchIdeasMeta().catch(() => null);
+      if (cancelled) return;
+      if (meta?.env.publicReadonlyMode) {
+        setError(null);
+        setProgressText(
+          meta.generationInProgress || meta.backgroundRefreshInProgress
+            ? '初回データを準備中です。しばらくすると自動で表示されます。'
+            : '公開版ではキャッシュ済みのアイデアのみ表示しています。現在表示できるアイデアはまだありません。',
+        );
+        setLoading(true);
+        retryTimer = window.setTimeout(() => {
+          void loadIdeas();
+        }, PUBLIC_READONLY_RETRY_MS);
+        return;
+      }
+
       setProgressText('トレンドデータを分析中です。');
       streamController = streamIdeas({
         onProgress: (text) => {
@@ -244,6 +266,7 @@ function App(): JSX.Element {
     void loadIdeas();
     return () => {
       cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
       streamController?.abort();
     };
   }, []);

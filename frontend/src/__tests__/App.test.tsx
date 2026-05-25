@@ -344,6 +344,51 @@ describe("App", () => {
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/ideas/stream"))).toBe(true);
   });
 
+  it("waits for cached ideas instead of streaming in public readonly mode", async () => {
+    const publicEmptyMeta = {
+      ...meta,
+      env: {
+        ...meta.env,
+        publicReadonlyMode: true,
+        adminAuthEnabled: true,
+      },
+      cache: {
+        ...meta.cache,
+        status: "empty",
+        generatedAt: null,
+        candidateCount: 0,
+        batchCount: 0,
+        sourceSummary: null,
+      },
+      generationInProgress: true,
+      backgroundRefreshInProgress: true,
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "empty",
+        candidates: [],
+        generatedAt: "",
+        sourceSummary: { rssItemCount: 0, usedLLMFallback: false },
+        batches: [],
+      };
+      if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/trends/history")) body = trendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = publicEmptyMeta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+
+    await screen.findAllByText("初回データを準備中です。しばらくすると自動で表示されます。");
+    expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/ideas/stream"))).toBe(false);
+    expect(screen.queryByText("Admin token required.")).toBeNull();
+  });
+
   it("renders RSS-only trends after switching tabs", async () => {
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
