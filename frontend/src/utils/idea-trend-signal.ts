@@ -65,6 +65,24 @@ function toEvidenceArticle(article: RssArticle): IdeaTrendEvidenceArticle | null
   };
 }
 
+function toClusterArticle(article: RssTopicCluster['representativeArticles'][number]): IdeaTrendEvidenceArticle | null {
+  const url = article.url || article.link;
+  if (!url) return null;
+  return {
+    title: cleanDisplayText(article.title),
+    url,
+    source: article.source || 'RSS',
+    publishedAt: article.publishedAt,
+    firstSeenAt: article.firstSeenAt,
+  };
+}
+
+function uniqueArticles(articles: IdeaTrendEvidenceArticle[]): IdeaTrendEvidenceArticle[] {
+  return articles.filter((article, index, list) => (
+    list.findIndex((item) => normalizeUrl(item.url) === normalizeUrl(article.url)) === index
+  ));
+}
+
 function bestCluster(clusters: RssTopicCluster[]): RssTopicCluster | null {
   return [...clusters].sort((a, b) => (
     topicStatusRank(b.status) - topicStatusRank(a.status)
@@ -116,10 +134,20 @@ export function buildIdeaTrendSignal(
 
   if (!cluster && !articleStatus) return null;
 
-  const evidenceArticles = matchedArticles
+  const evidenceArticles = uniqueArticles(matchedArticles
     .map(toEvidenceArticle)
-    .filter((article): article is IdeaTrendEvidenceArticle => Boolean(article))
-    .filter((article, index, list) => list.findIndex((item) => item.url === article.url) === index);
+    .filter((article): article is IdeaTrendEvidenceArticle => Boolean(article)));
+  const relatedArticles = uniqueArticles([
+    ...(cluster
+      ? articles
+        .filter((article) => article.topicKey === cluster.topic)
+        .map(toEvidenceArticle)
+        .filter((article): article is IdeaTrendEvidenceArticle => Boolean(article))
+      : []),
+    ...(cluster?.representativeArticles ?? [])
+      .map(toClusterArticle)
+      .filter((article): article is IdeaTrendEvidenceArticle => Boolean(article)),
+  ]);
   const status = cluster?.status ?? articleStatus ?? 'continuing';
   const topic = cluster?.topic ?? matchedArticles[0]?.topicKey ?? idea.sources.rssKeywords[0] ?? idea.title;
   const label = cluster?.label ?? idea.sources.rssKeywords[0] ?? matchedArticles[0]?.titleJa ?? matchedArticles[0]?.title ?? idea.title;
@@ -143,5 +171,6 @@ export function buildIdeaTrendSignal(
     lastSeenAt: cluster?.lastSeenAt ?? matchedArticles.find((article) => article.lastSeenAt)?.lastSeenAt,
     sources,
     evidenceArticles,
+    relatedArticles,
   };
 }

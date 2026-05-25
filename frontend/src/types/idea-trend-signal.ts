@@ -21,4 +21,5 @@ export interface IdeaTrendSignal {
   lastSeenAt?: string;
   sources: string[];
   evidenceArticles: IdeaTrendEvidenceArticle[];
+  relatedArticles: IdeaTrendEvidenceArticle[];
 }

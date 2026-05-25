@@ -12,20 +12,7 @@ interface IdeaDetailModalProps {
 
 const DETAIL_BULLET_MAX_ITEMS = 5;
 const DETAIL_BULLET_MAX_CHARS = 70;
-
-function formatDate(value: string | undefined): string {
-    if (!value) return '-';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString('ja-JP', {
-        timeZone: 'Asia/Tokyo',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-    });
-}
+const RELATED_ARTICLE_MAX_ITEMS = 4;
 
 function normalizeUrl(value: string): string {
     try {
@@ -87,6 +74,10 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
     const evidenceUrls = idea.sources.evidenceUrls ?? [];
     const visibleTrendSignal = trendSignal?.status === 'stale' ? null : trendSignal;
     const details = detailItems(idea.description);
+    const evidenceUrlSet = new Set(evidenceUrls.map((source) => normalizeUrl(source.url)));
+    const relatedTrendArticles = (visibleTrendSignal?.relatedArticles ?? [])
+        .filter((article) => !evidenceUrlSet.has(normalizeUrl(article.url)))
+        .slice(0, RELATED_ARTICLE_MAX_ITEMS);
 
     return (
         <div className="idea-modal" role="dialog" aria-modal="true" aria-labelledby="idea-modal-title">
@@ -115,43 +106,6 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                         </ul>
                     </section>
 
-                    {visibleTrendSignal && (
-                        <section className="idea-modal__section idea-modal__section--wide idea-modal__trend-section">
-                            <div className="idea-modal__trend-head">
-                                <div>
-                                    <span className={`idea-modal__trend-badge idea-modal__trend-badge--${visibleTrendSignal.status}`}>
-                                        {topicStatusLabel(visibleTrendSignal.status)}トレンド
-                                    </span>
-                                    <h3>参照トレンド</h3>
-                                </div>
-                            </div>
-                            <p className="idea-modal__trend-topic">
-                                <span>トピック</span>
-                                {visibleTrendSignal.label}
-                            </p>
-                            <div className="idea-modal__trend-metrics">
-                                <span>配信元 <strong>{visibleTrendSignal.sourceCount}</strong>媒体</span>
-                                <span>関連記事 <strong>{visibleTrendSignal.articleCount}</strong>件</span>
-                                <span>初回観測 {formatDate(visibleTrendSignal.firstSeenAt)}</span>
-                                <span>最新観測 {formatDate(visibleTrendSignal.lastSeenAt)}</span>
-                            </div>
-                            {visibleTrendSignal.sources.length > 0 && (
-                                <div className="idea-modal__trend-sources" aria-label="配信元">
-                                    {visibleTrendSignal.sources.map((source) => (
-                                        <span key={source}>{source}</span>
-                                    ))}
-                                </div>
-                            )}
-                        </section>
-                    )}
-
-                    <section className="idea-modal__section">
-                        <h3>タグ</h3>
-                        <div className="idea-modal__tags">
-                            {idea.tags.map((tag) => <span key={tag}>{tag}</span>)}
-                        </div>
-                    </section>
-
                     <section className="idea-modal__section idea-modal__section--wide">
                         <h3>根拠・参照元</h3>
                         {evidenceUrls.length > 0 ? (
@@ -171,6 +125,38 @@ export default function IdeaDetailModal({ idea, trendSignal = null, onClose }: I
                                 </div>
                             </div>
                         )}
+                    </section>
+
+                    {visibleTrendSignal && relatedTrendArticles.length > 0 && (
+                        <section className="idea-modal__section idea-modal__section--wide idea-modal__trend-section">
+                            <div className="idea-modal__trend-head">
+                                <div>
+                                    <span className={`idea-modal__trend-badge idea-modal__trend-badge--${visibleTrendSignal.status}`}>
+                                        {topicStatusLabel(visibleTrendSignal.status)}トレンド
+                                    </span>
+                                    <h3>関連記事</h3>
+                                </div>
+                            </div>
+                            <p className="idea-modal__trend-topic">
+                                <span>関連トピック</span>
+                                {visibleTrendSignal.label}
+                            </p>
+                            <div className="idea-modal__related-links" aria-label="関連記事">
+                                {relatedTrendArticles.map((article) => (
+                                    <a key={article.url} href={article.url} target="_blank" rel="noopener noreferrer">
+                                        <span className="idea-modal__related-source">{article.source}</span>
+                                        <span className="idea-modal__related-title">{article.title}</span>
+                                    </a>
+                                ))}
+                            </div>
+                        </section>
+                    )}
+
+                    <section className="idea-modal__section">
+                        <h3>タグ</h3>
+                        <div className="idea-modal__tags">
+                            {idea.tags.map((tag) => <span key={tag}>{tag}</span>)}
+                        </div>
                     </section>
                 </div>
             </section>
