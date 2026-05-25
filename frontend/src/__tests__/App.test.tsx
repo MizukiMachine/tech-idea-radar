@@ -522,7 +522,7 @@ describe("App", () => {
 
   it("renders previous trend snapshots and deduplicates repeated article URLs", async () => {
     const previousGeneratedAt = new Date(Date.parse(generatedAt) - 4 * 60 * 60 * 1000).toISOString();
-    const oldGeneratedAt = new Date(Date.parse(generatedAt) - 25 * 60 * 60 * 1000).toISOString();
+    const oldGeneratedAt = new Date(Date.parse(generatedAt) - 366 * 24 * 60 * 60 * 1000).toISOString();
     const previousOnlyPublishedAt = new Date(Date.parse(previousGeneratedAt) - 71 * 60 * 60 * 1000).toISOString();
     const previousTrends = {
       ...trends,
@@ -606,6 +606,52 @@ describe("App", () => {
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history/2"))).toBe(false);
   });
 
+  it("limits trend snapshot fetches to the most recent 30 entries", async () => {
+    const history = Array.from({ length: 35 }, (_, index) => {
+      const entryGeneratedAt = new Date(Date.parse(generatedAt) - index * 24 * 60 * 60 * 1000).toISOString();
+      return {
+        scannedAt: entryGeneratedAt,
+        generatedAt: entryGeneratedAt,
+        articleCount: 2,
+        keywordCount: 1,
+      };
+    });
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      const snapshotMatch = url.match(/\/api\/ai\/trends\/history\/(\d+)$/);
+      if (snapshotMatch) {
+        const index = Number(snapshotMatch[1]);
+        body = {
+          ...trends,
+          generatedAt: history[index].generatedAt,
+        };
+      } else if (url.includes("/api/ai/trends/history")) {
+        body = { history };
+      } else if (url.includes("/api/ai/trends")) {
+        body = trends;
+      }
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /^すべて / })).toBeTruthy());
+    expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history/29"))).toBe(true);
+    expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history/30"))).toBe(false);
+  });
+
   it("does not report history snapshots that add no visible articles", async () => {
     const previousGeneratedAt = new Date(Date.parse(generatedAt) - 4 * 60 * 60 * 1000).toISOString();
     const historyWithPrevious = {
@@ -682,8 +728,8 @@ describe("App", () => {
     expect(screen.queryByText((_, node) => node?.textContent === "このアイデアの根拠 RSS 1件")).toBeNull();
   });
 
-  it("does not use trend evidence on idea cards when the latest trend scan is older than 24 hours", async () => {
-    const staleGeneratedAt = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+  it("does not use trend evidence on idea cards when the latest trend scan is older than 365 days", async () => {
+    const staleGeneratedAt = new Date(Date.now() - 366 * 24 * 60 * 60 * 1000).toISOString();
     const staleTrends = {
       ...trends,
       generatedAt: staleGeneratedAt,

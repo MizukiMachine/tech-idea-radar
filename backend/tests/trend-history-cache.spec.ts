@@ -167,7 +167,7 @@ describe("trend history persistent cache", () => {
 
     const cache = await import("../src/services/idea-cache");
 
-    expect(cache.getRuntimeMeta().env.trendHistoryWindowHours).toBe(24);
+    expect(cache.getRuntimeMeta().env.trendHistoryWindowHours).toBe(365 * 24);
     expect(cache.getTrendHistory().map((entry) => entry.generatedAt)).toEqual([
       recentGeneratedAt,
       boundaryGeneratedAt,
