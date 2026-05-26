@@ -1,23 +1,31 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none">
   <title>Lume brand mark</title>
-  <desc>Rounded square Lume monogram mark in the product lime green palette.</desc>
+  <desc>Rounded square Lume radar sweep mark in the product lime green palette.</desc>
   <defs>
-    <linearGradient id="lume-tile" x1="10" y1="7" x2="55" y2="58" gradientUnits="userSpaceOnUse">
+    <linearGradient id="lume-mark-core" x1="20" y1="18" x2="45" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#BFD97D"/>
+      <stop offset="0.54" stop-color="#8FAE4D"/>
+      <stop offset="1" stop-color="#5D7D2B"/>
+    </linearGradient>
+    <linearGradient id="lume-sweep" x1="22" y1="43" x2="46" y2="18" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9FBD58"/>
+      <stop offset="0.58" stop-color="#8FAE4D"/>
+      <stop offset="1" stop-color="#C8D85D"/>
+    </linearGradient>
+    <linearGradient id="lume-tile" x1="8" y1="7" x2="56" y2="57" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#FFFFFF"/>
       <stop offset="1" stop-color="#F4FAEA"/>
     </linearGradient>
-    <linearGradient id="lume-monogram" x1="19" y1="20" x2="43" y2="45" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#6F8F2C"/>
-      <stop offset="0.56" stop-color="#5D7D2B"/>
-      <stop offset="1" stop-color="#8FAE4D"/>
-    </linearGradient>
-    <filter id="lume-soft-shadow" x="-8" y="-8" width="80" height="80" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#172033" flood-opacity="0.1"/>
+    <filter id="lume-shadow" x="-12" y="-12" width="88" height="88" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="2" stdDeviation="1.8" flood-color="#172033" flood-opacity="0.12"/>
     </filter>
   </defs>
 
-  <rect x="4.5" y="4.5" width="55" height="55" rx="15.5" fill="url(#lume-tile)" stroke="#CFE4A8" filter="url(#lume-soft-shadow)"/>
-  <path d="M21 41V22" stroke="url(#lume-monogram)" stroke-width="6" stroke-linecap="round"/>
-  <path d="M21 41H31" stroke="url(#lume-monogram)" stroke-width="6" stroke-linecap="round"/>
-  <path d="M35.5 30.5V38.6C35.5 41.2 37.2 42.7 39.6 42.7C42.4 42.7 44.1 40.8 44.1 38.1V30.5" stroke="url(#lume-monogram)" stroke-width="5.2" stroke-linecap="round"/>
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#lume-tile)" stroke="#CFE4A8" stroke-width="2" filter="url(#lume-shadow)"/>
+  <path d="M21 43V18" stroke="url(#lume-mark-core)" stroke-width="9.5" stroke-linecap="round"/>
+  <path d="M21 43H42" stroke="url(#lume-mark-core)" stroke-width="9.5" stroke-linecap="round"/>
+  <path d="M21 43C24.5 34.2 32.1 27.1 41 24.5" stroke="#D7E7A8" stroke-width="3" stroke-linecap="round" opacity="0.95"/>
+  <path d="M21 43L45 18.5" stroke="url(#lume-sweep)" stroke-width="4.4" stroke-linecap="round"/>
+  <circle cx="45" cy="18.5" r="4.2" fill="#C8D85D"/>
+  <path d="M45 10.8V14.7M45 22.3V26.2M37.3 18.5H41.1M48.9 18.5H52.7" stroke="#C8D85D" stroke-width="1.8" stroke-linecap="round" opacity="0.88"/>
 </svg>
