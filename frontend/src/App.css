@@ -31,45 +31,45 @@
 
 .app-header__brand {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-start;
-  gap: 3px;
+  gap: 16px;
   min-width: 0;
   text-align: left;
 }
 
 .app-header__logo {
   display: block;
-  width: 156px;
-  height: auto;
-  flex: 0 0 auto;
-  transform: translateX(-13px);
+  width: 72px;
+  height: 72px;
+  flex: 0 0 72px;
 }
 
 .app-header__brand-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
-  padding-left: 40px;
 }
 
 .app-header__brand h1 {
-  margin: 0 0 6px;
+  margin: 0 0 7px;
   color: var(--text-primary);
   font-family: "Outfit", "Inter", "Noto Sans JP", system-ui, sans-serif;
-  font-size: 30px;
+  font-size: 38px;
   font-weight: 900;
   line-height: 1;
   letter-spacing: 0;
 }
 
 .app-header__brand-title {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
+  position: static;
+  width: auto;
+  height: auto;
+  margin: 0 0 7px;
   padding: 0;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
+  overflow: visible;
+  clip: auto;
   white-space: nowrap;
   border: 0;
 }
@@ -77,8 +77,9 @@
 .app-header__brand p {
   margin: 0;
   color: var(--text-secondary);
-  font-size: 14px;
-  font-weight: 650;
+  font-size: 18px;
+  font-weight: 750;
+  line-height: 1.25;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -747,24 +748,25 @@
   }
 
   .app-header__brand {
-    align-items: flex-start;
+    align-items: center;
+    gap: 12px;
   }
 
   .app-header__brand h1 {
-    font-size: 24px;
+    font-size: 30px;
+    margin-bottom: 6px;
   }
 
   .app-header__brand p {
-    max-width: 240px;
+    max-width: 260px;
+    font-size: 15px;
     white-space: normal;
   }
 
   .app-header__logo {
-    width: 148px;
-  }
-
-  .app-header__brand-copy {
-    padding-left: 37px;
+    width: 60px;
+    height: 60px;
+    flex-basis: 60px;
   }
 
   .workspace {
