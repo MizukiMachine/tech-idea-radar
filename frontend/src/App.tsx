@@ -30,7 +30,7 @@ const IDEA_SORTS: { id: IdeaSort; label: string; requiresTrend?: boolean }[] = [
   { id: 'evidence', label: '根拠多い順' },
 ];
 
-const IDEAS_PER_PAGE = 15;
+const IDEAS_PER_PAGE = 24;
 const TREND_DISPLAY_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 const TREND_SNAPSHOT_FETCH_LIMIT = 30;
 const PUBLIC_READONLY_RETRY_MS = 15_000;
