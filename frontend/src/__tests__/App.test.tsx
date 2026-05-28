@@ -938,8 +938,8 @@ describe("App", () => {
     expect(document.querySelector(".idea-grid .idea-card__title")?.textContent).toBe("AI Ops Memo");
   });
 
-  it("paginates ideas in groups of 15", async () => {
-    const pagedIdeas = Array.from({ length: 16 }, (_, index) => makeIdea(index + 1));
+  it("paginates ideas in groups of 24", async () => {
+    const pagedIdeas = Array.from({ length: 25 }, (_, index) => makeIdea(index + 1));
 
     mockFetch.mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
@@ -962,17 +962,17 @@ describe("App", () => {
     openIdeasView();
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Paged Idea 1 の詳細を開く" })).toBeTruthy());
-    expect(document.querySelectorAll(".idea-grid .idea-card")).toHaveLength(15);
-    expect(document.querySelector(".idea-results-toolbar__count")?.textContent).toBe("16件");
-    expect(screen.getByText("1-15 / 16件")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Paged Idea 16 の詳細を開く" })).toBeNull();
+    expect(document.querySelectorAll(".idea-grid .idea-card")).toHaveLength(24);
+    expect(document.querySelector(".idea-results-toolbar__count")?.textContent).toBe("25件");
+    expect(screen.getByText("1-24 / 25件")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Paged Idea 25 の詳細を開く" })).toBeNull();
 
     scrollIntoViewMock.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "次のページ" }));
 
-    expect(screen.getByText("16-16 / 16件")).toBeTruthy();
+    expect(screen.getByText("25-25 / 25件")).toBeTruthy();
     expect(document.querySelectorAll(".idea-grid .idea-card")).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "Paged Idea 16 の詳細を開く" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Paged Idea 25 の詳細を開く" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Paged Idea 1 の詳細を開く" })).toBeNull();
     expect(scrollIntoViewMock).toHaveBeenCalledWith({ block: "start" });
   });
