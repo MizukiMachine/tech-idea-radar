@@ -247,7 +247,7 @@ describe('fetchRssContext', () => {
     const sources = new Set(result.relatedArticles.map((article) => article.source));
 
     expect(fetchMock.mock.calls.length).toBe(8);
-    expect(result.relatedArticles).toHaveLength(18);
+    expect(result.relatedArticles).toHaveLength(9);
     expect(sources.size).toBe(8);
     expect([...sources]).toEqual(expect.arrayContaining([
       'Hacker News',

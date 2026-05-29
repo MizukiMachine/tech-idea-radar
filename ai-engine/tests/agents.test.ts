@@ -1037,7 +1037,7 @@ describe('EntrepreneurAgent', () => {
 
     const result = await agent.scanTrends();
 
-    expect(result.rssContext.relatedArticles).toHaveLength(8);
+    expect(result.rssContext.relatedArticles).toHaveLength(4);
     expect(client.send).toHaveBeenCalledTimes(2);
     expect(maxActiveRequests).toBe(2);
   });
@@ -1173,9 +1173,9 @@ describe('EntrepreneurAgent', () => {
 
     const result = await agent.scanTrends();
 
-    expect(result.rssContext.relatedArticles).toHaveLength(8);
+    expect(result.rssContext.relatedArticles).toHaveLength(4);
     expect(result.rssContext.relatedArticles.map((article) => article.url)).toEqual(
-      Array.from({ length: 8 }, (_, index) => `https://example.com/candidate-${index + 1}`),
+      Array.from({ length: 4 }, (_, index) => `https://example.com/candidate-${index + 1}`),
     );
     expect(result.rssContext.summaryErrors).toBeUndefined();
     expect(result.rssContext.replacedSummaryErrors).toHaveLength(1);
@@ -1271,9 +1271,9 @@ describe('EntrepreneurAgent', () => {
       .find((prompt) => prompt.includes('### 今回の候補数')) ?? '';
     const rssContext = extractPromptRssContext(seedPrompt);
     const relatedArticles = rssContext.relatedArticles as Array<{ url: string }>;
-    expect(relatedArticles).toHaveLength(8);
+    expect(relatedArticles).toHaveLength(4);
     expect(relatedArticles.map((article) => article.url)).toEqual(
-      Array.from({ length: 8 }, (_, index) => `https://example.com/candidate-${index + 1}`),
+      Array.from({ length: 4 }, (_, index) => `https://example.com/candidate-${index + 1}`),
     );
   });
 
@@ -1328,7 +1328,7 @@ describe('EntrepreneurAgent', () => {
     expect(result.rssContext.relatedArticles).toHaveLength(1);
     expect(result.rssContext.relatedArticles[0].url).toBe('https://example.com/valid');
     expect(result.rssContext.summaryErrors).toHaveLength(1);
-    expect(result.sourceSummary.warnings?.[0]).toContain('1/8件');
+    expect(result.sourceSummary.warnings?.[0]).toContain('1/4件');
   });
 
   it('fails the trend scan when every RSS article fails summarization', async () => {
