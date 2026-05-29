@@ -27,8 +27,8 @@ import type { RssArticle, RssContext, RssSummaryError, RssTrendItem } from '../s
 
 const DEFAULT_KEYWORDS = ['AI', 'SaaS', 'developer', 'productivity', 'automation', 'エンジニア', 'プロダクト開発'];
 const MAX_EVIDENCE_URLS = 1;
-const DEFAULT_DISPLAY_RSS_ARTICLES = 8;
-const DEFAULT_SUMMARY_CANDIDATE_RSS_ARTICLES = 18;
+const DEFAULT_DISPLAY_RSS_ARTICLES = 4;
+const DEFAULT_SUMMARY_CANDIDATE_RSS_ARTICLES = 9;
 const RSS_SUMMARY_BATCH_SIZE = 4;
 const DEFAULT_RSS_SUMMARY_REQUEST_CONCURRENCY = 2;
 const RSS_SUMMARY_MAX_TOKENS = 7000;

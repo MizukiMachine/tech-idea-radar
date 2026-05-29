@@ -2,7 +2,7 @@ export const DEFAULT_MODEL = 'glm-5-turbo';
 export const DEFAULT_BASE_URL = 'https://api.z.ai/api/anthropic';
 export const DEFAULT_MAX_TOKENS = 8192;
 export const LARGE_MAX_TOKENS = 16384;
-export const DEFAULT_IDEA_COUNT = 8;
+export const DEFAULT_IDEA_COUNT = 4;
 export const DEFAULT_IDEA_DETAIL_REQUEST_CONCURRENCY = 2;
 export const DEFAULT_IDEA_DETAIL_REQUEST_RETRIES = 3;
 export const DEFAULT_IDEA_DETAIL_REQUEST_TIMEOUT_MS = 120_000;
@@ -14,8 +14,10 @@ export const DEFAULT_IDEA_FALLBACK_REQUEST_TIMEOUT_MS = 180_000;
 export const DEFAULT_FEATURED_IDEA_SELECTION_TIMEOUT_MS = 20_000;
 export const DEFAULT_RSS_TOPIC_CLUSTERING_TIMEOUT_MS = 60_000;
 export const DEFAULT_RSS_SUMMARY_REQUEST_TIMEOUT_MS = 120_000;
-export const BATCH_SCHEDULE_HOURS_JST = [0] as const;
+export const BATCH_SCHEDULE_HOURS_JST = [0, 12] as const;
 export const IDEA_RETENTION_WINDOW_HOURS = 365 * 24;
-export const MAX_BATCHES = 366;
+// 2 batches/day over the 1-year retention window → double the batch caps so
+// the full year of history is kept even though each slot now holds fewer ideas.
+export const MAX_BATCHES = 732;
 export const TREND_HISTORY_WINDOW_HOURS = 365 * 24;
-export const MAX_TREND_HISTORY = 366;
+export const MAX_TREND_HISTORY = 732;
