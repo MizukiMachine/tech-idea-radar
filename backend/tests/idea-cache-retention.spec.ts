@@ -93,8 +93,8 @@ describe("idea cache retention", () => {
     const ideas = cache.getCachedIdeas();
 
     expect(cache.getRuntimeMeta().env.ideaRetentionWindowHours).toBe(365 * 24);
-    expect(cache.getRuntimeMeta().env.maxBatches).toBe(366);
-    expect(cache.getBatchInfos()).toHaveLength(2);
+    expect(cache.getRuntimeMeta().env.maxBatches).toBe(732);
+    expect(cache.getBatchInfos()).toHaveLength(3);
     expect(ideas?.candidates.map((idea) => idea.id)).toEqual([
       "idea-now",
       "idea-4h",
@@ -125,15 +125,17 @@ describe("idea cache retention", () => {
     const cache = await import("../src/services/idea-cache");
     const ideas = cache.getCachedIdeas();
 
-    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
-    expect(ideas?.batchTime).toBe("2026-05-24T00:00:00+09:00");
-    expect(ideas?.candidates[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
+    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T12:00:00+09:00");
+    expect(ideas?.batchTime).toBe("2026-05-24T12:00:00+09:00");
+    expect(ideas?.candidates[0].batchTime).toBe("2026-05-24T12:00:00+09:00");
   });
 
   it("keeps the previous scheduled batch slot when generation crosses a boundary", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-cross-boundary-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
-    const generatedAt = "2026-05-24T15:35:00.000Z";
+    // JST 12:05 → current slot is 12:00; the batch tagged with the previous
+    // 00:00 slot (one 12h slot behind) must be kept.
+    const generatedAt = "2026-05-24T03:05:00.000Z";
     const batch = ideaBatch("2026-05-24T00:00:00+09:00", "idea-cross-boundary");
     batch.data.generatedAt = generatedAt;
     batch.data.candidates[0].generatedAt = generatedAt;
@@ -266,13 +268,14 @@ describe("idea cache retention", () => {
     const cache = await import("../src/services/idea-cache");
     await cache.generateAndCacheIdeas();
 
-    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
-    expect(cache.getCachedIdeas()?.candidates[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
+    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T12:00:00+09:00");
+    expect(cache.getCachedIdeas()?.candidates[0].batchTime).toBe("2026-05-24T12:00:00+09:00");
   });
 
   it("replaces legacy same-day slots when generating the current daily batch", async () => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-05-24T19:51:08+09:00"));
+    // JST 06:00 → current slot is 00:00, the same slot as the legacy batches.
+    vi.setSystemTime(new Date("2026-05-24T06:00:00+09:00"));
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-same-day-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");
 
