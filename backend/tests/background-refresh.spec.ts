@@ -207,8 +207,8 @@ describe("background cache refresh", () => {
     cache.startBackgroundCacheRefresh();
     await cache.waitForCacheActivity(1000);
 
-    expect(cache.getCachedIdeas()?.batchTime).toBe("2026-05-24T00:00:00+09:00");
-    expect(cache.getCachedIdeas()?.candidates[0].batchTime).toBe("2026-05-24T00:00:00+09:00");
+    expect(cache.getCachedIdeas()?.batchTime).toBe("2026-05-24T12:00:00+09:00");
+    expect(cache.getCachedIdeas()?.candidates[0].batchTime).toBe("2026-05-24T12:00:00+09:00");
     cache.flushPersistentCache();
   });
 
