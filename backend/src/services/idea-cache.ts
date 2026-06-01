@@ -587,6 +587,28 @@ async function notifyTrendSummaryFailures(result: TrendScanOutput): Promise<void
   }
 }
 
+async function cacheTrendScanResult(
+  data: TrendScanOutput,
+  now: Date,
+  batchTime: string,
+): Promise<TrendScanOutput> {
+  const result = normalizeTrendScanBatchTime({
+    ...withSummaryPolicy(data),
+    batchTime,
+  });
+  const scannedAt = now.toISOString();
+
+  // Prepend to history, deduplicate by generatedAt, then prune stale snapshots.
+  trendHistory = pruneTrendHistory([
+    { scannedAt, data: result },
+    ...trendHistory.filter((entry) => entry.data.generatedAt !== result.generatedAt),
+  ], now);
+
+  persistCache();
+  await notifyTrendSummaryFailures(result);
+  return result;
+}
+
 // --- Public getters ---
 
 export function getCachedIdeas(): IdeaGenerationOutput | null {
@@ -833,20 +855,35 @@ export async function generateAndCacheIdeas(
       const now = new Date();
       const batchTime = getCurrentBatchTimeJST(now);
       const agent = new EntrepreneurAgent(getClient());
-      const trendScanForIdeas = trendScanOverride ?? (!focusKeywords ? latestTrend()?.data : undefined);
-      const result = trendScanForIdeas && !focusKeywords
-        ? await agent.generateIdeasFromTrendScan(
+      const latestTrendEntry = !focusKeywords ? latestTrend() : null;
+      const trendScanForIdeas = trendScanOverride
+        ?? (latestTrendEntry && !isTrendEntryStale(latestTrendEntry) ? latestTrendEntry.data : undefined);
+
+      let result: IdeaGenerationOutput;
+      if (trendScanForIdeas && !focusKeywords) {
+        result = await agent.generateIdeasFromTrendScan(
           withSummaryPolicy(trendScanForIdeas),
           onProgress,
           IDEA_GENERATION_BATCH_SIZE,
           batchTime,
-        )
-        : await agent.generateIdeas(
+        );
+      } else if ('generateIdeasWithTrendScan' in agent && typeof agent.generateIdeasWithTrendScan === 'function') {
+        const generated = await agent.generateIdeasWithTrendScan(
           onProgress,
           focusKeywords,
           IDEA_GENERATION_BATCH_SIZE,
           batchTime,
         );
+        result = generated.ideas;
+        await cacheTrendScanResult(generated.trendScan, now, batchTime);
+      } else {
+        result = await agent.generateIdeas(
+          onProgress,
+          focusKeywords,
+          IDEA_GENERATION_BATCH_SIZE,
+          batchTime,
+        );
+      }
 
       // Dedupe within this batch only
       const deduped = dedupeWithinBatch(result.candidates);
@@ -894,21 +931,7 @@ export async function scanAndCacheTrends(
       const now = new Date();
       const batchTime = getCurrentBatchTimeJST(now);
       const agent = new EntrepreneurAgent(getClient());
-      const result = {
-        ...withSummaryPolicy(await agent.scanTrends(onProgress)),
-        batchTime,
-      };
-      const scannedAt = now.toISOString();
-
-      // Prepend to history, deduplicate by generatedAt, then prune stale snapshots.
-      trendHistory = pruneTrendHistory([
-        { scannedAt, data: result },
-        ...trendHistory.filter((e) => e.data.generatedAt !== result.generatedAt),
-      ], now);
-
-      persistCache();
-      await notifyTrendSummaryFailures(result);
-      return result;
+      return await cacheTrendScanResult(await agent.scanTrends(onProgress), now, batchTime);
     } catch (error) {
       await notifyRssSourceFailure(error, 'trend_scan');
       throw error;
@@ -922,6 +945,7 @@ export async function scanAndCacheTrends(
 
 async function refreshEmptyCachesIdeaFirst(): Promise<void> {
   await generateAndCacheIdeas();
+  if (trendHistory.length > 0) return;
 
   try {
     await scanAndCacheTrends();
