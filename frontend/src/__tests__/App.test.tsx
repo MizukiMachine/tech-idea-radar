@@ -610,6 +610,76 @@ describe("App", () => {
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history/2"))).toBe(false);
   });
 
+  it("does not drop the first history snapshot when it differs from the latest trend response", async () => {
+    const previousGeneratedAt = new Date(Date.parse(generatedAt) - 4 * 60 * 60 * 1000).toISOString();
+    const previousBatchTime = scheduledBatchTimeJST(previousGeneratedAt) ?? previousGeneratedAt;
+    const previousTrends = {
+      ...trends,
+      generatedAt: previousGeneratedAt,
+      batchTime: previousBatchTime,
+      rssContext: {
+        ...trends.rssContext,
+        trendingKeywords: [{ word: "history-first", count: 1 }],
+        topicClusters: [],
+        relatedArticles: [
+          {
+            ...trends.rssContext.relatedArticles[0],
+            title: "First history snapshot unique article",
+            titleJa: "履歴先頭だけにある記事",
+            link: "https://example.com/history-first-only",
+            url: "https://example.com/history-first-only",
+            published: previousGeneratedAt,
+            publishedAt: previousGeneratedAt,
+            source: "History RSS",
+            keywords: ["history-first"],
+            topicStatus: "new",
+            topicKey: "history first",
+            firstSeenAt: previousGeneratedAt,
+            lastSeenAt: previousGeneratedAt,
+            topicArticleCount: 1,
+            topicSourceCount: 1,
+          },
+        ],
+      },
+    };
+    const historyWithDifferentFirst = {
+      history: [
+        {
+          scannedAt: previousGeneratedAt,
+          generatedAt: previousGeneratedAt,
+          articleCount: 1,
+          keywordCount: 1,
+        },
+      ],
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends/history/0")) body = previousTrends;
+      else if (url.includes("/api/ai/trends/history")) body = historyWithDifferentFirst;
+      else if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 3" })).toBeTruthy());
+    expect(screen.getByText("履歴先頭だけにある記事")).toBeTruthy();
+    expect(screen.getByText("直近2回を統合・重複除外")).toBeTruthy();
+    expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history/0"))).toBe(true);
+  });
+
   it("limits trend snapshot fetches to the most recent 30 entries", async () => {
     const history = Array.from({ length: 35 }, (_, index) => {
       const entryGeneratedAt = new Date(Date.parse(generatedAt) - index * 24 * 60 * 60 * 1000).toISOString();
