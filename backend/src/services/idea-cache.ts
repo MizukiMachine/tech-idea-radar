@@ -501,11 +501,27 @@ function isTrendEntryStale(entry: TrendHistoryEntry | null): boolean {
   return Number.isNaN(scannedAt) || Date.now() - scannedAt > TREND_CACHE_TTL_MS;
 }
 
+function trendEntryBatchTime(entry: TrendHistoryEntry): string | undefined {
+  return normalizeTrendScanBatchTime(entry.data).batchTime;
+}
+
+function isTrendEntryUsableForIdeaBatch(
+  entry: TrendHistoryEntry | null,
+  batchTime: string,
+): entry is TrendHistoryEntry {
+  if (!entry || isTrendEntryStale(entry)) return false;
+  return trendEntryBatchTime(entry) === batchTime;
+}
+
 function hasCurrentIdeaBatch(now: Date): boolean {
   const currentBatchTime = getCurrentBatchTimeJST(now);
   return batches
     .map(normalizeIdeaBatchEntry)
     .some((entry) => entry.batchTime === currentBatchTime);
+}
+
+function hasCurrentTrendScan(now: Date): boolean {
+  return isTrendEntryUsableForIdeaBatch(latestTrend(), getCurrentBatchTimeJST(now));
 }
 
 function isBackgroundCacheOwner(): boolean {
@@ -857,7 +873,7 @@ export async function generateAndCacheIdeas(
       const agent = new EntrepreneurAgent(getClient());
       const latestTrendEntry = !focusKeywords ? latestTrend() : null;
       const trendScanForIdeas = trendScanOverride
-        ?? (latestTrendEntry && !isTrendEntryStale(latestTrendEntry) ? latestTrendEntry.data : undefined);
+        ?? (isTrendEntryUsableForIdeaBatch(latestTrendEntry, batchTime) ? latestTrendEntry.data : undefined);
 
       let result: IdeaGenerationOutput;
       if (trendScanForIdeas && !focusKeywords) {
@@ -976,8 +992,11 @@ export function refreshCachesInBackground(reason: string, force = false): Promis
   const now = new Date();
   const latest = latestTrend();
   const isTrendStale = isTrendEntryStale(latest);
-  const shouldRefreshTrends = force || trendHistory.length === 0 || isTrendStale;
   const shouldRefreshIdeas = force || batches.length === 0 || !hasCurrentIdeaBatch(now);
+  const shouldRefreshTrends = force
+    || trendHistory.length === 0
+    || isTrendStale
+    || (shouldRefreshIdeas && !hasCurrentTrendScan(now));
   const shouldWarmEmptyCachesIdeaFirst = shouldRefreshTrends && shouldRefreshIdeas && trendHistory.length === 0;
 
   if (!shouldRefreshTrends && !shouldRefreshIdeas) {
