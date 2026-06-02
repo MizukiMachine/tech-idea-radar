@@ -278,4 +278,91 @@ describe("background cache refresh", () => {
     expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-18T00:00:00+09:00");
     expect(cache.getCachedIdeas()?.candidates.map((idea) => idea.id)).toContain("idea-background");
   });
+
+  it("refreshes the trend snapshot before the current idea batch when the cached trend belongs to the previous slot", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T12:30:00+09:00"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-background-trend-slot-"));
+    const cacheFile = path.join(tmpDir, "idea-cache.json");
+    const previousTrendGeneratedAt = "2026-05-17T15:30:00.000Z";
+    const previousTrend = {
+      ...trendOutput(),
+      generatedAt: previousTrendGeneratedAt,
+      rssContext: {
+        ...trendOutput().rssContext,
+        relatedArticles: trendOutput().rssContext.relatedArticles.map((article) => ({
+          ...article,
+          published: previousTrendGeneratedAt,
+          publishedAt: previousTrendGeneratedAt,
+        })),
+      },
+    };
+    const events: string[] = [];
+
+    fs.writeFileSync(cacheFile, JSON.stringify({
+      version: 3,
+      updatedAt: previousTrendGeneratedAt,
+      batches: [
+        cachedIdeaBatch("2026-05-18T00:00:00+09:00", "idea-midnight"),
+      ],
+      trendHistory: [
+        { scannedAt: previousTrendGeneratedAt, data: previousTrend },
+      ],
+    }));
+
+    vi.doMock("ai-engine", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("ai-engine")>();
+      return {
+        ...actual,
+        LLMClient: class {},
+        EntrepreneurAgent: class {
+          async scanTrends(): Promise<TrendScanOutput> {
+            events.push("trend");
+            return trendOutput();
+          }
+
+          async generateIdeas(
+            _onProgress?: (text: string) => void,
+            _focusKeywords?: string[],
+            _count?: number,
+            batchTime?: string,
+          ): Promise<IdeaGenerationOutput> {
+            events.push(`ideas-generate:${batchTime ?? "none"}`);
+            return ideaOutput(batchTime);
+          }
+
+          async generateIdeasFromTrendScan(
+            trendScan: TrendScanOutput,
+            _onProgress?: (text: string) => void,
+            _count?: number,
+            batchTime?: string,
+          ): Promise<IdeaGenerationOutput> {
+            events.push(`ideas-from-trend:${trendScan.generatedAt}:${batchTime ?? "none"}`);
+            return ideaOutput(batchTime);
+          }
+        },
+      };
+    });
+
+    vi.resetModules();
+    delete process.env.IDEA_CACHE_DISABLED;
+    process.env.IDEA_CACHE_FILE = cacheFile;
+    process.env.IDEA_WARMUP_ON_START = "false";
+    process.env.ZAI_API_KEY = "test-key";
+
+    const cache = await import("../src/services/idea-cache");
+    await cache.refreshCachesInBackground("scheduled-batch", false);
+
+    expect(events).toEqual([
+      "trend",
+      "ideas-from-trend:2026-05-18T03:30:00.000Z:2026-05-18T12:00:00+09:00",
+    ]);
+    expect(cache.getTrendHistory().map((entry) => entry.generatedAt)).toEqual([
+      "2026-05-18T03:30:00.000Z",
+      previousTrendGeneratedAt,
+    ]);
+    expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-18T12:00:00+09:00");
+    expect(cache.getCachedTrendByIndex(0)?.batchTime).toBe("2026-05-18T12:00:00+09:00");
+    expect(cache.getCachedTrendByIndex(1)?.batchTime).toBe("2026-05-18T00:00:00+09:00");
+  });
 });
