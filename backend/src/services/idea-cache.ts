@@ -993,10 +993,11 @@ export function refreshCachesInBackground(reason: string, force = false): Promis
   const latest = latestTrend();
   const isTrendStale = isTrendEntryStale(latest);
   const shouldRefreshIdeas = force || batches.length === 0 || !hasCurrentIdeaBatch(now);
+  const hasTrendForCurrentBatch = hasCurrentTrendScan(now);
   const shouldRefreshTrends = force
     || trendHistory.length === 0
     || isTrendStale
-    || (shouldRefreshIdeas && !hasCurrentTrendScan(now));
+    || !hasTrendForCurrentBatch;
   const shouldWarmEmptyCachesIdeaFirst = shouldRefreshTrends && shouldRefreshIdeas && trendHistory.length === 0;
 
   if (!shouldRefreshTrends && !shouldRefreshIdeas) {
