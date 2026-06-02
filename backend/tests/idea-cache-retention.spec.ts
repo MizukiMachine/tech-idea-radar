@@ -292,6 +292,66 @@ describe("idea cache retention", () => {
     ]);
   });
 
+  it("generates a fresh trend scan for a new scheduled idea batch even when the previous trend is under the TTL", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T12:30:00+09:00"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-current-trend-slot-"));
+    const cacheFile = path.join(tmpDir, "idea-cache.json");
+    const previousGeneratedAt = "2026-05-17T15:30:00.000Z";
+    const newGeneratedAt = "2026-05-18T03:30:00.000Z";
+    const calls: string[] = [];
+
+    fs.writeFileSync(cacheFile, JSON.stringify({
+      version: 3,
+      updatedAt: previousGeneratedAt,
+      batches: [],
+      trendHistory: [
+        { scannedAt: previousGeneratedAt, data: trendScan(previousGeneratedAt, "previous-slot") },
+      ],
+    }));
+
+    vi.doMock("ai-engine", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("ai-engine")>();
+      return {
+        ...actual,
+        EntrepreneurAgent: class {
+          async generateIdeasFromTrendScan(): Promise<IdeaGenerationOutput> {
+            calls.push("cached");
+            return generatedIdeaOutput("idea-from-previous-slot-trend");
+          }
+
+          async generateIdeasWithTrendScan(
+            _onProgress?: (text: string) => void,
+            _focusKeywords?: string[],
+            _count?: number,
+            batchTime?: string,
+          ): Promise<{ ideas: IdeaGenerationOutput; trendScan: TrendScanOutput }> {
+            calls.push("fresh");
+            return {
+              ideas: generatedIdeaOutput("idea-from-current-slot-trend", batchTime),
+              trendScan: trendScan(newGeneratedAt, "current-slot"),
+            };
+          }
+        },
+      };
+    });
+
+    vi.resetModules();
+    delete process.env.IDEA_CACHE_DISABLED;
+    process.env.IDEA_CACHE_FILE = cacheFile;
+    process.env.ZAI_API_KEY = "test-key";
+
+    const cache = await import("../src/services/idea-cache");
+    await cache.generateAndCacheIdeas();
+
+    expect(calls).toEqual(["fresh"]);
+    expect(cache.getTrendHistory().map((entry) => entry.generatedAt)).toEqual([
+      newGeneratedAt,
+      previousGeneratedAt,
+    ]);
+    expect(cache.getCachedTrendByIndex(0)?.batchTime).toBe("2026-05-18T12:00:00+09:00");
+  });
+
   it("keeps the previous scheduled batch slot when generation crosses a boundary", async () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-ideas-cross-boundary-"));
     const cacheFile = path.join(tmpDir, "idea-cache.json");

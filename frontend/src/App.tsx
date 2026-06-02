@@ -319,14 +319,20 @@ function App(): JSX.Element {
         const latestSnapshot = isWithinTrendDisplayWindow(trendScanTime(trendsResult), referenceTime)
           ? trendsResult
           : null;
+        const historicalEntryLimit = latestSnapshot
+          ? TREND_SNAPSHOT_FETCH_LIMIT - 1
+          : TREND_SNAPSHOT_FETCH_LIMIT;
         const historicalSnapshots = await Promise.all(
-          recentHistoryEntries.slice(1, TREND_SNAPSHOT_FETCH_LIMIT).map(async ({ index }) => {
-            try {
-              return await fetchTrendSnapshot(index);
-            } catch {
-              return null;
-            }
-          }),
+          recentHistoryEntries
+            .filter(({ entry }) => !latestSnapshot || entry.generatedAt !== latestSnapshot.generatedAt)
+            .slice(0, historicalEntryLimit)
+            .map(async ({ index }) => {
+              try {
+                return await fetchTrendSnapshot(index);
+              } catch {
+                return null;
+              }
+            }),
         );
 
         if (!cancelled) {
