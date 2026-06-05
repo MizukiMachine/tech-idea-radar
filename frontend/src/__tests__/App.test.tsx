@@ -610,6 +610,81 @@ describe("App", () => {
     expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends/history/2"))).toBe(false);
   });
 
+  it("uses bundled trend snapshots without fetching each history entry", async () => {
+    const previousGeneratedAt = new Date(Date.parse(generatedAt) - 4 * 60 * 60 * 1000).toISOString();
+    const previousOnlyPublishedAt = new Date(Date.parse(previousGeneratedAt) - 71 * 60 * 60 * 1000).toISOString();
+    const previousTrends = {
+      ...trends,
+      generatedAt: previousGeneratedAt,
+      rssContext: {
+        ...trends.rssContext,
+        topicClusters: [],
+        relatedArticles: [
+          {
+            ...trends.rssContext.relatedArticles[1],
+            title: "Bundled previous snapshot article",
+            titleJa: "一括取得された前回記事",
+            link: "https://example.com/bundled-previous",
+            url: "https://example.com/bundled-previous",
+            published: previousOnlyPublishedAt,
+            publishedAt: previousOnlyPublishedAt,
+            source: "Bundled RSS",
+            topicStatus: undefined,
+            topicKey: undefined,
+            firstSeenAt: undefined,
+            lastSeenAt: undefined,
+            topicArticleCount: undefined,
+            topicSourceCount: undefined,
+            keywords: ["bundled"],
+          },
+        ],
+      },
+    };
+    const bundledHistory = {
+      history: [
+        trendHistory.history[0],
+        {
+          scannedAt: previousGeneratedAt,
+          generatedAt: previousGeneratedAt,
+          articleCount: 1,
+          keywordCount: 1,
+        },
+      ],
+      snapshots: [trends, previousTrends],
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (/\/api\/ai\/trends\/history\/\d+$/.test(url)) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: async () => ({ error: "unexpected individual snapshot fetch" }),
+        });
+      }
+      if (url.includes("/api/ai/trends/history")) body = bundledHistory;
+      else if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 3" })).toBeTruthy());
+    expect(screen.getByText("一括取得された前回記事")).toBeTruthy();
+    expect(mockFetch.mock.calls.some(([input]) => /\/api\/ai\/trends\/history\/\d+$/.test(String(input)))).toBe(false);
+  });
+
   it("does not drop the first history snapshot when it differs from the latest trend response", async () => {
     const previousGeneratedAt = new Date(Date.parse(generatedAt) - 4 * 60 * 60 * 1000).toISOString();
     const previousBatchTime = scheduledBatchTimeJST(previousGeneratedAt) ?? previousGeneratedAt;

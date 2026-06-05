@@ -146,6 +146,12 @@ describe("trend history API", () => {
       "2026-05-17T15:30:00.000Z",
     ]);
 
+    const historyWithSnapshots = await request(app).get("/api/ai/trends/history?includeSnapshots=1&limit=1");
+    expect(historyWithSnapshots.status).toBe(200);
+    expect(historyWithSnapshots.body.history).toHaveLength(2);
+    expect(historyWithSnapshots.body.snapshots).toHaveLength(1);
+    expect(historyWithSnapshots.body.snapshots[0].batchTime).toBe("2026-05-18T12:00:00+09:00");
+
     const latestSnapshot = await request(app).get("/api/ai/trends/history/0");
     expect(latestSnapshot.status).toBe(200);
     expect(latestSnapshot.body.batchTime).toBe("2026-05-18T12:00:00+09:00");

@@ -852,6 +852,14 @@ export function getCachedTrendByIndex(index: number): TrendScanOutput | null {
   return normalizeTrendScanBatchTime(trendHistory[index].data);
 }
 
+export function getCachedTrendSnapshots(limit: number): TrendScanOutput[] {
+  loadPersistentCache();
+  const safeLimit = Math.max(0, Math.min(limit, trendHistory.length));
+  return trendHistory
+    .slice(0, safeLimit)
+    .map((entry) => normalizeTrendScanBatchTime(entry.data));
+}
+
 // --- Generation ---
 
 export async function generateAndCacheIdeas(

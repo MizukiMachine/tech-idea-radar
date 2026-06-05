@@ -303,11 +303,15 @@ function App(): JSX.Element {
     async function loadTrends() {
       setTrendsLoading(true);
       setTrendError(null);
+      setTrendSnapshots((current) => (current.length <= 1 ? [] : current));
       try {
         const trendsResult = await fetchTrends();
-        let historyResult: { history: TrendHistoryEntry[] } = { history: [] };
+        let historyResult: { history: TrendHistoryEntry[]; snapshots?: TrendScan[] } = { history: [] };
         try {
-          historyResult = await fetchTrendHistory();
+          historyResult = await fetchTrendHistory({
+            includeSnapshots: true,
+            limit: TREND_SNAPSHOT_FETCH_LIMIT,
+          });
         } catch {
           historyResult = { history: [] };
         }
@@ -322,18 +326,26 @@ function App(): JSX.Element {
         const historicalEntryLimit = latestSnapshot
           ? TREND_SNAPSHOT_FETCH_LIMIT - 1
           : TREND_SNAPSHOT_FETCH_LIMIT;
-        const historicalSnapshots = await Promise.all(
-          recentHistoryEntries
-            .filter(({ entry }) => !latestSnapshot || entry.generatedAt !== latestSnapshot.generatedAt)
-            .slice(0, historicalEntryLimit)
-            .map(async ({ index }) => {
+        const historicalEntries = recentHistoryEntries
+          .filter(({ entry }) => !latestSnapshot || entry.generatedAt !== latestSnapshot.generatedAt)
+          .slice(0, historicalEntryLimit);
+        const historicalSnapshots = historyResult.snapshots
+          ? historicalEntries
+            .map(({ entry, index }) => {
+              const indexedSnapshot = historyResult.snapshots?.[index];
+              if (indexedSnapshot?.generatedAt === entry.generatedAt) return indexedSnapshot;
+              return historyResult.snapshots?.find((snapshot) => snapshot.generatedAt === entry.generatedAt) ?? null;
+            })
+            .filter((snapshot): snapshot is TrendScan => Boolean(snapshot))
+          : await Promise.all(
+            historicalEntries.map(async ({ index }) => {
               try {
                 return await fetchTrendSnapshot(index);
               } catch {
                 return null;
               }
             }),
-        );
+          );
 
         if (!cancelled) {
           setTrends(latestSnapshot);
