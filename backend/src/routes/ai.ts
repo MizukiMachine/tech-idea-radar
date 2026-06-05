@@ -15,6 +15,7 @@ import {
   getBatchInfos,
   getTrendHistory,
   getCachedTrendByIndex,
+  getCachedTrendSnapshots,
 } from '../services/idea-cache';
 import {
   RSS_ARTICLE_SUMMARY_POLICY,
@@ -56,6 +57,8 @@ const FilterInputSchema = z.object({
 const RefreshIdeasInputSchema = z.object({
   focusKeyword: z.string().trim().min(1).max(120).optional(),
 });
+
+const MAX_TREND_HISTORY_SNAPSHOT_RESPONSE = 30;
 
 function formatZodError(error: z.ZodError): string {
   return error.issues.map((e: z.ZodIssue) => `${e.path.join('.')}: ${e.message}`).join('; ');
@@ -99,6 +102,18 @@ function requireAdmin(req: Request, res: Response): boolean {
       : 'This deployment is read-only. Configure ADMIN_API_TOKEN to enable refresh operations.',
   });
   return false;
+}
+
+function parseSnapshotLimit(value: unknown): number {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  const parsed = Number.parseInt(String(rawValue ?? ''), 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return MAX_TREND_HISTORY_SNAPSHOT_RESPONSE;
+  return Math.min(parsed, MAX_TREND_HISTORY_SNAPSHOT_RESPONSE);
+}
+
+function shouldIncludeSnapshots(value: unknown): boolean {
+  const rawValue = Array.isArray(value) ? value[0] : value;
+  return ['1', 'true', 'yes'].includes(String(rawValue ?? '').trim().toLowerCase());
 }
 
 // --- SSE helper ---
@@ -178,6 +193,11 @@ router.get('/trends/history', async (_req: Request, res: Response) => {
   res.setHeader('Cache-Control', 'no-store');
   try {
     const history = getTrendHistory();
+    if (shouldIncludeSnapshots(_req.query.includeSnapshots)) {
+      const limit = parseSnapshotLimit(_req.query.limit);
+      res.json({ history, snapshots: getCachedTrendSnapshots(limit) });
+      return;
+    }
     res.json({ history });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error';

@@ -1210,6 +1210,21 @@ export class EntrepreneurAgent {
     requestedIdeaCount = DEFAULT_IDEA_COUNT,
     batchTime?: string,
   ): Promise<IdeaGenerationOutput> {
+    const { ideas } = await this.generateIdeasWithTrendScan(
+      onProgress,
+      inputFocusKeywords,
+      requestedIdeaCount,
+      batchTime,
+    );
+    return ideas;
+  }
+
+  async generateIdeasWithTrendScan(
+    onProgress?: (text: string) => void,
+    inputFocusKeywords?: string[],
+    requestedIdeaCount = DEFAULT_IDEA_COUNT,
+    batchTime?: string,
+  ): Promise<{ ideas: IdeaGenerationOutput; trendScan: TrendScanOutput }> {
     const startTime = Date.now();
     console.log('[IdeaGeneration] Starting idea generation pipeline');
 
@@ -1223,7 +1238,7 @@ export class EntrepreneurAgent {
       batchTime,
     );
     console.log(`[IdeaGeneration] Pipeline completed in ${Date.now() - startTime}ms`);
-    return result;
+    return { ideas: result, trendScan };
   }
 
   private async selectFeaturedIdea(candidates: IdeaCandidate[]): Promise<IdeaCandidate | undefined> {

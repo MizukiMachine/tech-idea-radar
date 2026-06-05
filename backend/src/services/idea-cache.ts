@@ -501,11 +501,27 @@ function isTrendEntryStale(entry: TrendHistoryEntry | null): boolean {
   return Number.isNaN(scannedAt) || Date.now() - scannedAt > TREND_CACHE_TTL_MS;
 }
 
+function trendEntryBatchTime(entry: TrendHistoryEntry): string | undefined {
+  return normalizeTrendScanBatchTime(entry.data).batchTime;
+}
+
+function isTrendEntryUsableForIdeaBatch(
+  entry: TrendHistoryEntry | null,
+  batchTime: string,
+): entry is TrendHistoryEntry {
+  if (!entry || isTrendEntryStale(entry)) return false;
+  return trendEntryBatchTime(entry) === batchTime;
+}
+
 function hasCurrentIdeaBatch(now: Date): boolean {
   const currentBatchTime = getCurrentBatchTimeJST(now);
   return batches
     .map(normalizeIdeaBatchEntry)
     .some((entry) => entry.batchTime === currentBatchTime);
+}
+
+function hasCurrentTrendScan(now: Date): boolean {
+  return isTrendEntryUsableForIdeaBatch(latestTrend(), getCurrentBatchTimeJST(now));
 }
 
 function isBackgroundCacheOwner(): boolean {
@@ -585,6 +601,28 @@ async function notifyTrendSummaryFailures(result: TrendScanOutput): Promise<void
     const message = notifyError instanceof Error ? notifyError.message : String(notifyError);
     console.warn(`[AdminNotifier] Failed to send RSS summary alert: ${message}`);
   }
+}
+
+async function cacheTrendScanResult(
+  data: TrendScanOutput,
+  now: Date,
+  batchTime: string,
+): Promise<TrendScanOutput> {
+  const result = normalizeTrendScanBatchTime({
+    ...withSummaryPolicy(data),
+    batchTime,
+  });
+  const scannedAt = now.toISOString();
+
+  // Prepend to history, deduplicate by generatedAt, then prune stale snapshots.
+  trendHistory = pruneTrendHistory([
+    { scannedAt, data: result },
+    ...trendHistory.filter((entry) => entry.data.generatedAt !== result.generatedAt),
+  ], now);
+
+  persistCache();
+  await notifyTrendSummaryFailures(result);
+  return result;
 }
 
 // --- Public getters ---
@@ -814,6 +852,14 @@ export function getCachedTrendByIndex(index: number): TrendScanOutput | null {
   return normalizeTrendScanBatchTime(trendHistory[index].data);
 }
 
+export function getCachedTrendSnapshots(limit: number): TrendScanOutput[] {
+  loadPersistentCache();
+  const safeLimit = Math.max(0, Math.min(limit, trendHistory.length));
+  return trendHistory
+    .slice(0, safeLimit)
+    .map((entry) => normalizeTrendScanBatchTime(entry.data));
+}
+
 // --- Generation ---
 
 export async function generateAndCacheIdeas(
@@ -833,20 +879,35 @@ export async function generateAndCacheIdeas(
       const now = new Date();
       const batchTime = getCurrentBatchTimeJST(now);
       const agent = new EntrepreneurAgent(getClient());
-      const trendScanForIdeas = trendScanOverride ?? (!focusKeywords ? latestTrend()?.data : undefined);
-      const result = trendScanForIdeas && !focusKeywords
-        ? await agent.generateIdeasFromTrendScan(
+      const latestTrendEntry = !focusKeywords ? latestTrend() : null;
+      const trendScanForIdeas = trendScanOverride
+        ?? (isTrendEntryUsableForIdeaBatch(latestTrendEntry, batchTime) ? latestTrendEntry.data : undefined);
+
+      let result: IdeaGenerationOutput;
+      if (trendScanForIdeas && !focusKeywords) {
+        result = await agent.generateIdeasFromTrendScan(
           withSummaryPolicy(trendScanForIdeas),
           onProgress,
           IDEA_GENERATION_BATCH_SIZE,
           batchTime,
-        )
-        : await agent.generateIdeas(
+        );
+      } else if ('generateIdeasWithTrendScan' in agent && typeof agent.generateIdeasWithTrendScan === 'function') {
+        const generated = await agent.generateIdeasWithTrendScan(
           onProgress,
           focusKeywords,
           IDEA_GENERATION_BATCH_SIZE,
           batchTime,
         );
+        result = generated.ideas;
+        await cacheTrendScanResult(generated.trendScan, now, batchTime);
+      } else {
+        result = await agent.generateIdeas(
+          onProgress,
+          focusKeywords,
+          IDEA_GENERATION_BATCH_SIZE,
+          batchTime,
+        );
+      }
 
       // Dedupe within this batch only
       const deduped = dedupeWithinBatch(result.candidates);
@@ -894,21 +955,7 @@ export async function scanAndCacheTrends(
       const now = new Date();
       const batchTime = getCurrentBatchTimeJST(now);
       const agent = new EntrepreneurAgent(getClient());
-      const result = {
-        ...withSummaryPolicy(await agent.scanTrends(onProgress)),
-        batchTime,
-      };
-      const scannedAt = now.toISOString();
-
-      // Prepend to history, deduplicate by generatedAt, then prune stale snapshots.
-      trendHistory = pruneTrendHistory([
-        { scannedAt, data: result },
-        ...trendHistory.filter((e) => e.data.generatedAt !== result.generatedAt),
-      ], now);
-
-      persistCache();
-      await notifyTrendSummaryFailures(result);
-      return result;
+      return await cacheTrendScanResult(await agent.scanTrends(onProgress), now, batchTime);
     } catch (error) {
       await notifyRssSourceFailure(error, 'trend_scan');
       throw error;
@@ -922,6 +969,7 @@ export async function scanAndCacheTrends(
 
 async function refreshEmptyCachesIdeaFirst(): Promise<void> {
   await generateAndCacheIdeas();
+  if (trendHistory.length > 0) return;
 
   try {
     await scanAndCacheTrends();
@@ -952,8 +1000,12 @@ export function refreshCachesInBackground(reason: string, force = false): Promis
   const now = new Date();
   const latest = latestTrend();
   const isTrendStale = isTrendEntryStale(latest);
-  const shouldRefreshTrends = force || trendHistory.length === 0 || isTrendStale;
   const shouldRefreshIdeas = force || batches.length === 0 || !hasCurrentIdeaBatch(now);
+  const hasTrendForCurrentBatch = hasCurrentTrendScan(now);
+  const shouldRefreshTrends = force
+    || trendHistory.length === 0
+    || isTrendStale
+    || !hasTrendForCurrentBatch;
   const shouldWarmEmptyCachesIdeaFirst = shouldRefreshTrends && shouldRefreshIdeas && trendHistory.length === 0;
 
   if (!shouldRefreshTrends && !shouldRefreshIdeas) {

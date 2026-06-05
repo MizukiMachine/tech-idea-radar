@@ -310,6 +310,11 @@ export interface TrendHistoryEntry {
   keywordCount: number;
 }
 
+export interface TrendHistoryResponse {
+  history: TrendHistoryEntry[];
+  snapshots?: TrendScan[];
+}
+
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
@@ -364,9 +369,20 @@ export async function fetchTrends(): Promise<TrendScan> {
 }
 
 // GET /api/trends/history
-export async function fetchTrendHistory(): Promise<{ history: TrendHistoryEntry[] }> {
-  const res = await apiFetch('/api/ai/trends/history', 'fetchTrendHistory', { cache: 'no-store' });
-  return res.json();
+export async function fetchTrendHistory(options?: {
+  includeSnapshots?: boolean;
+  limit?: number;
+}): Promise<TrendHistoryResponse> {
+  const params = new URLSearchParams();
+  if (options?.includeSnapshots) params.set('includeSnapshots', '1');
+  if (options?.limit !== undefined) params.set('limit', String(options.limit));
+  const query = params.toString();
+  const res = await apiFetch(`/api/ai/trends/history${query ? `?${query}` : ''}`, 'fetchTrendHistory', { cache: 'no-store' });
+  const body = await res.json() as TrendHistoryResponse;
+  return {
+    ...body,
+    snapshots: body.snapshots?.map(normalizeTrendScan),
+  };
 }
 
 // GET /api/trends/history/:index

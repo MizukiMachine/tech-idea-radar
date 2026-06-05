@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { IdeaGenerationOutput } from "ai-engine";
+import type { IdeaGenerationOutput, TrendScanOutput } from "ai-engine";
 
 const originalCacheDisabled = process.env.IDEA_CACHE_DISABLED;
 const originalCacheFile = process.env.IDEA_CACHE_FILE;
@@ -49,6 +49,61 @@ function ideaBatch(batchTime: string, id: string): {
         batchTime,
       }],
     },
+  };
+}
+
+function generatedIdeaOutput(id: string, batchTime?: string): IdeaGenerationOutput {
+  const generatedAt = new Date().toISOString();
+  return {
+    generatedAt,
+    batchTime,
+    sourceSummary: { rssItemCount: 2, usedLLMFallback: false },
+    candidates: [{
+      id,
+      title: id,
+      tagline: "Generated idea",
+      description: "Generated from a cached trend scan.",
+      tags: ["trend"],
+      productType: "SaaS",
+      targetUsers: "Builders",
+      coreProblem: "Trend scans should be retained",
+      differentiation: "Stores the trend snapshot used for generation",
+      sources: { rssKeywords: ["trend"], evidenceUrls: [] },
+      generatedAt,
+      batchTime,
+    }],
+  };
+}
+
+const summaryPolicy = {
+  minItems: 3,
+  maxItems: 5,
+  minTotalChars: 240,
+  maxTotalChars: 1200,
+  maxItemChars: 260,
+  minJapaneseChars: 120,
+  minJapaneseToLatinRatio: 0.35,
+};
+
+function trendScan(generatedAt: string, keyword = "trend"): TrendScanOutput {
+  return {
+    rssContext: {
+      trendingKeywords: [{ word: keyword, count: 1 }],
+      relatedArticles: [{
+        title: `${keyword} article`,
+        link: `https://example.com/${keyword}`,
+        url: `https://example.com/${keyword}`,
+        published: generatedAt,
+        publishedAt: generatedAt,
+        summary: `${keyword} summary`,
+        source: "Example",
+        keywords: [keyword],
+      }],
+    },
+    focusKeywords: [keyword],
+    generatedAt,
+    summaryPolicy,
+    sourceSummary: { rssItemCount: 2, usedLLMFallback: false },
   };
 }
 
@@ -128,6 +183,173 @@ describe("idea cache retention", () => {
     expect(cache.getBatchInfos()[0].batchTime).toBe("2026-05-24T12:00:00+09:00");
     expect(ideas?.batchTime).toBe("2026-05-24T12:00:00+09:00");
     expect(ideas?.candidates[0].batchTime).toBe("2026-05-24T12:00:00+09:00");
+  });
+
+  it("stores the trend scan used by fresh idea generation", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T00:30:00+09:00"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-idea-trend-"));
+    const cacheFile = path.join(tmpDir, "idea-cache.json");
+    writeCache(cacheFile, []);
+    const trendGeneratedAt = "2026-05-17T15:30:00.000Z";
+
+    vi.doMock("ai-engine", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("ai-engine")>();
+      return {
+        ...actual,
+        EntrepreneurAgent: class {
+          async generateIdeasWithTrendScan(
+            _onProgress?: (text: string) => void,
+            _focusKeywords?: string[],
+            _count?: number,
+            batchTime?: string,
+          ): Promise<{ ideas: IdeaGenerationOutput; trendScan: TrendScanOutput }> {
+            return {
+              ideas: generatedIdeaOutput("idea-from-fresh-trend", batchTime),
+              trendScan: trendScan(trendGeneratedAt),
+            };
+          }
+        },
+      };
+    });
+
+    vi.resetModules();
+    delete process.env.IDEA_CACHE_DISABLED;
+    process.env.IDEA_CACHE_FILE = cacheFile;
+    process.env.ZAI_API_KEY = "test-key";
+
+    const cache = await import("../src/services/idea-cache");
+    await cache.generateAndCacheIdeas();
+
+    expect(cache.getTrendHistory()).toEqual([{
+      scannedAt: "2026-05-17T15:30:00.000Z",
+      generatedAt: trendGeneratedAt,
+      articleCount: 1,
+      keywordCount: 1,
+    }]);
+    expect(cache.getCachedTrendByIndex(0)?.batchTime).toBe("2026-05-18T00:00:00+09:00");
+
+    const persisted = JSON.parse(fs.readFileSync(cacheFile, "utf8")) as { trendHistory?: unknown[] };
+    expect(persisted.trendHistory).toHaveLength(1);
+  });
+
+  it("generates a fresh trend scan instead of reusing stale trend history", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T00:30:00+09:00"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-stale-trend-"));
+    const cacheFile = path.join(tmpDir, "idea-cache.json");
+    const oldGeneratedAt = "2026-05-16T15:29:59.000Z";
+    const newGeneratedAt = "2026-05-17T15:30:00.000Z";
+    const calls: string[] = [];
+
+    fs.writeFileSync(cacheFile, JSON.stringify({
+      version: 3,
+      updatedAt: oldGeneratedAt,
+      batches: [],
+      trendHistory: [
+        { scannedAt: oldGeneratedAt, data: trendScan(oldGeneratedAt, "old") },
+      ],
+    }));
+
+    vi.doMock("ai-engine", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("ai-engine")>();
+      return {
+        ...actual,
+        EntrepreneurAgent: class {
+          async generateIdeasFromTrendScan(): Promise<IdeaGenerationOutput> {
+            calls.push("cached");
+            return generatedIdeaOutput("idea-from-stale-trend");
+          }
+
+          async generateIdeasWithTrendScan(
+            _onProgress?: (text: string) => void,
+            _focusKeywords?: string[],
+            _count?: number,
+            batchTime?: string,
+          ): Promise<{ ideas: IdeaGenerationOutput; trendScan: TrendScanOutput }> {
+            calls.push("fresh");
+            return {
+              ideas: generatedIdeaOutput("idea-from-fresh-trend", batchTime),
+              trendScan: trendScan(newGeneratedAt, "fresh"),
+            };
+          }
+        },
+      };
+    });
+
+    vi.resetModules();
+    delete process.env.IDEA_CACHE_DISABLED;
+    process.env.IDEA_CACHE_FILE = cacheFile;
+    process.env.ZAI_API_KEY = "test-key";
+
+    const cache = await import("../src/services/idea-cache");
+    await cache.generateAndCacheIdeas();
+
+    expect(calls).toEqual(["fresh"]);
+    expect(cache.getTrendHistory().map((entry) => entry.generatedAt)).toEqual([
+      newGeneratedAt,
+      oldGeneratedAt,
+    ]);
+  });
+
+  it("generates a fresh trend scan for a new scheduled idea batch even when the previous trend is under the TTL", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-18T12:30:00+09:00"));
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "tech-idea-radar-current-trend-slot-"));
+    const cacheFile = path.join(tmpDir, "idea-cache.json");
+    const previousGeneratedAt = "2026-05-17T15:30:00.000Z";
+    const newGeneratedAt = "2026-05-18T03:30:00.000Z";
+    const calls: string[] = [];
+
+    fs.writeFileSync(cacheFile, JSON.stringify({
+      version: 3,
+      updatedAt: previousGeneratedAt,
+      batches: [],
+      trendHistory: [
+        { scannedAt: previousGeneratedAt, data: trendScan(previousGeneratedAt, "previous-slot") },
+      ],
+    }));
+
+    vi.doMock("ai-engine", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("ai-engine")>();
+      return {
+        ...actual,
+        EntrepreneurAgent: class {
+          async generateIdeasFromTrendScan(): Promise<IdeaGenerationOutput> {
+            calls.push("cached");
+            return generatedIdeaOutput("idea-from-previous-slot-trend");
+          }
+
+          async generateIdeasWithTrendScan(
+            _onProgress?: (text: string) => void,
+            _focusKeywords?: string[],
+            _count?: number,
+            batchTime?: string,
+          ): Promise<{ ideas: IdeaGenerationOutput; trendScan: TrendScanOutput }> {
+            calls.push("fresh");
+            return {
+              ideas: generatedIdeaOutput("idea-from-current-slot-trend", batchTime),
+              trendScan: trendScan(newGeneratedAt, "current-slot"),
+            };
+          }
+        },
+      };
+    });
+
+    vi.resetModules();
+    delete process.env.IDEA_CACHE_DISABLED;
+    process.env.IDEA_CACHE_FILE = cacheFile;
+    process.env.ZAI_API_KEY = "test-key";
+
+    const cache = await import("../src/services/idea-cache");
+    await cache.generateAndCacheIdeas();
+
+    expect(calls).toEqual(["fresh"]);
+    expect(cache.getTrendHistory().map((entry) => entry.generatedAt)).toEqual([
+      newGeneratedAt,
+      previousGeneratedAt,
+    ]);
+    expect(cache.getCachedTrendByIndex(0)?.batchTime).toBe("2026-05-18T12:00:00+09:00");
   });
 
   it("keeps the previous scheduled batch slot when generation crosses a boundary", async () => {
