@@ -334,6 +334,7 @@ export default function TrendBoard({
   );
   const summaryPolicy = mergedTrends?.summaryPolicy;
   const usesLegacySummaryContract = mergedTrends?.summaryPolicySource === 'default';
+  const holdingPartialPreview = loading && trendSnapshots.length <= 1;
   const relatedArticles = mergedTrends?.rssContext.relatedArticles ?? [];
   const policyDisplayableArticles = summaryPolicy
     ? relatedArticles.filter((article) => isDisplayableArticle(article, summaryPolicy))
@@ -421,7 +422,7 @@ export default function TrendBoard({
         </div>
       )}
 
-      {loading && !mergedTrends && (
+      {loading && (!mergedTrends || holdingPartialPreview) && (
         <div className="tb-loading">
           <span className="tb-loading__spinner" />
           <div>
@@ -445,7 +446,7 @@ export default function TrendBoard({
         </div>
       )}
 
-      {mergedTrends && rssArticles.length > 0 && (
+      {!holdingPartialPreview && mergedTrends && rssArticles.length > 0 && (
         <TrendCardsLayout
           articles={filteredArticles}
           allArticleCount={rssArticles.length}
