@@ -200,6 +200,16 @@ function streamResponse(events: string[]): Response {
   } as Response;
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
 beforeEach(() => {
   mockFetch.mockReset();
   scrollIntoViewMock.mockReset();
@@ -278,6 +288,45 @@ describe("App", () => {
     expect(screen.getByText(formatBatchTimestamp(trendBatchTime))).toBeTruthy();
     expect(screen.getByText("小規模な SRE チーム")).toBeTruthy();
     expect(screen.getByRole("button", { name: "AI Ops Memo の詳細を開く" }).tagName).toBe("ARTICLE");
+  });
+
+  it("does not render the prefetched latest trend while history snapshots are loading", async () => {
+    const historyRequest = deferred<typeof trendHistory>();
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends/history")) {
+        return historyRequest.promise.then((historyBody) => ({
+          ok: true,
+          json: async () => historyBody,
+        }));
+      }
+      if (url.includes("/api/ai/trends")) body = trends;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    await waitFor(() => expect(mockFetch.mock.calls.some(([input]) => String(input).includes("/api/ai/trends"))).toBe(true));
+
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+
+    expect(await screen.findByText("RSS を取得しています")).toBeTruthy();
+    expect(screen.queryByText("AIエージェントツールがプロダクト業務に広がる")).toBeNull();
+
+    historyRequest.resolve(trendHistory);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 2" })).toBeTruthy());
+    expect(screen.getByText("AIエージェントツールがプロダクト業務に広がる")).toBeTruthy();
   });
 
   it("keeps long target users compact on idea cards", async () => {
