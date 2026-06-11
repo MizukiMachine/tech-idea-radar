@@ -8,12 +8,32 @@ import healthRouter from "./routes/health";
 import aiRouter from "./routes/ai";
 
 const app = express();
+const isProduction = process.env.NODE_ENV === "production";
+
+function parseTrustProxy(value: string): boolean | number | string {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") return 1;
+  if (normalized === "false") return false;
+
+  const numericValue = Number(normalized);
+  if (Number.isInteger(numericValue) && numericValue >= 0) {
+    return numericValue;
+  }
+
+  return value.trim();
+}
+
+const trustProxy = process.env.TRUST_PROXY?.trim();
+if (trustProxy) {
+  app.set("trust proxy", parseTrustProxy(trustProxy));
+} else if (isProduction) {
+  app.set("trust proxy", 1);
+}
 
 // --- Security headers (CSP disabled for SPA compatibility) ---
 app.use(helmet({ contentSecurityPolicy: false }));
 
 // --- Rate limiting (gentle, mainly anti-scraping) ---
-const isProduction = process.env.NODE_ENV === "production";
 app.use(rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 300,
