@@ -306,6 +306,7 @@ const TOPIC_FILTERS: { id: TopicFilter; label: string }[] = [
   { id: 'spiking', label: '急増' },
   { id: 'continuing', label: '継続' },
 ];
+const TREND_ARTICLES_PER_PAGE = 10;
 
 interface SourceRow {
   source: string;
@@ -327,7 +328,6 @@ export default function TrendBoard({
   const [topicFilter, setTopicFilter] = useState<TopicFilter>('all');
   const [trendSearchQuery, setTrendSearchQuery] = useState('');
   const [page, setPage] = useState(0);
-  const PAGE_SIZE = 15;
   const mergedTrends = useMemo(
     () => mergeTrendSnapshots(trendSnapshots),
     [trendSnapshots],
@@ -378,7 +378,10 @@ export default function TrendBoard({
     ? rssArticles
     : rssArticles.filter((article) => articleDisplayStatus(article) === topicFilter);
   const filteredArticles = statusFilteredArticles.filter((article) => matchesTrendSearch(article, trendSearchQuery));
-  const visibleArticles = filteredArticles.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const visibleArticles = filteredArticles.slice(
+    page * TREND_ARTICLES_PER_PAGE,
+    (page + 1) * TREND_ARTICLES_PER_PAGE,
+  );
   const contributingSnapshotCount = new Set(
     rssArticles.map((article) => articleTrendReferenceDate(article, mergedTrends?.generatedAt)).filter(Boolean),
   ).size;
@@ -453,7 +456,7 @@ export default function TrendBoard({
           visibleArticles={visibleArticles}
           expandedArticleUrls={expandedArticleUrls}
           onToggleArticle={handleToggleArticle}
-          pageSize={PAGE_SIZE}
+          pageSize={TREND_ARTICLES_PER_PAGE}
           page={page}
           onPageChange={setPage}
           sourceRows={sourceRows}
