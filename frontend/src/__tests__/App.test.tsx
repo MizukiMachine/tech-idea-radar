@@ -185,6 +185,21 @@ const trendHistory = {
   ],
 };
 
+function makeTrendArticle(index: number) {
+  return {
+    ...trends.rssContext.relatedArticles[0],
+    title: `Paged trend article ${index}`,
+    titleJa: `ページング用トレンド記事${index}`,
+    link: `https://example.com/trend-page-${index}`,
+    url: `https://example.com/trend-page-${index}`,
+    summary: `Trend pagination article ${index}.`,
+    summaryJa: validTrendSummary(`ページング用トレンド記事${index}`),
+    source: index % 2 === 0 ? "TechCrunch" : "Example RSS",
+    keywords: [`trend-${index}`],
+    topicKey: `paged-trend-${index}`,
+  };
+}
+
 function streamResponse(events: string[]): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -516,6 +531,58 @@ describe("App", () => {
     fireEvent.click(buttons[1]);
     expect(screen.getByText(firstSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
     expect(screen.getByText(secondSummary.split("\n")[0].replace(/^・/, ""))).toBeTruthy();
+  });
+
+  it("paginates trend articles in groups of 10", async () => {
+    const trendArticles = Array.from({ length: 11 }, (_, index) => makeTrendArticle(index + 1));
+    const pagedTrends = {
+      ...trends,
+      rssContext: {
+        ...trends.rssContext,
+        relatedArticles: trendArticles,
+        topicClusters: [],
+      },
+      sourceSummary: { rssItemCount: 11, usedLLMFallback: false },
+    };
+    const pagedTrendHistory = {
+      history: [
+        {
+          ...trendHistory.history[0],
+          articleCount: 11,
+        },
+      ],
+    };
+
+    mockFetch.mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      let body: unknown = {
+        status: "cached",
+        candidates: [idea],
+        generatedAt,
+        sourceSummary: { rssItemCount: 3, usedLLMFallback: false },
+      };
+      if (url.includes("/api/ai/trends")) body = pagedTrends;
+      if (url.includes("/api/ai/trends/history")) body = pagedTrendHistory;
+      if (url.includes("/api/ai/ideas/meta")) body = meta;
+      return Promise.resolve({
+        ok: true,
+        json: async () => body,
+      });
+    });
+
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "海外トレンド" }));
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "すべて 11" })).toBeTruthy());
+    expect(document.querySelectorAll(".tb-article-grid .tb-article")).toHaveLength(10);
+    expect(screen.getByText("ページング用トレンド記事1")).toBeTruthy();
+    expect(screen.queryByText("ページング用トレンド記事11")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "2" }));
+
+    expect(document.querySelectorAll(".tb-article-grid .tb-article")).toHaveLength(1);
+    expect(screen.getByText("ページング用トレンド記事11")).toBeTruthy();
+    expect(screen.queryByText("ページング用トレンド記事1")).toBeNull();
   });
 
   it("hides the trend keyword panel", async () => {
