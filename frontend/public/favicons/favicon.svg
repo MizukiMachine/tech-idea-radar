@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <title>Lume favicon</title>
-  <desc>Rounded square Lume radar sweep mark with a deep slate background.</desc>
+  <desc>Rounded square Lume radar sweep mark in the product lime green palette.</desc>
   <defs>
     <linearGradient id="lume-mark-core" x1="20" y1="18" x2="45" y2="44" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#BFD97D"/>
@@ -12,21 +12,16 @@
       <stop offset="0.58" stop-color="#8FAE4D"/>
       <stop offset="1" stop-color="#C8D85D"/>
     </linearGradient>
-    <linearGradient id="lume-tile" x1="8" y1="6" x2="56" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#243047"/>
-      <stop offset="0.58" stop-color="#172033"/>
-      <stop offset="1" stop-color="#101827"/>
-    </linearGradient>
-    <linearGradient id="lume-edge" x1="13" y1="8" x2="52" y2="58" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#41506A"/>
-      <stop offset="1" stop-color="#2C394F"/>
+    <linearGradient id="lume-tile" x1="8" y1="7" x2="56" y2="57" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F4FAEA"/>
     </linearGradient>
     <filter id="lume-shadow" x="-12" y="-12" width="88" height="88" color-interpolation-filters="sRGB">
-      <feDropShadow dx="0" dy="2" stdDeviation="1.8" flood-color="#0B1020" flood-opacity="0.22"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="1.8" flood-color="#172033" flood-opacity="0.12"/>
     </filter>
   </defs>
 
-  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#lume-tile)" stroke="url(#lume-edge)" stroke-width="2" filter="url(#lume-shadow)"/>
+  <rect x="6" y="6" width="52" height="52" rx="14" fill="url(#lume-tile)" stroke="#CFE4A8" stroke-width="2" filter="url(#lume-shadow)"/>
   <path d="M21 43V18" stroke="url(#lume-mark-core)" stroke-width="9.5" stroke-linecap="round"/>
   <path d="M21 43H42" stroke="url(#lume-mark-core)" stroke-width="9.5" stroke-linecap="round"/>
   <path d="M21 43C24.5 34.2 32.1 27.1 41 24.5" stroke="#D7E7A8" stroke-width="3" stroke-linecap="round" opacity="0.95"/>
